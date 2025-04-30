@@ -69,8 +69,8 @@ AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
 
     shortcuts = {
         {"اطبع", "اطبع($1)"},
-        {"اذا", "اذا $1:\n\tمرر\nوالا:\n\tمرر"},
-        {"اواذا", "اواذا $1:\n\tمرر"},
+        {"اذا", "اذا $1:\n\t\nوالا:\n\t"},
+        {"اواذا", "اواذا $1:\n\t"},
         {"استمر", "استمر"},
         {"ارجع", "ارجع $1"},
         {"استورد", "استورد $1"},
@@ -79,22 +79,22 @@ AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
         {"اصل", "اصل()._تهيئة_($1)"},
         {"او", "او"},
         {"انتظر", "انتظر"},
-        {"بينما", "بينما $1:\n\tمرر"},
+        {"بينما", "بينما $1:\n\t"},
         {"توقف", "توقف"},
-        {"حاول", "حاول:\n\tمرر\nخلل:\n\tمرر\nنهاية:\n\tمرر"},
+        {"حاول", "حاول:\n\t\nخلل:\n\t\nنهاية:\n\t"},
         {"خطأ", "خطأ"},
-        {"خلل", "خلل:\n\tمرر"},
-        {"دالة", "دالة $1():\n\tمرر"},
-        {"صنف", "صنف $1:\n\tدالة _تهيئة_(هذا):\n\t\tمرر"},
+        {"خلل", "خلل:\n\t"},
+        {"دالة", "دالة $1():\n\t"},
+        {"صنف", "صنف $1:\n\tدالة _تهيئة_(هذا):\n\t\t"},
         {"صح", "صح"},
         {"صحيح", "صحيح($1)"},
         {"عدم", "عدم"},
-        {"عند", "عند $1 ك :\n\tمرر"},
+        {"عند", "عند $1 ك :\n\t"},
         {"عام", "عام $1"},
         {"عشري", "عشري($1)"},
         {"في", "في"},
         {"ك", "ك"},
-        {"لاجل", "لاجل $1 في :\n\tمرر"},
+        {"لاجل", "لاجل $1 في :\n\t"},
         {"ليس", "ليس"},
         {"مرر", "مرر"},
         {"من", "من $1 استورد "},
@@ -102,12 +102,12 @@ AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
         {"مدى", "مدى($1)"},
         {"مصفوفة", "مصفوفة($1)"},
         {"نطاق", "نطاق $1"},
-        {"نهاية", "نهاية $1:\n\tمرر"},
+        {"نهاية", "نهاية $1:\n\t"},
         {"هل", "هل"},
         {"والا", "والا:\n\t$1"},
         {"ولد", "ولد $1"},
         {"و", "و"},
-        {"_تهيئة_", "دالة _تهيئة_(هذا):\n\tمرر"}
+        {"_تهيئة_", "دالة _تهيئة_(هذا):\n\t"}
     };        
     descriptions = {
         {"اطبع", "لعرض قيمة في الطرفية."},
@@ -217,7 +217,7 @@ bool AutoComplete::eventFilter(QObject* obj, QEvent* event) {
 
 QString AutoComplete::getCurrentWord() const {
     QTextCursor cursor = editor->textCursor();
-    cursor.movePosition(QTextCursor::StartOfWord, QTextCursor::KeepAnchor);
+    cursor.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
     return cursor.selectedText().trimmed();
 }
 
@@ -296,7 +296,7 @@ void AutoComplete::insertCompletion() {
 
     QString text = shortcuts.value(word);
     QTextCursor cursor = editor->textCursor();
-    cursor.movePosition(QTextCursor::StartOfWord, QTextCursor::KeepAnchor);
+    cursor.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
     cursor.removeSelectedText();
 
     placeholderPositions.clear();
