@@ -39,8 +39,8 @@ SPMenuBar::SPMenuBar(QWidget* parent) {
     QAction* openAction = new QAction("فتح", parent);
     QAction* saveAction = new QAction("حفظ", parent);
     QAction* saveAsAction = new QAction("حفظ باسم", parent);
-    //QAction* optionsAction = new QAction("خيارات", parent);
-    //QAction* exitAction = new QAction("خروج", parent);
+    QAction* optionsAction = new QAction("الإعدادات", parent);
+    QAction* exitAction = new QAction("خروج", parent);
 
     QAction* runAction = new QAction("تشغيل", parent);
 
@@ -53,10 +53,10 @@ SPMenuBar::SPMenuBar(QWidget* parent) {
     fileMenu->addAction(openAction);
     fileMenu->addAction(saveAction);
     fileMenu->addAction(saveAsAction);
-    //fileMenu->addSeparator();
-    //fileMenu->addAction(optionsAction);
-    //fileMenu->addSeparator();
-    //fileMenu->addAction(exitAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(optionsAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(exitAction);
 
     runMenu->addAction(runAction);
 
@@ -98,6 +98,7 @@ SPMenuBar::SPMenuBar(QWidget* parent) {
     connect(openAction, &QAction::triggered, this, &SPMenuBar::onOpenAction);
     connect(saveAction, &QAction::triggered, this, &SPMenuBar::onSaveAction);
     connect(saveAsAction, &QAction::triggered, this, &SPMenuBar::onSaveAsAction);
+    connect(exitAction, &QAction::triggered, this, &SPMenuBar::onExitApp);
 
     connect(runAction, &QAction::triggered, this, &SPMenuBar::onRunAction);
 

@@ -192,7 +192,10 @@ AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
 
 
 bool AutoComplete::eventFilter(QObject* obj, QEvent* event) {
-    if (obj == editor and event->type() == QEvent::KeyPress) {
+    if (event->type() == QEvent::FocusOut) {
+        popup->hide();
+    }
+    else if (obj == editor and event->type() == QEvent::KeyPress) {
         QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
         if (popup->isVisible()) {
             if (keyEvent->key() == Qt::Key_Tab

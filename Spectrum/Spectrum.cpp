@@ -9,6 +9,7 @@
 #include <QScreen>
 #include <QCoreApplication>
 #include <QTextStream>
+#include <QApplication>
 
 
 Spectrum::Spectrum(const QString& filePath, QWidget *parent)
@@ -60,6 +61,7 @@ Spectrum::Spectrum(const QString& filePath, QWidget *parent)
     connect(menuBar, &SPMenuBar::openRequested, this, [this](){this->openFile("");});
     connect(menuBar, &SPMenuBar::saveRequested, this, &Spectrum::saveFile);
     connect(menuBar, &SPMenuBar::saveAsRequested, this, &Spectrum::saveFileAs);
+    connect(menuBar, &SPMenuBar::exitRequested, this, &Spectrum::exitApp);
     connect(menuBar, &SPMenuBar::runRequested, this, &Spectrum::runAlif);
     connect(menuBar, &SPMenuBar::aboutRequested, this, &Spectrum::aboutSpectrum);
     connect(editor, &SPEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
@@ -73,6 +75,23 @@ Spectrum::Spectrum(const QString& filePath, QWidget *parent)
 Spectrum::~Spectrum() {
     delete editor;
     delete menuBar;
+}
+
+// الكتابة فوق دالة إغلاق البرنامج الرئيسية
+void Spectrum::closeEvent(QCloseEvent *event) {
+    int isNeedSave = needSave();
+    if (!isNeedSave) {
+        event->ignore();
+        return;
+    }
+    else if (isNeedSave == 1) {
+        this->saveFile();
+        event->ignore();
+        return;
+    }
+
+    QApplication::quit();
+    event->accept();
 }
 
 
@@ -187,7 +206,18 @@ void Spectrum::saveFileAs() {
 }
 
 
+void Spectrum::exitApp() {
+    int isNeedSave = needSave();
+    if (!isNeedSave) {
+        return;
+    }
+    else if (isNeedSave == 1) {
+        this->saveFile();
+        return;
+    }
 
+    QApplication::quit();
+}
 
 
 
