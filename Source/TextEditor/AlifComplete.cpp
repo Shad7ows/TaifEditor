@@ -157,7 +157,7 @@ AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
         "QWidget { background-color: #242533; color: #cccccc; }"
         "QListWidget { background-color: #242533; color: #cccccc; }"
         "QListWidget::item { padding: 7px; }"
-        "QListWidget::item:selected { background-color: #3a3d54; padding: 0 12px 0 0; }");
+        "QListWidget::item:selected { background-color: #3a3d54; color: #10a8f4; padding: 0 12px 0 0; }");
 
     QVBoxLayout* popupLayout = new QVBoxLayout(popup);
     popupLayout->setContentsMargins(0, 0, 0, 0);
@@ -192,10 +192,7 @@ AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
 
 
 bool AutoComplete::eventFilter(QObject* obj, QEvent* event) {
-    if (event->type() == QEvent::FocusOut) {
-        popup->hide();
-    }
-    else if (obj == editor and event->type() == QEvent::KeyPress) {
+    if (obj == editor and event->type() == QEvent::KeyPress) {
         QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
         if (popup->isVisible()) {
             if (keyEvent->key() == Qt::Key_Tab
@@ -214,6 +211,9 @@ bool AutoComplete::eventFilter(QObject* obj, QEvent* event) {
                 return false;
             }
         }
+    } else if (event->type() == QEvent::FocusOut) {
+        popup->hide();
+        return QObject::eventFilter(obj, event);
     }
     return QObject::eventFilter(obj, event);
 }
