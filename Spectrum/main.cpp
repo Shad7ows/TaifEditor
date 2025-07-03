@@ -7,6 +7,8 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    QCoreApplication::setOrganizationName("Alif");
+    QCoreApplication::setApplicationName("Spectrum");
     app.setLayoutDirection(Qt::RightToLeft);
 
     int fontId1 = QFontDatabase::addApplicationFont(":/fonts/Resources/fonts/Tajawal/Tajawal-Regular.ttf");

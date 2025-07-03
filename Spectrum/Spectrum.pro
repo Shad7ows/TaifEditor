@@ -17,7 +17,8 @@ RESOURCES += \
 
 # Include directories
 INCLUDEPATH +=  ../Source/TextEditor \
-                ../Source/MenuBar
+                ../Source/MenuBar   \
+                ../Source/Settings
 
 SOURCES += \
     Spectrum.cpp \
@@ -26,7 +27,8 @@ SOURCES += \
     ../Source/TextEditor/AlifLexer.cpp \
     ../Source/TextEditor/SPEditor.cpp \
     ../Source/TextEditor/SPHighlighter.cpp \
-    ../Source/MenuBar/SPMenu.cpp
+    ../Source/MenuBar/SPMenu.cpp    \
+    ../Source/Settings/SPSettings.cpp
 
 HEADERS += \
     Spectrum.h  \
@@ -34,7 +36,8 @@ HEADERS += \
     ../Source/TextEditor/AlifLexer.h \
     ../Source/TextEditor/SPEditor.h \
     ../Source/TextEditor/SPHighlighter.h \
-    ../Source/MenuBar/SPMenu.h
+    ../Source/MenuBar/SPMenu.h  \
+    ../Source/Settings/SPSettings.h
 
 
 

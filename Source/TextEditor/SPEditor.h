@@ -16,7 +16,7 @@ public:
     int lineNumberAreaWidth() const;
 
     QString getCurrentLineIndentation(const QTextCursor &cursor) const;
-    void const curserIndentation();
+    void curserIndentation();
 
 protected:
     void resizeEvent(QResizeEvent* event) override;

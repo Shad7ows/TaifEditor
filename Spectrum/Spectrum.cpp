@@ -61,6 +61,7 @@ Spectrum::Spectrum(const QString& filePath, QWidget *parent)
     connect(menuBar, &SPMenuBar::openRequested, this, [this](){this->openFile("");});
     connect(menuBar, &SPMenuBar::saveRequested, this, &Spectrum::saveFile);
     connect(menuBar, &SPMenuBar::saveAsRequested, this, &Spectrum::saveFileAs);
+    connect(menuBar, &SPMenuBar::settingsRequest, this, &Spectrum::openSettings);
     connect(menuBar, &SPMenuBar::exitRequested, this, &Spectrum::exitApp);
     connect(menuBar, &SPMenuBar::runRequested, this, &Spectrum::runAlif);
     connect(menuBar, &SPMenuBar::aboutRequested, this, &Spectrum::aboutSpectrum);

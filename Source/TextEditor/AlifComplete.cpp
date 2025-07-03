@@ -342,6 +342,6 @@ void AutoComplete::insertCompletion() {
 
 
 
-bool const AutoComplete::isPopupVisible() {
+bool AutoComplete::isPopupVisible() {
     return popup->isVisible();
 }

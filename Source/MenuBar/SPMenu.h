@@ -19,6 +19,7 @@ signals:
     void openRequested();
     void saveRequested();
     void saveAsRequested();
+    void settingsRequest();
     void exitRequested();
     void runRequested();
     void aboutRequested();
@@ -35,6 +36,9 @@ private slots:
     }
     void onSaveAsAction() {
         emit saveAsRequested();
+    }
+    void onSettingsAction() {
+        emit settingsRequest();
     }
     void onExitApp() {
         emit exitRequested();

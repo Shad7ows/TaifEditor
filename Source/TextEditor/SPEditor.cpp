@@ -162,7 +162,17 @@ void SPEditor::dragEnterEvent(QDragEnterEvent* event) {
             }
         }
     }
+
+    // Mouse Text Drag
+    if (event->mimeData()->hasText()) {
+        event->acceptProposedAction();
+        return;
+    }
     event->ignore(); // Ignore if not a .alif ... file
+}
+
+void SPEditor::dragMoveEvent(QDragMoveEvent* event) { // ضروري لمنع ظهور سلوك غريب بعد الإفلات
+    event->acceptProposedAction();
 }
 
 void SPEditor::dropEvent(QDropEvent* event) {
@@ -181,11 +191,42 @@ void SPEditor::dropEvent(QDropEvent* event) {
             }
         }
     }
-    event->ignore(); // Ignore if not a .alif ... file
-}
 
-void SPEditor::dragMoveEvent(QDragMoveEvent* event) { // ضروري لمنع ظهور سلوك غريب بعد الإفلات
-    event->acceptProposedAction();
+    // Mouse Text Drop
+    if (event->mimeData()->hasText()) {
+        QTextCursor dropCursor = cursorForPosition(event->position().toPoint());
+        int dropPosition = dropCursor.position();
+
+        // The text is being moved, not just dropped from an external source.
+        // So we handle it completely.
+
+        // If the drop is within the selection, do nothing.
+        if (dropPosition >= textCursor().selectionStart()
+            and dropPosition <= textCursor().selectionEnd()) {
+            event->ignore();
+            return;
+        }
+
+        QString droppedText = event->mimeData()->text();
+        QTextCursor originalCursor = textCursor();
+
+        // Remove the original selected text FIRST.
+        originalCursor.removeSelectedText();
+
+        // Adjust the drop position if the removal occurred before it.
+        if (originalCursor.position() < dropPosition) {
+            dropPosition -= droppedText.length();
+        }
+
+        // Insert the text at the correct, adjusted position.
+        dropCursor.setPosition(dropPosition);
+        dropCursor.insertText(droppedText);
+
+        event->acceptProposedAction();
+        return;
+    }
+
+    event->ignore(); // Ignore if not a .alif ... file
 }
 
 void SPEditor::dragLeaveEvent(QDragLeaveEvent* event) {
@@ -195,7 +236,7 @@ void SPEditor::dragLeaveEvent(QDragLeaveEvent* event) {
 
 /* ---------------------------------- Indentation ---------------------------------- */
 
-void const SPEditor::curserIndentation() {
+void SPEditor::curserIndentation() {
     QTextCursor cursor = textCursor();
     QString lineText = cursor.block().text();
     int cursorPosInLine = cursor.positionInBlock();

@@ -12,7 +12,7 @@ class AutoComplete : public QObject
 public:
     explicit AutoComplete(QPlainTextEdit* editor, QObject* parent = nullptr);
 
-    bool const isPopupVisible();
+    bool isPopupVisible();
 
 protected:
     bool eventFilter(QObject* obj, QEvent* event) override;
