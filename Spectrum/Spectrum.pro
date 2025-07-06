@@ -18,7 +18,8 @@ RESOURCES += \
 # Include directories
 INCLUDEPATH +=  ../Source/TextEditor \
                 ../Source/MenuBar   \
-                ../Source/Settings
+                ../Source/Settings  \
+                ../source/Components    \
 
 SOURCES += \
     Spectrum.cpp \
@@ -28,7 +29,8 @@ SOURCES += \
     ../Source/TextEditor/SPEditor.cpp \
     ../Source/TextEditor/SPHighlighter.cpp \
     ../Source/MenuBar/SPMenu.cpp    \
-    ../Source/Settings/SPSettings.cpp
+    ../Source/Settings/SPSettings.cpp   \
+    ../Source/Components/FlatButton.cpp \
 
 HEADERS += \
     Spectrum.h  \
@@ -37,7 +39,8 @@ HEADERS += \
     ../Source/TextEditor/SPEditor.h \
     ../Source/TextEditor/SPHighlighter.h \
     ../Source/MenuBar/SPMenu.h  \
-    ../Source/Settings/SPSettings.h
+    ../Source/Settings/SPSettings.h \
+    ../Source/Components/FlatButton.h \
 
 
 

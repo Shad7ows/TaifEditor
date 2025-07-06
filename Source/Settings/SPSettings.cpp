@@ -4,49 +4,130 @@
 SPSettings::SPSettings(QWidget* parent) : QWidget(parent) {
     setWindowTitle("الإعدادات");
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
-    setMinimumSize(600, 400);
+    setMinimumSize(800, 600);
     setStyleSheet("color: #dddddd; background-color: #1e202e;");
 
-
-    // Create UI elements
-    QLabel* titleLabel = new QLabel("الإعدادات");
-    titleLabel->setStyleSheet("font-size: 16px; font-weight: bold;");
-
-    // Create buttons
-    QPushButton* saveButton = new QPushButton("حفظ");
-    QPushButton* cancelButton = new QPushButton("إلغاء");
-
     // Layout setup
-    QVBoxLayout* mainLayout = new QVBoxLayout();
+    QHBoxLayout* mainLayout = new QHBoxLayout();
+    QVBoxLayout* mainPropertyLayout = new QVBoxLayout();
+    optionsLayout = new QVBoxLayout();
     QHBoxLayout* buttonLayout = new QHBoxLayout();
 
-    buttonLayout->addStretch();
-    buttonLayout->addWidget(saveButton);
-    buttonLayout->addWidget(cancelButton);
-    mainLayout->addLayout(buttonLayout);
+    stackedWidget = new QStackedWidget();
+
+    createCategory("المحرر", "إعدادات مظهر المحرر");
+    createCategory("متقدم", "الإعداد المتقدمة");
+
+
+    optionsLayout->setAlignment(Qt::AlignTop);
+    optionsLayout->setContentsMargins(0, 0, 0, 0);
+    optionsLayout->setSpacing(0);
+
+    QWidget* optionsWidget = new QWidget();
+    optionsWidget->setStyleSheet(".QWidget { border-left-width: 3px; border-left-style: ridge; border-left-color: #1e202f; }");
+    optionsWidget->setLayout(optionsLayout);
+    optionsWidget->setMinimumWidth(200);
+    optionsWidget->setMaximumWidth(300);
+
+    QWidget* propertyWidget = new QWidget();
+    propertyWidget->setLayout(mainPropertyLayout);
+    propertyWidget->setMinimumWidth(400);
+
+    mainLayout->addWidget(optionsWidget);
+    mainLayout->addWidget(stackedWidget);
+
+    mainPropertyLayout->addLayout(buttonLayout);
 
     setLayout(mainLayout);
-
-    // Connect signals
-    connect(saveButton, &QPushButton::clicked, this, &SPSettings::saveSettings);
-    connect(cancelButton, &QPushButton::clicked, this, &QWidget::close);
-
-    loadSettings();
 }
 
 
-void SPSettings::closeEvent(QCloseEvent* event) {
-    emit windowClosed();
-    event->accept();
+// void SPSettings::closeEvent(QCloseEvent* event) {
+//     emit windowClosed();
+//     event->accept();
+// }
+
+
+void SPSettings::switchPage() {
+    SPFlatButton* btn = qobject_cast<SPFlatButton*>(sender());
+    if (btn) {
+        int index = btn->property("pageIndex").toInt();
+        stackedWidget->setCurrentIndex(index);
+
+        // Update button states
+        for (SPFlatButton* category : categories) {
+            bool active = (category == btn);
+            category->setStyleSheet(active ?
+                                        "font-weight: bold; color: #10a8f4;" :
+                                        "");
+        }
+    }
 }
 
+void SPSettings::createCategory(const QString& name, const QString& description) {
+    // Create and configure button
+    SPFlatButton* btn = new SPFlatButton(this, name);
+    btn->setProperty("pageIndex", categories.size());
+    connect(btn, &QPushButton::clicked, this, &SPSettings::switchPage);
 
-void SPSettings::loadSettings() {
-    QSettings settings;
+    // Add button to left panel
+    optionsLayout->addWidget(btn);
+
+    // Create settings page
+    QWidget* page = new QWidget;
+    QVBoxLayout* pageLayout = new QVBoxLayout(page);
+    pageLayout->setAlignment(Qt::AlignTop);
+
+    // Add description label
+    QLabel* descLabel = new QLabel(description);
+    descLabel->setWordWrap(true);
+    descLabel->setStyleSheet("color: #888; margin-bottom: 20px;");
+    pageLayout->addWidget(descLabel);
+
+    // Add category-specific content
+    if (name == "المحرر") {
+        createAppearancePage(pageLayout);
+    } else if (name == "متقدم") {
+        // createFontsPage(pageLayout);
+    }
+
+    // Add page to stacked widget
+    stackedWidget->addWidget(page);
+    categories.append(btn);
 }
 
-void SPSettings::saveSettings() {
-    QSettings settings;
-    emit settingsChanged();
-    close();
+void SPSettings::createAppearancePage(QVBoxLayout* layout) {
+    // Font selection
+    QGroupBox* fontGroup = new QGroupBox("الخط");
+    QVBoxLayout* fontLayout = new QVBoxLayout(fontGroup);
+    QFormLayout* fontSizeLayout = new QFormLayout();
+    QFormLayout* fontFamilyLayout = new QFormLayout();
+
+    QSpinBox* fontSpin = new QSpinBox;
+    fontSpin->setRange(4, 100);
+    fontSpin->setValue(14);
+    fontSpin->setMinimumHeight(40);
+    fontSpin->setMaximumWidth(80);
+    fontSizeLayout->addRow("حجم الخط: ", fontSpin);
+
+
+    QComboBox* fontCombo = new QComboBox();
+    fontCombo->setEditable(true);
+    fontCombo->setInsertPolicy(QComboBox::NoInsert);
+    fontCombo->setMinimumHeight(40);
+    fontCombo->setMaximumWidth(160);
+
+    QStringList fontFamilies = QFontDatabase::families();
+    fontFamilies.sort(Qt::CaseInsensitive);
+    // Add fonts to combobox
+    foreach (const QString &family, fontFamilies) {
+        fontCombo->addItem(family);
+    }
+
+    fontFamilyLayout->addRow("نوع الخط: ", fontCombo);
+
+    fontLayout->addLayout(fontSizeLayout);
+    fontLayout->addLayout(fontFamilyLayout);
+
+    layout->addWidget(fontGroup);
 }

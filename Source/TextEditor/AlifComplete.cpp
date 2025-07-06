@@ -6,6 +6,8 @@
 #include <QScreen>
 #include <QStringList>
 #include <QLabel>
+#include <QTimer>
+#include <QApplication>
 
 
 AutoComplete::AutoComplete(QPlainTextEdit* editor, QObject* parent)
@@ -211,9 +213,13 @@ bool AutoComplete::eventFilter(QObject* obj, QEvent* event) {
                 return false;
             }
         }
-    } else if (event->type() == QEvent::FocusOut) {
-        popup->hide();
-        return QObject::eventFilter(obj, event);
+    } else if (event->type() == QEvent::FocusOut) { // review
+        QTimer::singleShot(0, this, [this]() {
+            QWidget* newFocus = QApplication::focusWidget();
+            if (!newFocus || !popup->isAncestorOf(newFocus)) {
+                popup->hide();
+            }
+        });
     }
     return QObject::eventFilter(obj, event);
 }

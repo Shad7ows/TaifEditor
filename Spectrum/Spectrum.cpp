@@ -207,6 +207,15 @@ void Spectrum::saveFileAs() {
 }
 
 
+void Spectrum::openSettings() {
+    // Prevent multiple settings windows
+    if (settingsWindow) return;
+
+    settingsWindow = new SPSettings(this);
+    settingsWindow->show();
+}
+
+
 void Spectrum::exitApp() {
     int isNeedSave = needSave();
     if (!isNeedSave) {
@@ -219,7 +228,6 @@ void Spectrum::exitApp() {
 
     QApplication::quit();
 }
-
 
 
 /* ----------------------------------- Run Menu Button ----------------------------------- */
