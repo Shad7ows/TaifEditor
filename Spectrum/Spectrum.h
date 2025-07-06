@@ -40,8 +40,8 @@ private:
 private:
     SPEditor* editor{};
     SPMenuBar* menuBar{};
+    SPSettings* settings{};
 
     QString currentFilePath{};
 
-    SPSettings* settingsWindow{};
 };

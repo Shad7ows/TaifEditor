@@ -67,7 +67,6 @@ Spectrum::Spectrum(const QString& filePath, QWidget *parent)
     connect(menuBar, &SPMenuBar::aboutRequested, this, &Spectrum::aboutSpectrum);
     connect(editor, &SPEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
 
-
     // Connect modification signal so when doc modified it's add "*"
     connect(editor->document(), &QTextDocument::modificationChanged,
             this, &Spectrum::onModificationChanged);
@@ -209,10 +208,10 @@ void Spectrum::saveFileAs() {
 
 void Spectrum::openSettings() {
     // Prevent multiple settings windows
-    if (settingsWindow) return;
+    if (settings and settings->isVisible()) return;
 
-    settingsWindow = new SPSettings(this);
-    settingsWindow->show();
+    settings = new SPSettings(this);
+    settings->show();
 }
 
 
@@ -321,7 +320,7 @@ https://t.me/aliflang
 فريق التطوير لا يمتلك أي ضمانات وغير مسؤول
 عن أي خطأ او خلل قد يحدث بسبب المحرر.
 
-المحرر يخصع لرخصة برمجيات ألف
+المحرر يخضع لرخصة برمجيات ألف
 يجب قراءة الرخصة جيداً قبل البدأ بإستخدام المحرر
                             )");
 }

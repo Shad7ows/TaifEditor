@@ -99,6 +99,8 @@ void SPSettings::createCategory(const QString& name, const QString& description)
 void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     // Font selection
     QGroupBox* fontGroup = new QGroupBox("الخط");
+    fontGroup->setStyleSheet("QGroupBox { border: 1px solid gray; border-radius: 6px; margin-top: 2.0ex;}"
+                             " QGroupBox::title { subcontrol-origin: margin; padding: 0 2px; left: 10px; }");
     QVBoxLayout* fontLayout = new QVBoxLayout(fontGroup);
     QFormLayout* fontSizeLayout = new QFormLayout();
     QFormLayout* fontFamilyLayout = new QFormLayout();
@@ -115,7 +117,7 @@ void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     fontCombo->setEditable(true);
     fontCombo->setInsertPolicy(QComboBox::NoInsert);
     fontCombo->setMinimumHeight(40);
-    fontCombo->setMaximumWidth(160);
+    fontCombo->setMaximumWidth(200);
 
     QStringList fontFamilies = QFontDatabase::families();
     fontFamilies.sort(Qt::CaseInsensitive);
@@ -123,6 +125,7 @@ void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     foreach (const QString &family, fontFamilies) {
         fontCombo->addItem(family);
     }
+    fontCombo->setCurrentText("Arial");
 
     fontFamilyLayout->addRow("نوع الخط: ", fontCombo);
 
