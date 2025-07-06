@@ -16,7 +16,7 @@ SPSettings::SPSettings(QWidget* parent) : QWidget(parent) {
     stackedWidget = new QStackedWidget();
 
     createCategory("المحرر", "إعدادات مظهر المحرر");
-    createCategory("متقدم", "الإعداد المتقدمة");
+    // createCategory("متقدم", "الإعداد المتقدمة");
 
 
     optionsLayout->setAlignment(Qt::AlignTop);
@@ -42,10 +42,13 @@ SPSettings::SPSettings(QWidget* parent) : QWidget(parent) {
 }
 
 
-// void SPSettings::closeEvent(QCloseEvent* event) {
-//     emit windowClosed();
-//     event->accept();
-// }
+void SPSettings::closeEvent(QCloseEvent* event) {
+    QSettings settings("Alif", "Spectrum");
+    settings.setValue("editorFontSize", fontSpin->value());
+
+    // emit windowClosed();
+    // event->accept();
+}
 
 
 void SPSettings::switchPage() {
@@ -105,12 +108,17 @@ void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     QFormLayout* fontSizeLayout = new QFormLayout();
     QFormLayout* fontFamilyLayout = new QFormLayout();
 
-    QSpinBox* fontSpin = new QSpinBox;
-    fontSpin->setRange(4, 100);
-    fontSpin->setValue(14);
+    fontSpin = new QSpinBox;
+    fontSpin->setRange(12, 36);
     fontSpin->setMinimumHeight(40);
     fontSpin->setMaximumWidth(80);
+
+    QSettings settingsVal("Alif", "Spectrum");
+    int savedSize = settingsVal.value("editorFontSize").toInt();
+    fontSpin->setValue(savedSize);
+
     fontSizeLayout->addRow("حجم الخط: ", fontSpin);
+    connect(fontSpin, &QSpinBox::valueChanged, this, &SPSettings::fontSizeChanged);
 
 
     QComboBox* fontCombo = new QComboBox();
@@ -130,7 +138,7 @@ void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     fontFamilyLayout->addRow("نوع الخط: ", fontCombo);
 
     fontLayout->addLayout(fontSizeLayout);
-    fontLayout->addLayout(fontFamilyLayout);
+    // fontLayout->addLayout(fontFamilyLayout);
 
     layout->addWidget(fontGroup);
 }

@@ -4,6 +4,7 @@
 #include <QTextBlock>
 #include <QScrollBar>
 #include <QMimeData>
+#include <QSettings>
 
 SPEditor::SPEditor(QWidget* parent) {
     setAcceptDrops(true);
@@ -29,8 +30,23 @@ SPEditor::SPEditor(QWidget* parent) {
     updateLineNumberAreaWidth();
     highlightCurrentLine();
 
+    // load saved font size
+    QSettings settingsVal("Alif", "Spectrum");
+    int savedSize = settingsVal.value("editorFontSize").toInt();
+    updateFontSize(savedSize);
+
     // Handle special key events
     installEventFilter(this); // for SHIFT + ENTER it's make line without number
+}
+
+void SPEditor::updateFontSize(int size) {
+    QFont font = this->font(); // Get current font
+    font.setPointSize(size);
+    this->setFont(font);
+
+    QFont fontNums = lineNumberArea->font();
+    fontNums.setPointSize(size - 4);
+    lineNumberArea->setFont(fontNums);
 }
 
 bool SPEditor::eventFilter(QObject* obj, QEvent* event) {

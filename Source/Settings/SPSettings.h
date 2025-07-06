@@ -21,11 +21,13 @@ public:
     explicit SPSettings(QWidget* parent = nullptr);
 
 protected:
-    // void closeEvent(QCloseEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 
 signals:
-    void settingsChanged();
-    void windowClosed();
+    void fontSizeChanged(int size);
+    // void settingsChanged();
+    // void windowClosed();
+
 
 private:
     void switchPage();
@@ -35,4 +37,6 @@ private:
     QVBoxLayout* optionsLayout{};
     QStackedWidget* stackedWidget{};
     QList<SPFlatButton*> categories{};
+
+    QSpinBox* fontSpin{};
 };

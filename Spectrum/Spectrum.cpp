@@ -73,6 +73,9 @@ Spectrum::Spectrum(const QString& filePath, QWidget *parent)
 }
 
 Spectrum::~Spectrum() {
+    QSettings settings("Alif", "Spectrum");
+    settings.setValue("editorFontSize", editor->font().pointSize());
+
     delete editor;
     delete menuBar;
 }
@@ -211,6 +214,8 @@ void Spectrum::openSettings() {
     if (settings and settings->isVisible()) return;
 
     settings = new SPSettings(this);
+    connect(settings, &SPSettings::fontSizeChanged, editor, &SPEditor::updateFontSize);
+
     settings->show();
 }
 

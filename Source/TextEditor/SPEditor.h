@@ -18,6 +18,9 @@ public:
     QString getCurrentLineIndentation(const QTextCursor &cursor) const;
     void curserIndentation();
 
+public slots:
+    void updateFontSize(int);
+
 protected:
     void resizeEvent(QResizeEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
@@ -74,5 +77,5 @@ protected:
     }
 
 private:
-    SPEditor* spEditor;
+    SPEditor* spEditor{};
 };
