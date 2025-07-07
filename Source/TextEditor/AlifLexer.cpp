@@ -63,6 +63,7 @@ QVector<Token> Lexer::tokenize(const QString& text) {
                 tokens.append(Token(TokenType::String, stringStart, pos - stringStart, text.mid(stringStart, pos - stringStart)));
             }
             if (quoteCount <= 0) {
+                // أي تم الإنتهاء زالخروج من النص المنسق
                 isFString = false;
             }
         }
