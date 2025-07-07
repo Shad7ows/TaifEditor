@@ -33,7 +33,8 @@ public:
 private:
     QVector<Token> tokens{};
     int pos = 0;
-    int bracesNum = 0;
+    int quoteCount = 0;
+    int isFString = 0;
 
     bool isKeyword(const QString& word);
     bool isKeyword1(const QString& word);

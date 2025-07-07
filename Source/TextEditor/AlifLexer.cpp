@@ -29,38 +29,29 @@ QVector<Token> Lexer::tokenize(const QString& text) {
             tokens.append(Token(type, start, pos - start, identifier));
         }
         else if (currentChar == '"' or currentChar == '\'') {
-            int start = pos;
-            QChar quoteChar = currentChar;
+            int stringStart = pos;
+            quoteCount++;
             pos++; // Move past the opening quote
 
             // Check if the string is an f-string (starts with u'م')
-            bool isFString = (start > 0 and text[start - 1] == u'م');
+            isFString += (stringStart > 0 and text[stringStart - 1] == u'م');
 
             while (pos < text.length()) {
-                if (text[pos] == '/') {
+                if (text[pos] == '\\') {
                     // Handle escape sequences
-                    pos++; // Skip the escape character
-                    if (pos < text.length()) {
-                        pos++; // Skip the escaped character
-                    }
+                    pos += 2; // Skip the escape character
                 }
-                else if (text[pos] == quoteChar) {
+                else if (text[pos] == currentChar) {
                     // Found the closing quote
+                    quoteCount--;
                     pos++; // Move past the closing quote
                     break;
                 }
                 else if (isFString and text[pos] == '{') {
-                    tokens.append(Token(TokenType::String, start, pos - start, text.mid(start, pos - start)));
+                    tokens.append(Token(TokenType::String, stringStart, pos - stringStart, text.mid(stringStart, pos - stringStart)));
                     pos++; // Move past the '{'
-                    bracesNum++;
                     this->tokenize(text);
-                    start = pos; // Start a new string segment after the '{'
-                }
-                else if (isFString and text[pos] == '}') {
-                    bracesNum--;
-                    this->tokenize(text);
-                    pos++; // Move past the '}'
-                    start = pos; // Start a new string segment after the '}'
+                    stringStart = pos;
                 }
                 else {
                     pos++; // Move to the next character
@@ -68,8 +59,11 @@ QVector<Token> Lexer::tokenize(const QString& text) {
             }
 
             // Append the remaining string content
-            if (start < pos) {
-                tokens.append(Token(TokenType::String, start, pos - start, text.mid(start, pos - start)));
+            if (stringStart < pos) {
+                tokens.append(Token(TokenType::String, stringStart, pos - stringStart, text.mid(stringStart, pos - stringStart)));
+            }
+            if (quoteCount <= 0) {
+                isFString = false;
             }
         }
         else if (currentChar == '#') {
@@ -97,9 +91,15 @@ QVector<Token> Lexer::tokenize(const QString& text) {
             }
         
             tokens.append(Token(TokenType::Operator, start, pos - start, op));
-        }
-        else {
+        } else {
             pos++;
+
+            if(isFString and currentChar == '}') {
+                // عندما يكون داخل قوس متعرج داخل نص منسق
+                // يجب التحقق هل إنتهت الحالة
+                // لكي ينهي عملية البحث
+                return tokens;
+            }
         }
     }
     return tokens;
