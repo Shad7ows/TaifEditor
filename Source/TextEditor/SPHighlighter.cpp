@@ -39,8 +39,9 @@ void SyntaxHighlighter::highlightBlock(const QString& text) {
             // format.setForeground(QColor(98, 114, 164));
             break;
         case TokenType::String:
-            format.setForeground(QColor(78, 116, 51));
+            // format.setForeground(QColor(78, 116, 51));
             // format.setForeground(QColor(80, 250, 123));
+            format.setForeground(QColor(0, 175, 4));
             break;
         case TokenType::Operator:
             format.setForeground(QColor(224, 108, 117));
