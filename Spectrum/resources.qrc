@@ -8,6 +8,7 @@
         <file>Resources/fonts/Tajawal/Tajawal-Light.ttf</file>
         <file>Resources/fonts/Tajawal/Tajawal-Medium.ttf</file>
         <file>Resources/fonts/Tajawal/Tajawal-Regular.ttf</file>
+        <file>Resources/fonts/NotoKufiArabic-Regular.ttf</file>
     </qresource>
     <qresource prefix="/icons">
         <file>Resources/close.png</file>

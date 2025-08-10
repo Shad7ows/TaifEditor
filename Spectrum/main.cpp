@@ -13,14 +13,16 @@ int main(int argc, char *argv[])
 
     int fontId1 = QFontDatabase::addApplicationFont(":/fonts/Resources/fonts/Tajawal/Tajawal-Regular.ttf");
     int fontId2 = QFontDatabase::addApplicationFont(":/fonts/Resources/fonts/KawkabMono-Regular.ttf");
-    if(fontId1 == -1 or fontId2 == -1) {
+    int fontId3 = QFontDatabase::addApplicationFont(":/fonts/Resources/fonts/NotoKufiArabic-Regular.ttf");
+    if(fontId1 == -1 or fontId2 == -1 or fontId3 == -1) {
         qWarning() << "لم يستطع تحميل الخط";
     } else {
         QString tajawal = QFontDatabase::applicationFontFamilies(fontId1).at(0);
         QString kawkabMono = QFontDatabase::applicationFontFamilies(fontId2).at(0);
+        QString notoKufi = QFontDatabase::applicationFontFamilies(fontId3).at(0);
         QFont font{};
         QStringList fontFamilies{};
-        fontFamilies << tajawal << kawkabMono;
+        fontFamilies << notoKufi << tajawal << kawkabMono;
         font.setFamilies(fontFamilies);
         font.setPixelSize(16);
         font.setWeight(QFont::Weight::Thin);
