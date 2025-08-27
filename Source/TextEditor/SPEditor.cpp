@@ -45,7 +45,7 @@ void SPEditor::updateFontSize(int size) {
     this->setFont(font);
 
     QFont fontNums = lineNumberArea->font();
-    fontNums.setPointSize(size - 4);
+    fontNums.setPointSize(size);
     lineNumberArea->setFont(fontNums);
 }
 
