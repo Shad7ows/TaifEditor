@@ -1,4 +1,4 @@
-#include <FlatButton.h>
+#include "FlatButton.h"
 
 
 SPFlatButton::SPFlatButton(QWidget *parent, QString lable) {

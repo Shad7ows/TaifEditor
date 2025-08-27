@@ -19,7 +19,7 @@ RESOURCES += \
 INCLUDEPATH +=  ../Source/TextEditor \
                 ../Source/MenuBar   \
                 ../Source/Settings  \
-                ../source/Components    \
+                ../Source/Components    \
 
 SOURCES += \
     Spectrum.cpp \
