@@ -103,7 +103,7 @@ void Spectrum::closeEvent(QCloseEvent *event) {
 int Spectrum::needSave() {
     if (editor->document()->isModified()) {
         QMessageBox::StandardButton ret{};
-        ret = QMessageBox::warning(nullptr, "ألف",
+        ret = QMessageBox::warning(nullptr, "طيف",
                                    "تم التعديل على الملف.\n"
                                    "هل تريد حفظ التغييرات؟",
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);

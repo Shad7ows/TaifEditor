@@ -109,7 +109,7 @@ void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     QFormLayout* fontFamilyLayout = new QFormLayout();
 
     fontSpin = new QSpinBox;
-    fontSpin->setRange(12, 36);
+    fontSpin->setRange(10, 36);
     fontSpin->setMinimumHeight(40);
     fontSpin->setMaximumWidth(80);
 
