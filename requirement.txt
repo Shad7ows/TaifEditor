@@ -19,7 +19,7 @@ Linux:
   sudo apt install libfuse2
   download linuxdeployqt-continuous-x86_64.AppImage
   chmod a+x linuxdeployqt-continuous-x86_64.AppImage
-  ./linuxdeployqt-continuous-x86_64.AppImage AppNameHere -unsupported-bundle-everything -unsupported-allow-new-glibc
+  ./linuxdeployqt-continuous-x86_64.AppImage AppNameHere -unsupported-bundle-everything -unsupported-allow-new-glibc -qmake=/home/name/Qt/6.9.2/gcc_64/bin/qmake
   
 
 
