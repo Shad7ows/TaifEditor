@@ -62,9 +62,6 @@ public:
 #elif defined(Q_OS_LINUX) or defined(Q_OS_MAC)
         QString fontName = "Noto Kufi Arabic";
 #endif
-
-        this->setFont(QFont(fontName, 16));
-
     }
 
     QSize sizeHint() const override {

@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
         QStringList fontFamilies{};
         fontFamilies << notoKufi << tajawal << kawkabMono;
         font.setFamilies(fontFamilies);
-        font.setPointSize(10);
+        font.setPointSize(12);
         font.setWeight(QFont::Weight::Normal);
         app.setFont(font);
     }
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
     // لتشغيل ملف ألف بإستخدام محرر طيف عند إختيار المحرر ك برنامج للتشغيل
     QString filePath{};
     if (app.arguments().count() > 2) {
-        int ret = QMessageBox::warning(nullptr, "ألف",
+        int ret = QMessageBox::warning(nullptr, "طيف",
                                        "لا يمكن تمرير أكثر من معامل واحد",
                                        QMessageBox::Close);
         return ret;

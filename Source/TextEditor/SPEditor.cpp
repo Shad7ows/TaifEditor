@@ -40,6 +40,10 @@ SPEditor::SPEditor(QWidget* parent) {
 }
 
 void SPEditor::updateFontSize(int size) {
+    if (size < 10) {
+        size = 16;
+    }
+
     QFont font = this->font(); // Get current font
     font.setPointSize(size);
     this->setFont(font);

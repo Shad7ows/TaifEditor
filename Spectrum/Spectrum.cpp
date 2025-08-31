@@ -102,15 +102,29 @@ void Spectrum::closeEvent(QCloseEvent *event) {
 
 int Spectrum::needSave() {
     if (editor->document()->isModified()) {
-        QMessageBox::StandardButton ret{};
-        ret = QMessageBox::warning(nullptr, "طيف",
-                                   "تم التعديل على الملف.\n"
-                                   "هل تريد حفظ التغييرات؟",
-                                   QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
-        if (ret == QMessageBox::Save) {
+        QMessageBox msgBox;
+        msgBox.setWindowTitle("طيف");
+        msgBox.setText("تم التعديل على الملف.\n"    \
+                       "هل تريد حفظ التغييرات؟");
+        QPushButton *saveButton = msgBox.addButton("حفظ", QMessageBox::AcceptRole);
+        QPushButton *discardButton = msgBox.addButton("تجاهل", QMessageBox::DestructiveRole);
+        QPushButton *cancelButton = msgBox.addButton("إلغاء", QMessageBox::RejectRole);
+        msgBox.setDefaultButton(cancelButton);
+
+        QFont msgFont = this->font();
+        msgFont.setPointSize(10);
+        saveButton->setFont(msgFont);
+        discardButton->setFont(msgFont);
+        cancelButton->setFont(msgFont);
+
+        msgBox.exec();
+
+        QAbstractButton *clickedButton = msgBox.clickedButton();
+        if (clickedButton == saveButton) {
             return 1;
-        }
-        else if (ret == QMessageBox::Cancel) {
+        } else if (clickedButton == discardButton) {
+            return 2;
+        } else if (clickedButton == cancelButton) {
             return 0;
         }
     }

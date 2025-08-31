@@ -109,13 +109,13 @@ void SPSettings::createAppearancePage(QVBoxLayout* layout) {
     QFormLayout* fontFamilyLayout = new QFormLayout();
 
     fontSpin = new QSpinBox;
-    fontSpin->setRange(10, 36);
+    fontSpin->setRange(12, 36);
     fontSpin->setMinimumHeight(40);
     fontSpin->setMaximumWidth(80);
 
     QSettings settingsVal("Alif", "Spectrum");
     int savedSize = settingsVal.value("editorFontSize").toInt();
-    fontSpin->setValue(savedSize);
+    savedSize ? fontSpin->setValue(savedSize) : fontSpin->setValue(16);
 
     fontSizeLayout->addRow("حجم الخط: ", fontSpin);
     connect(fontSpin, &QSpinBox::valueChanged, this, &SPSettings::fontSizeChanged);
