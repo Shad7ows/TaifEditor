@@ -84,7 +84,7 @@ int SPEditor::lineNumberAreaWidth() const {
     }
 
     // Increased width to accommodate line numbers
-    int space = 21 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+    int space = 30 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
 
     return space;
 }
