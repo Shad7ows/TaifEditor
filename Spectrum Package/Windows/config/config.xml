@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Installer>
     <Name>Spectrum</Name>
-    <Version>0.0.1</Version>
+    <Version>3.1.0</Version>
     <Title>Spectrum Installer</Title>
     <Publisher>Spectrum</Publisher>
     <StartMenuDir>Spectrum</StartMenuDir>
