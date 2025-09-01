@@ -2,8 +2,8 @@
 <Package>
     <DisplayName>Spectrum</DisplayName>
     <Description>Spectrum Editor for Alif language.</Description>
-    <Version>3.0.1</Version>
-    <ReleaseDate>2025-02-22</ReleaseDate>
+    <Version>3.1.0</Version>
+    <ReleaseDate>2025-09-22</ReleaseDate>
     <Licenses>
         <License name="Public License Agreement" file="license.txt" />
     </Licenses>
