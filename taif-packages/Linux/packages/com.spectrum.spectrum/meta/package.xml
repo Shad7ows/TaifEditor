@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+    <DisplayName>Taif</DisplayName>
+    <Description>Taif Editor for Alif language.</Description>
+    <Version>1.1.0</Version>
+    <ReleaseDate>2025-09-22</ReleaseDate>
+    <Licenses>
+        <License name="Public License Agreement" file="license.txt" />
+    </Licenses>
+    <Default>true</Default>
+    <RequiresAdminRights>true</RequiresAdminRights>
+    <Operations>
+        <Operation name="Execute">
+            <Argument>bash</Argument>
+            <Argument>-c</Argument>
+            <Argument>echo export "PATH=@TargetDir@/alif:$PATH" >> ~/.bashrc</Argument>
+            <Argument>source ~/.bashrc</Argument>
+        </Operation>
+        <Operation name="CreateDesktopEntry">
+            <Argument>@HomeDir@/.local/share/applications/Taif.desktop</Argument> 
+            <Argument>
+                Type=Application
+                Name=Taif
+                Version=1.1.0
+                Exec=@TargetDir@/Taif
+                Icon=@TargetDir@/resources/TaifLogo.png
+                Terminal=false
+            </Argument> 
+        </Operation>
+    </Operations>
+</Package>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Installer>
+    <Name>Taif</Name>
+    <Version>1.1.0</Version>
+    <Title>Taif Installer</Title>
+    <Publisher>Taif</Publisher>
+    <StartMenuDir>Taif</StartMenuDir>
+    <TargetDir>@ApplicationsDir@/Taif</TargetDir>
+</Installer>

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package>
+    <DisplayName>Taif</DisplayName>
+    <Description>Taif Editor for Alif language.</Description>
+    <Version>1.1.0</Version>
+    <ReleaseDate>2025-09-22</ReleaseDate>
+    <Licenses>
+        <License name="Public License Agreement" file="license.txt" />
+    </Licenses>
+    <Default>true</Default>
+    <RequiresAdminRights>true</RequiresAdminRights>
+    <Operations>
+        <Operation name="Execute">
+            <Argument>powershell</Argument>
+            <Argument>-command</Argument>
+            <Argument>
+            $newPath = "@TargetDir@\alif";
+            $existingPath = [System.Environment]::GetEnvironmentVariable('PATH', [System.EnvironmentVariableTarget]::User);
+            $updatedPath = "$existingPath;$newPath";
+            [System.Environment]::SetEnvironmentVariable('PATH', $updatedPath, [System.EnvironmentVariableTarget]::User);
+            </Argument>
+        </Operation>
+        <Operation name="CreateShortcut">
+            <Argument>@TargetDir@\Taif.exe</Argument> <!-- Path to your .exe file -->
+            <Argument>@DesktopDir@\Taif.lnk</Argument> <!-- Shortcut location (desktop) -->
+        </Operation>
+        <!-- Create a shortcut in the Start Menu -->
+        <Operation name="CreateShortcut">
+            <Argument>@TargetDir@\Taif.exe</Argument> <!-- Path to your .exe file -->
+            <Argument>@StartMenuDir@\Taif.lnk</Argument> <!-- Shortcut location (Start Menu) -->
+        </Operation>
+    </Operations>
+</Package>

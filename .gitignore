@@ -9,5 +9,5 @@ DerivedData
 *.eddx
 *.xopp
 *.DS_Store
-/Spectrum/build
+/taif/build
 *.pro.user

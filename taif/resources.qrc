@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/fonts">
+        <file>resources/fonts/KawkabMono-Regular.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-Black.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-Bold.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-ExtraBold.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-ExtraLight.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-Light.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-Medium.ttf</file>
+        <file>resources/fonts/Tajawal/Tajawal-Regular.ttf</file>
+        <file>resources/fonts/NotoKufiArabic-Regular.ttf</file>
+    </qresource>
+    <qresource prefix="/icons">
+        <file>resources/close.png</file>
+        <file>resources/TaifLogo.icns</file>
+        <file>resources/TaifLogo.ico</file>
+        <file>resources/TaifLogo.png</file>
+        <file>resources/down-arrow.png</file>
+        <file>resources/up-arrow.png</file>
+    </qresource>
+</RCC>
