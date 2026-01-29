@@ -856,9 +856,18 @@ void TEditor::insertWord(const QString& completion, QTextCursor& tc) {
     setTextCursor(tc);
 }
 void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc) {
+    // Select everything from cursor to end of current word
+    QTextCursor tempCursor = textCursor();
+    tempCursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
+    QString textAfterCursor = tempCursor.selectedText();
+
     tc.insertText(functionName);
     tc.insertText("()");
-    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
+    tc.insertText(textAfterCursor);
+
+    qDebug() << textAfterCursor.length();
+
+    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textAfterCursor.length() + 1);
 
     // Perform the insertion
     setTextCursor(tc);
