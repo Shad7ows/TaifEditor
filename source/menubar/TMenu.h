@@ -32,6 +32,7 @@ signals:
     void exitRequested();
     void runRequested();
     void aboutRequested();
+    void updateRequested();
 
 private slots:
 
@@ -44,4 +45,5 @@ private slots:
     void onExitApp();
     void onRunAction();
     void onAboutAction();
+    void onUpdateAction();
 };

@@ -7,4 +7,11 @@
     <StartMenuDir>Taif</StartMenuDir>
     <TargetDir>@ApplicationsDirUser@/Taif</TargetDir>
     <WizardStyle>Mac</WizardStyle>
+    <RemoteRepositories>
+        <Repository>
+            <Url>https://shad7ows.github.io/TaifUpdateFiles/MacOS</Url>
+            <Enabled>1</Enabled>
+            <DisplayName>TaifUpdateRepo</DisplayName>
+        </Repository>
+    </RemoteRepositories>
 </Installer>

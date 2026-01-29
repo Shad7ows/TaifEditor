@@ -46,6 +46,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     QAction* runAction = new QAction("تشغيل", parent);
 
     QAction* aboutAction = new QAction("عن المحرر", parent);
+    QAction* updateAction = new QAction("تحديث النسخة", parent);
 
 
     //fileMenu->addAction(folderAction);
@@ -63,6 +64,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     runMenu->addAction(runAction);
 
     helpMenu->addAction(aboutAction);
+    helpMenu->addAction(updateAction);
 
 
     QString style = R"(
@@ -107,6 +109,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     connect(runAction, &QAction::triggered, this, &TMenuBar::onRunAction);
 
     connect(aboutAction, &QAction::triggered, this, &TMenuBar::onAboutAction);
+    connect(updateAction, &QAction::triggered, this, &TMenuBar::onUpdateAction);
 }
 
 void TMenuBar::onNewAction() { emit newRequested(); }
@@ -118,4 +121,5 @@ void TMenuBar::onSettingsAction() { emit settingsRequest(); }
 void TMenuBar::onExitApp() { emit exitRequested(); }
 void TMenuBar::onRunAction() { emit runRequested(); }
 void TMenuBar::onAboutAction() { emit aboutRequested(); }
+void TMenuBar::onUpdateAction() {emit updateRequested(); }
 
