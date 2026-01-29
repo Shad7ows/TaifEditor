@@ -33,17 +33,4 @@ signals:
     void runRequested();
     void aboutRequested();
     void updateRequested();
-
-private slots:
-
-    void onNewAction();
-    void onOpenFileAction();
-    void onOpenFolderAction();
-    void onSaveAction();
-    void onSaveAsAction();
-    void onSettingsAction();
-    void onExitApp();
-    void onRunAction();
-    void onAboutAction();
-    void onUpdateAction();
 };
