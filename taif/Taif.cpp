@@ -1065,7 +1065,7 @@ void Taif::runAlif() {
 
     connect(worker, &ProcessWorker::finished, this, [=](int code){
         console->appendPlainTextThreadSafe(
-            "\n──────────────────────────────\n✅ انتهى التنفيذ (Exit code = "
+            "\n──────────────────────────────\n✅ انتهى التنفيذ (رمز الخروج = "
             + QString::number(code) + ")\n"
             );
         thread->quit();
