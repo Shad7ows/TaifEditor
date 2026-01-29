@@ -865,8 +865,6 @@ void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc
     tc.insertText("()");
     tc.insertText(textAfterCursor);
 
-    qDebug() << textAfterCursor.length();
-
     tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textAfterCursor.length() + 1);
 
     // Perform the insertion
