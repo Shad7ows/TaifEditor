@@ -820,6 +820,12 @@ void TEditor::performCompletion() {
     cr.setWidth(popupWidth);
 
     c->complete(cr);
+
+    // select first item in the popped up list
+    QAbstractItemView *popup = c->popup();
+    if (popup and popup->model()->rowCount() > 0) {
+        popup->setCurrentIndex(popup->model()->index(0, 0));
+    }
 }
 
 QString TEditor::textUnderCursor() const {
