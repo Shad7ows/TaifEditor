@@ -17,6 +17,9 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     this->setStyleSheet("QPlainTextEdit { background-color: #141520; color: #cccccc; }");
     this->setTabStopDistance(32);
 
+    this->setLineWrapMode(QPlainTextEdit::WidgetWidth);
+    this->setWordWrapMode(QTextOption::WordWrap);
+
     QTextDocument* editorDocument = this->document();
     QTextOption option = editorDocument->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
