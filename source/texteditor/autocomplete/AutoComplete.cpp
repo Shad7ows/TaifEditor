@@ -13,7 +13,7 @@ KeywordStrategy::KeywordStrategy() {
                 "ك", "في", "عام", "عند",
                 "مزامنة", "من", "مرر", "ليس",
                 "وإلا", "هل", "نهاية", "نطاق",
-                "ولد", "إذا", "هذا"
+                "ولد", "إذا", "هذا", "خطية"
     };
 }
 
@@ -34,7 +34,7 @@ BuiltinStrategy::BuiltinStrategy() {
     builtins = {"تحقق_اي", "افتح", "ادخل", "اطبع",
                 "مصفوفة", "مترابطة", "عشري", "صحيح",
                 "اقصى", "طول", "ادنى", "منطق",
-                "مدى",
+                "مدى", "هل_نوع"
                 };
 }
 
@@ -88,6 +88,12 @@ QVector<CompletionItem> SnippetStrategy::getSuggestions(const QString &prefix, c
     if (QString("بينما").startsWith(p)) {
         items.push_back({"بينما",
                          "بينما الشرط:\n\tمرر",
+                         "حلقة بينما التكرارية",
+                         CompletionType::Snippet});
+    }
+    if (QString("خطية").startsWith(p)) {
+        items.push_back({"خطية",
+                         "خطية معاملات: مرر",
                          "حلقة بينما التكرارية",
                          CompletionType::Snippet});
     }

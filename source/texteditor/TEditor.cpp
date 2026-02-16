@@ -951,6 +951,13 @@ void TEditor::insertSnippet(const QString& snippet, QTextCursor& tc) {
         if (!finder.isNull()) setTextCursor(finder);
         snippetTargets << "مرر";
     }
+    else if (snippet.startsWith("خطية")) {
+        QTextCursor finder = textCursor();
+        finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
+        finder = document()->find("معاملات", finder);
+        if (!finder.isNull()) setTextCursor(finder);
+        snippetTargets << "مرر";
+    }
 
 }
 
