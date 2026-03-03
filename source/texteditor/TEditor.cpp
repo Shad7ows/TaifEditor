@@ -823,6 +823,12 @@ void TEditor::performCompletion() {
     cr.setWidth(popupWidth);
 
     c->complete(cr);
+
+    // select first item in the popped up list
+    QAbstractItemView *popup = c->popup();
+    if (popup and popup->model()->rowCount() > 0) {
+        popup->setCurrentIndex(popup->model()->index(0, 0));
+    }
 }
 
 QString TEditor::textUnderCursor() const {
@@ -859,9 +865,16 @@ void TEditor::insertWord(const QString& completion, QTextCursor& tc) {
     setTextCursor(tc);
 }
 void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc) {
+    // Select everything from cursor to end of current word
+    QTextCursor tempCursor = textCursor();
+    tempCursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
+    QString textAfterCursor = tempCursor.selectedText();
+
     tc.insertText(functionName);
     tc.insertText("()");
-    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
+    tc.insertText(textAfterCursor);
+
+    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textAfterCursor.length() + 1);
 
     // Perform the insertion
     setTextCursor(tc);
@@ -938,6 +951,13 @@ void TEditor::insertSnippet(const QString& snippet, QTextCursor& tc) {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("مرر", finder);
+        if (!finder.isNull()) setTextCursor(finder);
+        snippetTargets << "مرر";
+    }
+    else if (snippet.startsWith("خطية")) {
+        QTextCursor finder = textCursor();
+        finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
+        finder = document()->find("معاملات", finder);
         if (!finder.isNull()) setTextCursor(finder);
         snippetTargets << "مرر";
     }

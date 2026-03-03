@@ -2,7 +2,7 @@ Windows:
 	Deployment:
 		~:\Qt\6.`*.*`\mingw_64\bin\windeployqt6.exe Taif.exe
 	Packaging:
-		~:\Qt\Tools\QtInstallerFramework\4.`*`\bin\binarycreator.exe -c config/config.xml -p packages TaifInstaller-Win-X64
+		~:\Qt\Tools\QtInstallerFramework\4.`*`\bin\binarycreator.exe --hybrid -c config/config.xml -p packages TaifInstaller-Win-X64
 
 Linux:
  Important:"use linux ubuntu version 22 only"
@@ -40,3 +40,8 @@ Common:
  لتحميل مكتبة Qt6
  URL for HTTP download mirrors "https://download.qt.io/static/mirrorlist/"
  on cmd pass "NameOfQtOnlineInstaller.exe --mirror https://mirrors.ocf.berkeley.edu/qt/"
+
+
+Repository generate for updates:
+note: after changing the version number do the next
+~:\Qt\Tools\QtInstallerFramework\4.`*`\bin\repogen.exe -p packages NAME_OF_REPO_HERE

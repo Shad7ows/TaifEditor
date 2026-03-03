@@ -11,3 +11,4 @@ DerivedData
 *.DS_Store
 /taif/build
 *.pro.user
+/.obsidian

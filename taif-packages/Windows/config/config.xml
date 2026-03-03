@@ -7,4 +7,11 @@
     <StartMenuDir>Taif</StartMenuDir>
     <TargetDir>@ApplicationsDir@/Taif</TargetDir>
     <WizardStyle>Windows</WizardStyle>
+    <RemoteRepositories>
+        <Repository>
+            <Url>https://shad7ows.github.io/TaifUpdateFiles/Windows</Url>
+            <Enabled>1</Enabled>
+            <DisplayName>TaifUpdateRepo</DisplayName>
+        </Repository>
+    </RemoteRepositories>
 </Installer>

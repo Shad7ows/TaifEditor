@@ -34,7 +34,6 @@ TMenuBar::TMenuBar(QWidget* parent) {
     runMenu->setMinimumWidth(200);
     helpMenu->setMinimumWidth(200);
 
-    //QAction* folderAction = new QAction("فتح مجلد", parent);
     QAction* newAction = new QAction("جديد", parent);
     QAction* openFileAction = new QAction("فتح ملف", parent);
     QAction* openFolderAction = new QAction("فتح مجلد", parent);
@@ -46,10 +45,8 @@ TMenuBar::TMenuBar(QWidget* parent) {
     QAction* runAction = new QAction("تشغيل", parent);
 
     QAction* aboutAction = new QAction("عن المحرر", parent);
+    QAction* updateAction = new QAction("البحث عن تحديثات", parent);
 
-
-    //fileMenu->addAction(folderAction);
-    //fileMenu->addSeparator();
     fileMenu->addAction(newAction);
     fileMenu->addAction(openFileAction);
     fileMenu->addAction(openFolderAction);
@@ -63,6 +60,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     runMenu->addAction(runAction);
 
     helpMenu->addAction(aboutAction);
+    helpMenu->addAction(updateAction);
 
 
     QString style = R"(
@@ -96,26 +94,17 @@ TMenuBar::TMenuBar(QWidget* parent) {
     helpMenu->setStyleSheet(style);
 
 
-    connect(newAction, &QAction::triggered, this, &TMenuBar::onNewAction);
-    connect(openFileAction, &QAction::triggered, this, &TMenuBar::onOpenFileAction);
-    connect(openFolderAction, &QAction::triggered, this, &TMenuBar::onOpenFolderAction);
-    connect(saveAction, &QAction::triggered, this, &TMenuBar::onSaveAction);
-    connect(saveAsAction, &QAction::triggered, this, &TMenuBar::onSaveAsAction);
-    connect(SettingsAction, &QAction::triggered, this, &TMenuBar::onSettingsAction);
-    connect(exitAction, &QAction::triggered, this, &TMenuBar::onExitApp);
+    connect(newAction, &QAction::triggered, this, &TMenuBar::newRequested);
+    connect(openFileAction, &QAction::triggered, this, &TMenuBar::openFileRequested);
+    connect(openFolderAction, &QAction::triggered, this, &TMenuBar::openFolderRequested);
+    connect(saveAction, &QAction::triggered, this, &TMenuBar::saveRequested);
+    connect(saveAsAction, &QAction::triggered, this, &TMenuBar::saveAsRequested);
+    connect(SettingsAction, &QAction::triggered, this, &TMenuBar::settingsRequest);
+    connect(exitAction, &QAction::triggered, this, &TMenuBar::exitRequested);
 
-    connect(runAction, &QAction::triggered, this, &TMenuBar::onRunAction);
+    connect(runAction, &QAction::triggered, this, &TMenuBar::runRequested);
 
-    connect(aboutAction, &QAction::triggered, this, &TMenuBar::onAboutAction);
+    connect(aboutAction, &QAction::triggered, this, &TMenuBar::aboutRequested);
+    connect(updateAction, &QAction::triggered, this, &TMenuBar::updateRequested);
 }
-
-void TMenuBar::onNewAction() { emit newRequested(); }
-void TMenuBar::onOpenFileAction() { emit openFileRequested(); }
-void TMenuBar::onOpenFolderAction() { emit openFolderRequested(); }
-void TMenuBar::onSaveAction() { emit saveRequested(); }
-void TMenuBar::onSaveAsAction() { emit saveAsRequested(); }
-void TMenuBar::onSettingsAction() { emit settingsRequest(); }
-void TMenuBar::onExitApp() { emit exitRequested(); }
-void TMenuBar::onRunAction() { emit runRequested(); }
-void TMenuBar::onAboutAction() { emit aboutRequested(); }
 

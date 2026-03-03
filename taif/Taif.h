@@ -37,6 +37,7 @@ private slots:
 
     void runAlif();
     void aboutTaif();
+    void checkForUpdates();
 
     void updateWindowTitle();
     void onModificationChanged(bool modified);

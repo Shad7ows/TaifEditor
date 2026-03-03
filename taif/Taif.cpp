@@ -171,6 +171,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(menuBar, &TMenuBar::exitRequested, this, &Taif::exitApp);
     connect(menuBar, &TMenuBar::runRequested, this, &Taif::runAlif);
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
+    connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
@@ -1065,7 +1066,7 @@ void Taif::runAlif() {
 
     connect(worker, &ProcessWorker::finished, this, [=](int code){
         console->appendPlainTextThreadSafe(
-            "\n──────────────────────────────\n✅ انتهى التنفيذ (Exit code = "
+            "\n──────────────────────────────\n✅ انتهى التنفيذ (رمز الخروج = "
             + QString::number(code) + ")\n"
             );
         thread->quit();
@@ -1146,6 +1147,12 @@ void Taif::aboutTaif() {
     messageDialog.setStyleSheet("background: #03091A; color: white");
 
     messageDialog.exec();
+}
+
+void Taif::checkForUpdates() {
+    QString path = QCoreApplication::applicationDirPath() + "/MaintenanceTool.exe";
+    // Use --updater to skip the "Add/Remove" page and go straight to updates
+    QProcess::startDetached(path, {"--su"});
 }
 
 /* ----------------------------------- Other Functions ----------------------------------- */
