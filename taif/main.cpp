@@ -16,16 +16,6 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName("Taif");
     app.setLayoutDirection(Qt::RightToLeft);
 
-
-    QString lockPath = QDir::tempPath() + "/taif_editor.lock";
-    QLockFile lockFile(lockPath);
-
-    if (!lockFile.tryLock(100)) {
-        QMessageBox::warning(nullptr, "طيف",
-                             "البرنامج يعمل بالفعل!\nلا يمكن تشغيل أكثر من نسخة في نفس الوقت.");
-        return 0;
-    }
-
     int fontId1 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/Tajawal/Tajawal-Regular.ttf");
     int fontId2 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/KawkabMono-Regular.ttf");
     int fontId3 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/NotoKufiArabic-Regular.ttf");

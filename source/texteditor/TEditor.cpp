@@ -24,6 +24,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     QTextOption option = editorDocument->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
     option.setAlignment(Qt::AlignRight);
+    // option.setFlags(QTextOption::IncludeTrailingSpaces | QTextOption::ShowTabsAndSpaces); // مهم ك إضافة في الإعدادات
     editorDocument->setDefaultTextOption(option);
 
 
@@ -700,7 +701,6 @@ void TEditor::setCompleter(QCompleter *completer) {
     popup->setMinimumWidth(350);
     popup->setMinimumHeight(200); // Taller to fit list + footer
 
-
     // To this lambda that captures the type:
     connect(c, QOverload<const QString &>::of(&QCompleter::activated),
             this, [this](const QString &completion) {
@@ -728,7 +728,6 @@ void TEditor::focusOutEvent(QFocusEvent *e) {
 }
 
 void TEditor::keyPressEvent(QKeyEvent *e) {
-
     // handleing Brackets and Quotes
     if (handleAutoPairing(e)) {
         e->accept();
@@ -756,7 +755,6 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
         default: break;
         }
     }
-
     if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) {
         if (!snippetTargets.isEmpty()) {
             if (processSnippetNavigation()) {
@@ -783,7 +781,7 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
 }
 
 void TEditor::performCompletion() {
-    QString textUnder = textUnderCursor();
+    QString textUnder = textUnderCursor().selectedText();
     // Allow empty text for shortcut (Ctrl+Space) to show all
     if (textUnder.length() < 1) {
         // Optional: Trigger immediately on Ctrl+Space even if empty?
@@ -831,18 +829,16 @@ void TEditor::performCompletion() {
     }
 }
 
-QString TEditor::textUnderCursor() const {
+QTextCursor TEditor::textUnderCursor() const {
     QTextCursor tc = textCursor();
-    tc.movePosition(QTextCursor::StartOfWord, QTextCursor::KeepAnchor);
-    return tc.selectedText();
+    tc.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
+    return tc;
 }
 
 void TEditor::insertCompletion(const QString &completion, CompletionType type) {
     if (c->widget() != this) return;
-    QTextCursor tc = textCursor();
-
     // This ensures we replace the whole partial word with the completion.
-    tc.select(QTextCursor::WordUnderCursor);
+    QTextCursor tc = textUnderCursor();
 
     switch (type) {
     case CompletionType::Builtin:
@@ -868,13 +864,11 @@ void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc
     // Select everything from cursor to end of current word
     QTextCursor tempCursor = textCursor();
     tempCursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
-    QString textAfterCursor = tempCursor.selectedText();
 
     tc.insertText(functionName);
     tc.insertText("()");
-    tc.insertText(textAfterCursor);
 
-    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textAfterCursor.length() + 1);
+    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
 
     // Perform the insertion
     setTextCursor(tc);

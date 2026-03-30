@@ -82,7 +82,7 @@ private:
     CompletionModel *model{};
     std::vector<std::unique_ptr<ICompletionStrategy>> strategies{};
     QStringList snippetTargets{};
-    QString textUnderCursor() const;
+    QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
     void setupAutoComplete();
