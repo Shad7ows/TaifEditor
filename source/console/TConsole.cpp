@@ -154,7 +154,6 @@ void TConsole::onInputReturn()
             m_process->write("\n");
 #endif
         }
-        return;
     }
 
     if (m_history.isEmpty() || m_history.last() != cmd) {
