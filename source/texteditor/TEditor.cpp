@@ -77,9 +77,9 @@ void TEditor::wheelEvent(QWheelEvent *event) {
         if (delta == 0) return;
 
         QFont font = this->font();
-        qreal currentSize = font.pointSizeF();
+        int currentSize = font.pixelSize();
 
-        qreal step = 0.5;
+        int step = 1;
 
         if (delta > 0) {
             currentSize += step;
@@ -87,18 +87,18 @@ void TEditor::wheelEvent(QWheelEvent *event) {
             currentSize -= step;
         }
 
-        if (currentSize < 5.0) currentSize = 5.0;
-        if (currentSize > 50) currentSize = 50;
+        if (currentSize < 12) currentSize = 12;
+        if (currentSize > 36) currentSize = 36;
 
-        font.setPointSizeF(currentSize);
+        font.setPixelSize(currentSize);
+        UpdateTabStopDistance(font);
         this->setFont(font);
 
         if (lineNumberArea) {
             QFont lineFont = lineNumberArea->font();
-            lineFont.setPointSizeF(currentSize);
+            lineFont.setPixelSize(currentSize);
             lineNumberArea->setFont(lineFont);
         }
-
         updateLineNumberAreaWidth();
 
         return;
