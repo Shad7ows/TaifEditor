@@ -31,6 +31,7 @@ int main(int argc, char *argv[])
         font.setFamilies(fontFamilies);
         font.setPixelSize(14);
         font.setWeight(QFont::Weight::Normal);
+        font.setFixedPitch(true);
         app.setFont(font);
     }
 

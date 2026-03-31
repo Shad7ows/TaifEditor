@@ -15,7 +15,9 @@
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setAcceptDrops(true);
     this->setStyleSheet("QPlainTextEdit { background-color: #141520; color: #cccccc; }");
-    this->setTabStopDistance(32);
+
+    // set tab distance
+    UpdateTabStopDistance(font());
 
     this->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     this->setWordWrapMode(QTextOption::WordWrap);
@@ -24,7 +26,6 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     QTextOption option = editorDocument->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
     option.setAlignment(Qt::AlignRight);
-    // option.setFlags(QTextOption::IncludeTrailingSpaces | QTextOption::ShowTabsAndSpaces); // مهم ك إضافة في الإعدادات
     editorDocument->setDefaultTextOption(option);
 
 
@@ -62,6 +63,12 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
 
     installEventFilter(this);
+}
+
+void TEditor::UpdateTabStopDistance(QFont font) {
+    QFontMetricsF metrics(font);
+    qreal spaceWidth = metrics.horizontalAdvance(' ');// Returns a precise double
+    setTabStopDistance(8 * spaceWidth);
 }
 
 void TEditor::wheelEvent(QWheelEvent *event) {
@@ -106,6 +113,9 @@ void TEditor::updateFontSize(int size) {
 
     QFont font = this->font();
     font.setPixelSize(size);
+
+    UpdateTabStopDistance(font);
+
     this->setFont(font);
 
     QFont fontNums = lineNumberArea->font();
@@ -116,6 +126,8 @@ void TEditor::updateFontSize(int size) {
 void TEditor::updateFontType(QString font) {
     QFont currentFont = this->font();
     currentFont.setFamily(font);
+
+    UpdateTabStopDistance(currentFont);
 
     this->setFont(currentFont);
 }
@@ -500,6 +512,61 @@ void TEditor::toggleFold(int blockNumber) {
             viewport()->update();
             break;
         }
+    }
+}
+
+void TEditor::paintEvent(QPaintEvent *event) {
+    // // let the editor draw the actual text
+    QPlainTextEdit::paintEvent(event);
+
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    QPen linePen(QColor(168, 223, 255, 75)); // Light blue, semi-transparent
+    linePen.setWidth(1);
+    // Set CapStyle to FlatCap to prevent the "dot" overlap
+    linePen.setCapStyle(Qt::FlatCap);
+    painter.setPen(linePen);
+
+    qreal tabStopDistance = this->tabStopDistance();
+    qreal viewWidth = viewport()->width();
+
+    QTextBlock block = firstVisibleBlock();
+    int top = static_cast<int>(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + static_cast<int>(blockBoundingRect(block).height());
+
+    // Iterate through all visible blocks
+    while (block.isValid() && top <= event->rect().bottom()) {
+        if (block.isVisible()) {
+            QString text = block.text();
+            int indentLevel = 0;
+            int consecutiveSpaces = 0;
+
+            for (int i = 0; i < text.length(); ++i) {
+                if (text[i] == '\t') {
+                    indentLevel++;
+                    consecutiveSpaces = 0; // Reset space count if a tab appears
+                } else if (text[i] == ' ') {
+                    consecutiveSpaces++;
+                    if (consecutiveSpaces == 8) { // Only increment after exactly 4 spaces
+                        indentLevel++;
+                        consecutiveSpaces = 0;
+                    }
+                } else {
+                    break; // Stop at the first actual character
+                }
+            }
+
+            // Draw vertical lines from Right to Left
+            for (int i = 1; i <= indentLevel; ++i) {
+                // Start from the right edge and move left
+                qreal x = viewWidth - (i * tabStopDistance);
+                painter.drawLine(x, top, x, bottom);
+            }
+        }
+
+        block = block.next();
+        top = bottom;
+        bottom = top + static_cast<int>(blockBoundingRect(block).height());
     }
 }
 
