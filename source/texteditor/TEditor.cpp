@@ -20,7 +20,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     UpdateTabStopDistance(font());
 
     this->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    this->setWordWrapMode(QTextOption::WordWrap);
+    this->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
 
     QTextDocument* editorDocument = this->document();
     QTextOption option = editorDocument->defaultTextOption();
@@ -46,10 +46,18 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     // set saved setting font size to the editor
     QSettings settingsVal("Alif", "Taif");
     int savedSize = settingsVal.value("editorFontSize").toInt();
-    updateFontSize(savedSize);
+    if (savedSize > 10) {
+        updateFontSize(savedSize);
+    } else {
+        updateFontSize(18);
+    }
     // set saved setting font type to the editor
     QString savedFont = settingsVal.value("editorFontType").toString();
-    updateFontType(savedFont);
+    if (savedFont.isEmpty()) {
+        updateFontType("Noto Kufi Arabic");
+    } else {
+        updateFontType(savedFont);
+    }
     // set saved setting theme to the editor
     int savedTheme = settingsVal.value("editorCodeTheme").toInt();
     savedTheme >= 0 ? savedTheme : savedTheme = 0;
