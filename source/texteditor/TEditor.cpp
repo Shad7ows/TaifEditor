@@ -15,10 +15,12 @@
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setAcceptDrops(true);
     this->setStyleSheet("QPlainTextEdit { background-color: #141520; color: #cccccc; }");
-    this->setTabStopDistance(32);
+
+    // set tab distance
+    UpdateTabStopDistance(font());
 
     this->setLineWrapMode(QPlainTextEdit::WidgetWidth);
-    this->setWordWrapMode(QTextOption::WordWrap);
+    this->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
 
     QTextDocument* editorDocument = this->document();
     QTextOption option = editorDocument->defaultTextOption();
@@ -44,10 +46,18 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     // set saved setting font size to the editor
     QSettings settingsVal("Alif", "Taif");
     int savedSize = settingsVal.value("editorFontSize").toInt();
-    updateFontSize(savedSize);
+    if (savedSize > 10) {
+        updateFontSize(savedSize);
+    } else {
+        updateFontSize(18);
+    }
     // set saved setting font type to the editor
     QString savedFont = settingsVal.value("editorFontType").toString();
-    updateFontType(savedFont);
+    if (savedFont.isEmpty()) {
+        updateFontType("Noto Kufi Arabic");
+    } else {
+        updateFontType(savedFont);
+    }
     // set saved setting theme to the editor
     int savedTheme = settingsVal.value("editorCodeTheme").toInt();
     savedTheme >= 0 ? savedTheme : savedTheme = 0;
@@ -63,15 +73,21 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     installEventFilter(this);
 }
 
+void TEditor::UpdateTabStopDistance(QFont font) {
+    QFontMetricsF metrics(font);
+    qreal spaceWidth = metrics.horizontalAdvance(' ');// Returns a precise double
+    setTabStopDistance(8 * spaceWidth);
+}
+
 void TEditor::wheelEvent(QWheelEvent *event) {
     if (event->modifiers() & Qt::ControlModifier) {
         const int delta = event->angleDelta().y();
         if (delta == 0) return;
 
         QFont font = this->font();
-        qreal currentSize = font.pointSizeF();
+        int currentSize = font.pixelSize();
 
-        qreal step = 0.5;
+        int step = 1;
 
         if (delta > 0) {
             currentSize += step;
@@ -79,18 +95,18 @@ void TEditor::wheelEvent(QWheelEvent *event) {
             currentSize -= step;
         }
 
-        if (currentSize < 5.0) currentSize = 5.0;
-        if (currentSize > 50) currentSize = 50;
+        if (currentSize < 12) currentSize = 12;
+        if (currentSize > 36) currentSize = 36;
 
-        font.setPointSizeF(currentSize);
+        font.setPixelSize(currentSize);
+        UpdateTabStopDistance(font);
         this->setFont(font);
 
         if (lineNumberArea) {
             QFont lineFont = lineNumberArea->font();
-            lineFont.setPointSizeF(currentSize);
+            lineFont.setPixelSize(currentSize);
             lineNumberArea->setFont(lineFont);
         }
-
         updateLineNumberAreaWidth();
 
         return;
@@ -105,6 +121,9 @@ void TEditor::updateFontSize(int size) {
 
     QFont font = this->font();
     font.setPixelSize(size);
+
+    UpdateTabStopDistance(font);
+
     this->setFont(font);
 
     QFont fontNums = lineNumberArea->font();
@@ -115,6 +134,8 @@ void TEditor::updateFontSize(int size) {
 void TEditor::updateFontType(QString font) {
     QFont currentFont = this->font();
     currentFont.setFamily(font);
+
+    UpdateTabStopDistance(currentFont);
 
     this->setFont(currentFont);
 }
@@ -502,6 +523,61 @@ void TEditor::toggleFold(int blockNumber) {
     }
 }
 
+void TEditor::paintEvent(QPaintEvent *event) {
+    // // let the editor draw the actual text
+    QPlainTextEdit::paintEvent(event);
+
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    QPen linePen(QColor(168, 223, 255, 75)); // Light blue, semi-transparent
+    linePen.setWidth(1);
+    // Set CapStyle to FlatCap to prevent the "dot" overlap
+    linePen.setCapStyle(Qt::FlatCap);
+    painter.setPen(linePen);
+
+    qreal tabStopDistance = this->tabStopDistance();
+    qreal viewWidth = viewport()->width();
+
+    QTextBlock block = firstVisibleBlock();
+    int top = static_cast<int>(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + static_cast<int>(blockBoundingRect(block).height());
+
+    // Iterate through all visible blocks
+    while (block.isValid() && top <= event->rect().bottom()) {
+        if (block.isVisible()) {
+            QString text = block.text();
+            int indentLevel = 0;
+            int consecutiveSpaces = 0;
+
+            for (int i = 0; i < text.length(); ++i) {
+                if (text[i] == '\t') {
+                    indentLevel++;
+                    consecutiveSpaces = 0; // Reset space count if a tab appears
+                } else if (text[i] == ' ') {
+                    consecutiveSpaces++;
+                    if (consecutiveSpaces == 8) { // Only increment after exactly 4 spaces
+                        indentLevel++;
+                        consecutiveSpaces = 0;
+                    }
+                } else {
+                    break; // Stop at the first actual character
+                }
+            }
+
+            // Draw vertical lines from Right to Left
+            for (int i = 1; i <= indentLevel; ++i) {
+                // Start from the right edge and move left
+                qreal x = viewWidth - (i * tabStopDistance);
+                painter.drawLine(x, top, x, bottom);
+            }
+        }
+
+        block = block.next();
+        top = bottom;
+        bottom = top + static_cast<int>(blockBoundingRect(block).height());
+    }
+}
+
 
 /* ---------------------------------- Drag and Drop ---------------------------------- */
 
@@ -700,7 +776,6 @@ void TEditor::setCompleter(QCompleter *completer) {
     popup->setMinimumWidth(350);
     popup->setMinimumHeight(200); // Taller to fit list + footer
 
-
     // To this lambda that captures the type:
     connect(c, QOverload<const QString &>::of(&QCompleter::activated),
             this, [this](const QString &completion) {
@@ -728,7 +803,6 @@ void TEditor::focusOutEvent(QFocusEvent *e) {
 }
 
 void TEditor::keyPressEvent(QKeyEvent *e) {
-
     // handleing Brackets and Quotes
     if (handleAutoPairing(e)) {
         e->accept();
@@ -756,7 +830,6 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
         default: break;
         }
     }
-
     if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) {
         if (!snippetTargets.isEmpty()) {
             if (processSnippetNavigation()) {
@@ -783,7 +856,7 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
 }
 
 void TEditor::performCompletion() {
-    QString textUnder = textUnderCursor();
+    QString textUnder = textUnderCursor().selectedText();
     // Allow empty text for shortcut (Ctrl+Space) to show all
     if (textUnder.length() < 1) {
         // Optional: Trigger immediately on Ctrl+Space even if empty?
@@ -831,18 +904,16 @@ void TEditor::performCompletion() {
     }
 }
 
-QString TEditor::textUnderCursor() const {
+QTextCursor TEditor::textUnderCursor() const {
     QTextCursor tc = textCursor();
-    tc.movePosition(QTextCursor::StartOfWord, QTextCursor::KeepAnchor);
-    return tc.selectedText();
+    tc.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
+    return tc;
 }
 
 void TEditor::insertCompletion(const QString &completion, CompletionType type) {
     if (c->widget() != this) return;
-    QTextCursor tc = textCursor();
-
     // This ensures we replace the whole partial word with the completion.
-    tc.select(QTextCursor::WordUnderCursor);
+    QTextCursor tc = textUnderCursor();
 
     switch (type) {
     case CompletionType::Builtin:
@@ -868,13 +939,11 @@ void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc
     // Select everything from cursor to end of current word
     QTextCursor tempCursor = textCursor();
     tempCursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
-    QString textAfterCursor = tempCursor.selectedText();
 
     tc.insertText(functionName);
     tc.insertText("()");
-    tc.insertText(textAfterCursor);
 
-    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textAfterCursor.length() + 1);
+    tc.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
 
     // Perform the insertion
     setTextCursor(tc);

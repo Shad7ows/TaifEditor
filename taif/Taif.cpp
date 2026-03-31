@@ -687,7 +687,7 @@ void Taif::openFile(QString filePath) {
             }
 
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
-            connect(newEditor, &QPlainTextEdit::cursorPositionChanged, this, &Taif::updateCursorPosition);
+            connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
 
             QFileInfo fileInfo(filePath);
             tabWidget->addTab(newEditor, fileInfo.fileName());

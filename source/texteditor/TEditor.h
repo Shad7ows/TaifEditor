@@ -35,6 +35,7 @@ public:
     void removeBackupFile();
 
 public slots:
+    void UpdateTabStopDistance(QFont);
     void updateFontSize(int);
     void updateFontType(QString font);
     void toggleComment();
@@ -57,6 +58,8 @@ protected:
     void keyPressEvent(QKeyEvent *e) override;
     // We override focusOutEvent to close the popup if the user clicks away
     void focusOutEvent(QFocusEvent *e) override;
+
+    void paintEvent(QPaintEvent *event) override;
 
 private:
     TSyntaxHighlighter* highlighter{};
@@ -82,7 +85,7 @@ private:
     CompletionModel *model{};
     std::vector<std::unique_ptr<ICompletionStrategy>> strategies{};
     QStringList snippetTargets{};
-    QString textUnderCursor() const;
+    QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
     void setupAutoComplete();
