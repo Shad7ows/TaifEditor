@@ -75,7 +75,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
 void TEditor::UpdateTabStopDistance(QFont font) {
     QFontMetricsF metrics(font);
-    qreal spaceWidth = metrics.horizontalAdvance(' ');// Returns a precise double
+    qreal spaceWidth = metrics.horizontalAdvance(' ');
     setTabStopDistance(8 * spaceWidth);
 }
 
@@ -524,51 +524,86 @@ void TEditor::toggleFold(int blockNumber) {
 }
 
 void TEditor::paintEvent(QPaintEvent *event) {
-    // // let the editor draw the actual text
+    // Let the editor draw the actual text first
     QPlainTextEdit::paintEvent(event);
 
     QPainter painter(viewport());
-    painter.setRenderHint(QPainter::Antialiasing, false);
-    QPen linePen(QColor(168, 223, 255, 75)); // Light blue, semi-transparent
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    QPen linePen(QColor(79, 144, 170, 125)); // Light blue, semi-transparent
     linePen.setWidth(1);
-    // Set CapStyle to FlatCap to prevent the "dot" overlap
     linePen.setCapStyle(Qt::FlatCap);
     painter.setPen(linePen);
 
     qreal tabStopDistance = this->tabStopDistance();
     qreal viewWidth = viewport()->width();
 
+    // Calculate the right edge offset (accounting for margins and horizontal scrolling)
+    qreal rightOffset = document()->documentMargin() - contentOffset().x();
+
     QTextBlock block = firstVisibleBlock();
     int top = static_cast<int>(blockBoundingGeometry(block).translated(contentOffset()).top());
     int bottom = top + static_cast<int>(blockBoundingRect(block).height());
+
+    // lambda func to calculate indent level (8 spaces = 1 tab)
+    auto getIndentLevel = [](const QString& text) -> int {
+        int indent = 0;
+        int spaces = 0;
+        for (QChar c : text) {
+            if (c == '\t') {
+                indent++;
+                spaces = 0;
+            } else if (c == ' ') {
+                spaces++;
+                if (spaces == 8) {
+                    indent++;
+                    spaces = 0;
+                }
+            } else {
+                break;
+            }
+        }
+        return indent;
+    };
 
     // Iterate through all visible blocks
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible()) {
             QString text = block.text();
             int indentLevel = 0;
-            int consecutiveSpaces = 0;
 
-            for (int i = 0; i < text.length(); ++i) {
-                if (text[i] == '\t') {
-                    indentLevel++;
-                    consecutiveSpaces = 0; // Reset space count if a tab appears
-                } else if (text[i] == ' ') {
-                    consecutiveSpaces++;
-                    if (consecutiveSpaces == 8) { // Only increment after exactly 4 spaces
-                        indentLevel++;
-                        consecutiveSpaces = 0;
-                    }
-                } else {
-                    break; // Stop at the first actual character
+            // Handle empty lines (continue scope lines across them)
+            if (text.trimmed().isEmpty()) {
+                int prevIndent = 0;
+                int nextIndent = 0;
+
+                // Look back for the previous non-empty line
+                QTextBlock prev = block.previous();
+                while (prev.isValid() && prev.text().trimmed().isEmpty()) {
+                    prev = prev.previous();
                 }
+                if (prev.isValid()) prevIndent = getIndentLevel(prev.text());
+
+                // Look ahead for the next non-empty line
+                QTextBlock next = block.next();
+                while (next.isValid() && next.text().trimmed().isEmpty()) {
+                    next = next.next();
+                }
+                if (next.isValid()) nextIndent = getIndentLevel(next.text());
+
+                // Use the minimum of surrounding indents to safely connect/close scopes
+                indentLevel = qMin(prevIndent, nextIndent);
+            } else {
+                indentLevel = getIndentLevel(text);
             }
 
             // Draw vertical lines from Right to Left
-            for (int i = 1; i <= indentLevel; ++i) {
-                // Start from the right edge and move left
-                qreal x = viewWidth - (i * tabStopDistance);
-                painter.drawLine(x, top, x, bottom);
+            // Starting from i = 0 to places the line Under the parent keyword
+            for (int i = 0; i < indentLevel; ++i) {
+                // Calculate X from the right edge, shifting left based on the scope depth
+                qreal x = viewWidth - rightOffset - (i * tabStopDistance);
+
+                // Draw the scope line for the current block height
+                painter.drawLine(QLineF(x, top, x, bottom));
             }
         }
 
