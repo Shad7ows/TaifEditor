@@ -108,7 +108,7 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     contentCenteringLayout->addStretch();
     mainVLayout->addLayout(contentCenteringLayout);
     mainVLayout->addSpacing(20);
-    mainVLayout->addWidget(showOnStartupCheck, 0, Qt::AlignCenter);
+    // mainVLayout->addWidget(showOnStartupCheck, 0, Qt::AlignCenter);
     mainVLayout->addStretch(1);
 
     // ===================================================================

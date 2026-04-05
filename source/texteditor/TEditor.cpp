@@ -301,7 +301,7 @@ int TEditor::lineNumberAreaWidth() const {
         ++digits;
     }
 
-    int space = 30 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+    int space = 36 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
 
     return space;
 }
@@ -339,41 +339,49 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
 
     QPainter painter(lineNumberArea);
     painter.fillRect(event->rect(), Qt::transparent);
+    painter.setRenderHint(QPainter::Antialiasing);
 
-        QTextBlock block = firstVisibleBlock();
-        int blockNumber = block.blockNumber();
-        int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
-        int bottom = top + qRound(blockBoundingRect(block).height());
+    QTextBlock block = firstVisibleBlock();
+    int blockNumber = block.blockNumber();
+    int top = qRound(blockBoundingGeometry(block).translated(contentOffset()).top());
+    int bottom = top + qRound(blockBoundingRect(block).height());
+
+    // Arrow pen
+    QPen arrowPen(QColor("#254663"));
+    arrowPen.setWidth(3);
+    arrowPen.setJoinStyle(Qt::RoundJoin);
+    arrowPen.setCapStyle(Qt::RoundCap);
 
     while (block.isValid() && top <= event->rect().bottom()) {
         if (block.isVisible() && bottom >= event->rect().top()) {
             QString number = QString::number(blockNumber + 1);
 
             painter.setPen(QColor(200, 200, 200));
-
             painter.drawText(12, top, lineNumberArea->width(), fontMetrics().height(),
                                      Qt::AlignRight | Qt::AlignVCenter, number);
 
-            bool hasFold = false;
             for (const auto& region : foldRegions) {
                 if (region.startBlockNumber == blockNumber) {
-                    hasFold = true;
-                    bool folded = region.folded;
+                    painter.setPen(arrowPen);
+                    painter.setBrush(QColor("#254663"));
 
-                    QPolygon arrow;
                     int midY = top + fontMetrics().height() / 2;
-                    if (folded) {
-                        arrow << QPoint(lineNumberArea->width() - 10, midY - 4)
-                        << QPoint(lineNumberArea->width() - 2, midY)
-                        << QPoint(lineNumberArea->width() - 10, midY + 4);
+                    int rightEdge = lineNumberArea->width() - 6;
+                    int leftEdge = rightEdge - 8;
+
+                    QPolygonF arrow;
+                    if (region.folded) {
+                        // Left-pointing Triangle
+                        arrow << QPoint(rightEdge, midY - 4)
+                        << QPoint(leftEdge, midY)
+                        << QPoint(rightEdge, midY + 4);
                     } else {
-                        arrow << QPoint(lineNumberArea->width() - 10, midY - 4)
-                        << QPoint(lineNumberArea->width() - 2, midY - 4)
-                        << QPoint(lineNumberArea->width() - 6, midY + 4);
+                        // Down-pointing Triangle
+                        arrow << QPoint(leftEdge, midY - 3)
+                        << QPoint(rightEdge, midY - 3)
+                        << QPoint((leftEdge + rightEdge) / 2.0, midY + 4);
                     }
 
-                    painter.setBrush(QColor("#10a8f4"));
-                    painter.setPen(Qt::NoPen);
                     painter.drawPolygon(arrow);
                 }
             }
@@ -406,83 +414,134 @@ void TEditor::highlightCurrentLine() {
 
 void TEditor::updateFoldRegions() {
 
-    QHash<int, bool> previousFoldStates;
-    for (const FoldRegion& region : foldRegions) {
-        previousFoldStates[region.startBlockNumber] = region.folded;
-    }
+    // we use static array for zero memory allocation per call
+    static const QStringView foldTriggers[] = {
+        u"صنف", u"دالة", u"اذا", u"إذا", u"والا", u"وإلا",
+        u"اواذا", u"أوإذا", u"بينما", u"لكل", u"حاول", u"خلل", u"نهاية"
+    };
 
+    // Preserve previous fold states
+    QHash<int, bool> previousFoldStates;
+    previousFoldStates.reserve(foldRegions.size());
+    for (const FoldRegion& region : foldRegions) {
+        previousFoldStates.insert(region.startBlockNumber, region.folded);
+    }
     foldRegions.clear();
-    QStack<int> braceStack;
+
+    // here we use single-pass O(N) fold detection using a Stack
+    struct ActiveFold {
+        int startBlock;
+        int indent;
+    };
+    QStack<ActiveFold> stack;
+    int lastValidBlockNumber = -1;
 
     QTextBlock block = document()->firstBlock();
     while (block.isValid()) {
         QString text = block.text();
+        // using QStringView here to avoids making a copy of the string just to trim it
+        QStringView trimmed = QStringView(text).trimmed();
 
-        QString trimmed = text.trimmed();
-        if (trimmed.startsWith("دالة ") || trimmed.startsWith("صنف ")) {
-            int start = block.blockNumber();
+        if (trimmed.isEmpty()) {
+            block = block.next();
+            continue;
+        }
 
-            int startIndent = 0;
-            for (QChar c : text) {
-                if (c == '\t') startIndent += 4;
-                else if (c == ' ') startIndent += 1;
-                else break;
-            }
+        // Fast inline indent calculation
+        int indent = 0;
+        for (QChar c : text) {
+            if (c == u'\t') indent += 8;
+            else if (c == u' ') indent += 1;
+            else break;
+        }
 
-            QTextBlock next = block.next();
-            int end = start;
-
-            while (next.isValid()) {
-                QString nextText = next.text();
-                QString nextTrim = nextText.trimmed();
-
-                if (nextTrim.isEmpty()) {
-                    next = next.next();
-                    continue;
-                }
-
-                int nextIndent = 0;
-                for (QChar c : nextText) {
-                    if (c == '\t') nextIndent += 4;
-                    else if (c == ' ') nextIndent += 1;
-                    else break;
-                }
-
-                if (nextTrim.startsWith("دالة ") || nextTrim.startsWith("صنف ")) {
-                    if (nextIndent <= startIndent)
-                        break;
-                }
-
-                if (nextIndent <= startIndent)
-                    break;
-
-                end = next.blockNumber();
-                next = next.next();
-            }
-
-            if (end > start) {
+        // Close fold regions where indentation drops back to or below the parent
+        while (!stack.isEmpty() && indent <= stack.top().indent) {
+            ActiveFold af = stack.pop();
+            if (lastValidBlockNumber > af.startBlock) {
                 FoldRegion region{};
-                region.startBlockNumber = start;
-                region.endBlockNumber = end;
-                region.folded = false;
-                if (previousFoldStates.contains(region.startBlockNumber))
-                    region.folded = previousFoldStates[region.startBlockNumber];
+                region.startBlockNumber = af.startBlock;
+                region.endBlockNumber = lastValidBlockNumber;
+                region.folded = previousFoldStates.value(af.startBlock, false);
                 foldRegions.append(region);
             }
         }
+
+        // now check if the current line starts with any trigger word
+        bool isTrigger = false;
+        for (const QStringView& trigger : foldTriggers) {
+            if (trimmed.startsWith(trigger)) {
+                isTrigger = true;
+                break;
+            }
+        }
+
+        if (isTrigger) {
+            stack.push({block.blockNumber(), indent});
+        }
+
+        lastValidBlockNumber = block.blockNumber();
         block = block.next();
     }
 
-    if (lineNumberArea)
-        lineNumberArea->update();
-
-    for (const FoldRegion& region : foldRegions) {
-        QTextBlock block = document()->findBlockByNumber(region.startBlockNumber + 1);
-        while (block.isValid() && block.blockNumber() <= region.endBlockNumber) {
-            block.setVisible(!region.folded);
-            block = block.next();
+    // at the end close any unclosed folds remaining at the end of the document
+    while (!stack.isEmpty()) {
+        ActiveFold af = stack.pop();
+        if (lastValidBlockNumber > af.startBlock) {
+            FoldRegion region;
+            region.startBlockNumber = af.startBlock;
+            region.endBlockNumber = lastValidBlockNumber;
+            region.folded = previousFoldStates.value(af.startBlock, false);
+            foldRegions.append(region);
         }
     }
+
+    if (lineNumberArea) {
+        lineNumberArea->update();
+    }
+
+    // Safely apply visibility using merged intervals (Sweep-Line logic)
+    // to prevents inner child folds from unhiding blocks that belong to a folded parent.
+    std::vector<std::pair<int, int>> hiddenIntervals;
+    hiddenIntervals.reserve(foldRegions.size());
+    for (const FoldRegion& r : foldRegions) {
+        if (r.folded) {
+            hiddenIntervals.push_back({r.startBlockNumber + 1, r.endBlockNumber});
+        }
+    }
+
+    // Sort and merge overlapping hidden intervals
+    std::sort(hiddenIntervals.begin(), hiddenIntervals.end());
+    std::vector<std::pair<int, int>> mergedHidden;
+    mergedHidden.reserve(hiddenIntervals.size());
+    for (const auto& interval : hiddenIntervals) {
+        if (mergedHidden.empty() || mergedHidden.back().second < interval.first) {
+            mergedHidden.push_back(interval);
+        } else {
+            mergedHidden.back().second = std::max(mergedHidden.back().second, interval.second);
+        }
+    }
+
+    // Single pass to apply block visibility changes (Here massive UI performance boost :)
+    block = document()->firstBlock();
+    auto intervalIt = mergedHidden.begin();
+    while (block.isValid()) {
+        int bNum = block.blockNumber();
+
+        while (intervalIt != mergedHidden.end() && intervalIt->second < bNum) {
+            ++intervalIt;
+        }
+
+        bool shouldBeHidden = (intervalIt != mergedHidden.end() && bNum >= intervalIt->first && bNum <= intervalIt->second);
+
+        // Only trigger a state change if necessary to avoid unnecessary Qt paint events
+        if (block.isVisible() == shouldBeHidden) {
+            block.setVisible(!shouldBeHidden);
+        }
+
+        block = block.next();
+    }
+
     document()->markContentsDirty(0, document()->characterCount());
     viewport()->update();
 }
