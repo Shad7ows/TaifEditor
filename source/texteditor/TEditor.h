@@ -13,7 +13,7 @@
 
 
 class LineNumberArea;
-
+class TMinimap;
 
 class TEditor : public QPlainTextEdit {
     Q_OBJECT
@@ -54,6 +54,7 @@ protected:
     void dragLeaveEvent(QDragLeaveEvent* event) override;
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void showEvent(QShowEvent* event) override;
 
     void keyPressEvent(QKeyEvent *e) override;
     // We override focusOutEvent to close the popup if the user clicks away
@@ -65,6 +66,7 @@ private:
     TSyntaxHighlighter* highlighter{};
 
     LineNumberArea* lineNumberArea{};
+    TMinimap* minimap{};
 
     struct FoldRegion {
         int startBlockNumber;
@@ -80,6 +82,7 @@ private:
     QTimer *autoSaveTimer;
 
     friend class LineNumberArea;
+    friend class TMinimap;
 
     QCompleter* c{};
     CompletionModel *model{};
@@ -99,6 +102,7 @@ private:
     bool handleBracketSkip(QChar typedChar);
 
 private slots:
+    void updateMinimapPosition();
     void updateLineNumberAreaWidth();
     void highlightCurrentLine();
     inline void updateLineNumberArea(const QRect &rect, int dy);

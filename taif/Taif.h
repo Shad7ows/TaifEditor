@@ -74,13 +74,9 @@ private:
     QTreeView *fileTreeView{};
     QFileSystemModel *fileSystemModel{};
 
-
     QSplitter *editorSplitter{};
-    // TConsole *console;
     QTabWidget *consoleTabWidget{};
 
-    // TConsole *cmdConsole;
-    // TConsole *alifConsole;
     ProcessWorker *worker{};
 
     QLabel *cursorPositionLabel{};

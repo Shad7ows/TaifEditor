@@ -29,6 +29,7 @@ SOURCES += \
     Taif.cpp \
     main.cpp \
     ../source/texteditor/TEditor.cpp \
+    ../source/components/TMinimap.cpp \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
     ../source/console/TConsole.cpp \
@@ -47,6 +48,7 @@ HEADERS += \
     ../source/texteditor/highlighter/TToken.h \
     Taif.h  \
     ../source/texteditor/TEditor.h \
+    ../source/components/TMinimap.h \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
     ../source/console/TConsole.h \

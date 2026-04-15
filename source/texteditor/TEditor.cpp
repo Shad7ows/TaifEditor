@@ -1,4 +1,5 @@
 #include "TEditor.h"
+#include "TMinimap.h"
 
 #include <QPainter>
 #include <QTextBlock>
@@ -31,6 +32,11 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
     highlighter = new TSyntaxHighlighter(editorDocument);
     lineNumberArea = new LineNumberArea(this);
+    minimap = new TMinimap(this, this);
+
+    // تحديث الخريطة عند التمرير أو تعديل النص
+    connect(this->verticalScrollBar(), &QScrollBar::valueChanged, minimap, &TMinimap::updateMinimap);
+    connect(this->document(), &QTextDocument::contentsChanged, minimap, &TMinimap::updateMinimap);
 
     // ضبط الإكمال التلقائي
     setupAutoComplete();
@@ -306,11 +312,19 @@ int TEditor::lineNumberAreaWidth() const {
     return space;
 }
 
+void TEditor::updateMinimapPosition() {
+    int mapX = 0;
+    // بسبب الاتجاه من اليمين لليسار قد يكون شريط التمرير على يمين الخريطة المصغرة
+    if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2) {
+        mapX = verticalScrollBar()->width();
+    }
+    // تم تنقيص 3 من الاعلى لكي لا يقوم بالتغطية على حواف المحرر
+    minimap->move(mapX, 3);
+}
 
 void TEditor::updateLineNumberAreaWidth() {
     int numsWidth = lineNumberAreaWidth();
-
-    int mapWidth = 0;
+    int mapWidth = 100;
 
     setViewportMargins(mapWidth, 0, numsWidth, 0);
 }
@@ -331,8 +345,24 @@ void TEditor::resizeEvent(QResizeEvent* event) {
     QRect cr = contentsRect();
     int numsWidth = lineNumberAreaWidth();
 
-
     lineNumberArea->setGeometry(this->width() - numsWidth, cr.top(), numsWidth, cr.height());
+
+    if (minimap) {
+        // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
+        minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
+        updateMinimapPosition();
+    }
+}
+
+void TEditor::showEvent(QShowEvent* event) {
+    QPlainTextEdit::showEvent(event);
+
+    if (minimap) {
+        QRect cr = contentsRect();
+        // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
+        minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
+        updateMinimapPosition();
+    }
 }
 
 void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
