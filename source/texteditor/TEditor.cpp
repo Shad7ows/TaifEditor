@@ -1,4 +1,5 @@
 #include "TEditor.h"
+#include "TMinimap.h"
 
 #include <QPainter>
 #include <QTextBlock>
@@ -31,6 +32,11 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
     highlighter = new TSyntaxHighlighter(editorDocument);
     lineNumberArea = new LineNumberArea(this);
+    minimap = new TMinimap(this, this);
+
+    // تحديث الخريطة عند التمرير أو تعديل النص
+    connect(this->verticalScrollBar(), &QScrollBar::valueChanged, minimap, &TMinimap::updateMinimap);
+    connect(this->document(), &QTextDocument::contentsChanged, minimap, &TMinimap::updateMinimap);
 
     // ضبط الإكمال التلقائي
     setupAutoComplete();
@@ -309,9 +315,10 @@ int TEditor::lineNumberAreaWidth() const {
 
 void TEditor::updateLineNumberAreaWidth() {
     int numsWidth = lineNumberAreaWidth();
+    int mapWidth = 100;
 
-    int mapWidth = 0;
-
+    // الهوامش في Qt دائماً فيزيائية (يسار = يسار، يمين = يمين) بغض النظر عن اتجاه اللغة
+    // الخريطة على اليسار دائماً، وأرقام الأسطر على اليمين دائماً
     setViewportMargins(mapWidth, 0, numsWidth, 0);
 }
 
@@ -333,6 +340,14 @@ void TEditor::resizeEvent(QResizeEvent* event) {
 
 
     lineNumberArea->setGeometry(this->width() - numsWidth, cr.top(), numsWidth, cr.height());
+    if (minimap) {
+        int mapX = 0;
+        // بسبب الاتجاه من اليمين لليسار قد يكون شريط التمرير على اليسار
+        if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2) {
+            mapX = verticalScrollBar()->width();
+        }
+        minimap->setGeometry(cr.left() + mapX, cr.top(), 100, cr.height());
+    }
 }
 
 void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {

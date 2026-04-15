@@ -45,6 +45,10 @@ private slots:
     void closeTab(int index);
     void toggleSidebar();
 
+    void splitViewHorizontal();
+    void splitViewVertical();
+    void moveTabToOtherPane(QTabWidget* source, int index);
+
     void toggleConsole();
 
     void updateCursorPosition();
@@ -61,9 +65,12 @@ private slots:
 private:
     int needSave();
     TEditor* currentEditor();
+    void setupTabWidget(QTabWidget* tw);
 
 private:
+    QSplitter *workspaceSplitter{};
     QTabWidget *tabWidget{};
+    QTabWidget *splitTabWidget{};
     TMenuBar* menuBar{};
     TSettings* setting{};
     QAction *toggleSidebarAction{};

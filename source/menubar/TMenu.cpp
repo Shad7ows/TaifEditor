@@ -25,11 +25,13 @@ TMenuBar::TMenuBar(QWidget* parent) {
     )");
 
     QMenu* fileMenu = addMenu("ملف");
+    QMenu* viewMenu = addMenu("عرض"); // قائمة جديدة للتقسيم
     //QMenu* editMenu = addMenu("تحرير");
     QMenu* runMenu = addMenu("تشغيل");
     QMenu* helpMenu = addMenu("مساعدة");
 
     fileMenu->setMinimumWidth(200);
+    viewMenu->setMinimumWidth(200);
     //editMenu->setMinimumWidth(200);
     runMenu->setMinimumWidth(200);
     helpMenu->setMinimumWidth(200);
@@ -41,6 +43,10 @@ TMenuBar::TMenuBar(QWidget* parent) {
     QAction* saveAsAction = new QAction("حفظ باسم", parent);
     QAction* SettingsAction = new QAction("الإعدادات", parent);
     QAction* exitAction = new QAction("خروج", parent);
+
+    // أزرار تقسيم عرض المحرر (أفقياً وعمودياً)
+    QAction* splitHAction = new QAction("تقسيم الشاشة (أفقياً)", parent);
+    QAction* splitVAction = new QAction("تقسيم الشاشة (عمودياً)", parent);
 
     QAction* runAction = new QAction("تشغيل", parent);
 
@@ -56,6 +62,9 @@ TMenuBar::TMenuBar(QWidget* parent) {
     fileMenu->addAction(SettingsAction);
     fileMenu->addSeparator();
     fileMenu->addAction(exitAction);
+
+    viewMenu->addAction(splitHAction);
+    viewMenu->addAction(splitVAction);
 
     runMenu->addAction(runAction);
 
@@ -89,6 +98,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
         }
 )";
     fileMenu->setStyleSheet(style);
+    viewMenu->setStyleSheet(style);
     //editMenu->setStyleSheet(style);
     runMenu->setStyleSheet(style);
     helpMenu->setStyleSheet(style);
@@ -101,6 +111,9 @@ TMenuBar::TMenuBar(QWidget* parent) {
     connect(saveAsAction, &QAction::triggered, this, &TMenuBar::saveAsRequested);
     connect(SettingsAction, &QAction::triggered, this, &TMenuBar::settingsRequest);
     connect(exitAction, &QAction::triggered, this, &TMenuBar::exitRequested);
+
+    connect(splitHAction, &QAction::triggered, this, &TMenuBar::splitHRequested);
+    connect(splitVAction, &QAction::triggered, this, &TMenuBar::splitVRequested);
 
     connect(runAction, &QAction::triggered, this, &TMenuBar::runRequested);
 

@@ -13,7 +13,7 @@
 
 
 class LineNumberArea;
-
+class TMinimap;
 
 class TEditor : public QPlainTextEdit {
     Q_OBJECT
@@ -65,6 +65,7 @@ private:
     TSyntaxHighlighter* highlighter{};
 
     LineNumberArea* lineNumberArea{};
+    TMinimap* minimap{};
 
     struct FoldRegion {
         int startBlockNumber;
@@ -80,6 +81,7 @@ private:
     QTimer *autoSaveTimer;
 
     friend class LineNumberArea;
+    friend class TMinimap;
 
     QCompleter* c{};
     CompletionModel *model{};

@@ -23,6 +23,8 @@
 #include <QKeyEvent>
 #include <QTimer>
 #include <QInputDialog>
+#include <QToolButton>
+
 
 Taif::Taif(const QString& filePath, QWidget *parent)
     : QMainWindow(parent)
@@ -33,11 +35,48 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     // ===================================================================
     // الخطوة 1: إنشاء المكونات الرئيسية
     // ===================================================================
+    workspaceSplitter = new QSplitter(Qt::Horizontal, this);
+    workspaceSplitter->setObjectName("WorkspaceSplitter");
+
     tabWidget = new QTabWidget(this);
-    tabWidget->setObjectName("MainTabs");
-    tabWidget->setDocumentMode(true);
-    tabWidget->setTabsClosable(true);
-    tabWidget->setMovable(true);
+    setupTabWidget(tabWidget);
+
+    splitTabWidget = new QTabWidget(this);
+    setupTabWidget(splitTabWidget);
+    splitTabWidget->hide();
+
+    QToolButton *closeSplitBtn = new QToolButton(splitTabWidget);
+    closeSplitBtn->setText("×");
+    closeSplitBtn->setToolTip("إغلاق القسم");
+    closeSplitBtn->setFixedSize(24, 24);
+    closeSplitBtn->setStyleSheet("QToolButton { background: transparent; color: #ff5050; font-weight: bold; font-size: 16px; border-radius: 2px;} QToolButton:hover { background: #3e3e42; }");
+    connect(closeSplitBtn, &QToolButton::clicked, splitTabWidget, &QWidget::hide);
+    splitTabWidget->setCornerWidget(closeSplitBtn, Qt::TopLeftCorner);
+
+    workspaceSplitter->addWidget(tabWidget);
+    workspaceSplitter->addWidget(splitTabWidget);
+
+    // قائمة النقر الأيمن على التبويبات لنقلها بين القسمين
+    tabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(tabWidget->tabBar(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        int index = tabWidget->tabBar()->tabAt(pos);
+        if (index < 0) return;
+        QMenu menu(this);
+        QAction *moveAction = menu.addAction("\u0646\u0642\u0644 \u0625\u0644\u0649 \u0627\u0644\u0642\u0633\u0645 \u0627\u0644\u0622\u062e\u0631"); // نقل إلى القسم الآخر
+        if (menu.exec(tabWidget->tabBar()->mapToGlobal(pos)) == moveAction) {
+            moveTabToOtherPane(tabWidget, index);
+        }
+    });
+    splitTabWidget->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(splitTabWidget->tabBar(), &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
+        int index = splitTabWidget->tabBar()->tabAt(pos);
+        if (index < 0) return;
+        QMenu menu(this);
+        QAction *moveAction = menu.addAction("\u0646\u0642\u0644 \u0625\u0644\u0649 \u0627\u0644\u0642\u0633\u0645 \u0627\u0644\u0622\u062e\u0631");
+        if (menu.exec(splitTabWidget->tabBar()->mapToGlobal(pos)) == moveAction) {
+            moveTabToOtherPane(splitTabWidget, index);
+        }
+    });
     menuBar = new TMenuBar(this);
     mainSplitter = new QSplitter(Qt::Horizontal, this);
     fileTreeView = new QTreeView(this);
@@ -109,7 +148,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     // الخطوة 5: تجميع الواجهة (الفاصل)
     // ===================================================================
     mainSplitter->addWidget(fileTreeView);
-    mainSplitter->addWidget(tabWidget);
+    mainSplitter->addWidget(workspaceSplitter);
     mainSplitter->setSizes({200, 700});
     this->setCentralWidget(mainSplitter);
 
@@ -136,7 +175,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     cmdConsole->startCmd();
 
 
-    editorSplitter->addWidget(tabWidget);
+    editorSplitter->addWidget(workspaceSplitter);
     editorSplitter->addWidget(searchBar);
     editorSplitter->addWidget(consoleTabWidget);
     editorSplitter->setSizes({1000, 200});
@@ -160,6 +199,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     // ===================================================================
     connect(fileTreeView, &QTreeView::doubleClicked, this, &Taif::onFileTreeDoubleClicked);
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &Taif::closeTab);
+    connect(splitTabWidget, &QTabWidget::tabCloseRequested, this, &Taif::closeTab);
     connect(toggleSidebarAction, &QAction::triggered, this, &Taif::toggleSidebar);
     QShortcut* saveShortcut = new QShortcut(QKeySequence::Save, this);
     connect(saveShortcut, &QShortcut::activated, this, &Taif::saveFile);
@@ -172,9 +212,13 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(menuBar, &TMenuBar::runRequested, this, &Taif::runAlif);
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
     connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
+    connect(menuBar, &TMenuBar::splitHRequested, this, &Taif::splitViewHorizontal);
+    connect(menuBar, &TMenuBar::splitVRequested, this, &Taif::splitViewVertical);
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
+    connect(splitTabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
+    connect(splitTabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
     connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
     connect(searchBar, &SearchPanel::findText, this, &Taif::findText);
     connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
@@ -359,53 +403,6 @@ Taif::Taif(const QString& filePath, QWidget *parent)
         }
 
     )";
-    tabWidget->setStyleSheet(styleSheet);
-    tabWidget->setTabsClosable(true);
-    tabWidget->setStyleSheet(R"(
-    QTabWidget#MainTabs QTabWidget::pane {
-        border: none;
-        background-color: #1e202e;
-    }
-    QTabWidget#MainTabs QTabBar {
-        font-size: 9pt;
-        background-color: #1e202e;
-        border: none;
-        qproperty-drawBase: 0;
-        margin: 0px;
-        padding: 0px;
-    }
-    QTabWidget#MainTabs QTabBar::tab {
-        background: #2d2d30;
-        color: #909090;
-        padding: 0px 8px;
-        border: none;
-        border-top: 1px solid #444444;
-        border-top-left-radius: 4px;
-        border-top-right-radius: 4px;
-    }
-    QTabWidget#MainTabs QTabBar::tab:selected {
-        background: #1e1e1e;
-        color: #ffffff;
-        border-top: 1px solid #007acc;
-    }
-    QTabWidget#MainTabs QTabBar::tab:hover:!selected {
-        background: #3e3e42;
-    }
-    QTabWidget#MainTabs QTabBar::close-button {
-            image: url(:/icons/resources/close.svg);
-            background: transparent;
-            border: none;
-            subcontrol-position: right;
-            subcontrol-origin: padding;
-            border-radius: 3px;
-            padding: 1px;
-            margin-right: 2px;
-            min-width: 6px;
-            min-height: 6px;
-        }
-        QTabWidget#MainTabs QTabBar::close-button:hover { background: #5a5a5f; }
-
-)");
     this->setStyleSheet(styleSheet);
 
 
@@ -623,8 +620,29 @@ void Taif::newFile() {
     }
 
     TEditor *newEditor = new TEditor(setting, this);
-    tabWidget->addTab(newEditor, "غير معنون");
-    tabWidget->setCurrentWidget(newEditor);
+    
+    QTabWidget *targetTw = tabWidget;
+    if (!splitTabWidget->isHidden()) {
+        if (splitTabWidget->count() == 0) {
+            targetTw = splitTabWidget;
+        } else {
+            QWidget *fw = QApplication::focusWidget();
+            while (fw) {
+                if (fw == splitTabWidget) {
+                    targetTw = splitTabWidget;
+                    break;
+                }
+                if (fw == tabWidget) {
+                    targetTw = tabWidget;
+                    break;
+                }
+                fw = fw->parentWidget();
+            }
+        }
+    }
+
+    targetTw->addTab(newEditor, "غير معنون");
+    targetTw->setCurrentWidget(newEditor);
 
     connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
     connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
@@ -632,7 +650,7 @@ void Taif::newFile() {
 }
 
 void Taif::openFile(QString filePath) {
-    if (TEditor* current = currentEditor()) {
+    if (currentEditor()) {
         int isNeedSave = needSave();
         if (!isNeedSave) return;
         if (isNeedSave == 1) this->saveFile();
@@ -690,9 +708,30 @@ void Taif::openFile(QString filePath) {
             connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
 
             QFileInfo fileInfo(filePath);
-            tabWidget->addTab(newEditor, fileInfo.fileName());
-            tabWidget->setCurrentWidget(newEditor);
-            tabWidget->setTabToolTip(tabWidget->currentIndex(), filePath);
+            
+            QTabWidget *targetTw = tabWidget;
+            if (!splitTabWidget->isHidden()) {
+                if (splitTabWidget->count() == 0) {
+                    targetTw = splitTabWidget;
+                } else {
+                    QWidget *fw = QApplication::focusWidget();
+                    while (fw) {
+                        if (fw == splitTabWidget) {
+                            targetTw = splitTabWidget;
+                            break;
+                        }
+                        if (fw == tabWidget) {
+                            targetTw = tabWidget;
+                            break;
+                        }
+                        fw = fw->parentWidget();
+                    }
+                }
+            }
+
+            targetTw->addTab(newEditor, fileInfo.fileName());
+            targetTw->setCurrentWidget(newEditor);
+            targetTw->setTabToolTip(targetTw->currentIndex(), filePath);
             updateWindowTitle();
 
 
@@ -1025,7 +1064,7 @@ void Taif::runAlif() {
     if (QFile::exists(localAlif)) {
         program = localAlif;
     } else {
-        program = "alif/alif.exe";
+        program = "C:/alif/alif.exe";
     }
 #elif defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
     program = QDir(appDir).filePath("alif/alif");
@@ -1085,21 +1124,173 @@ void Taif::runAlif() {
 //----------------
 
 TEditor* Taif::currentEditor() {
+    QWidget *fw = QApplication::focusWidget();
+    while (fw) {
+        if (TEditor* ed = qobject_cast<TEditor*>(fw)) {
+            return ed;
+        }
+        fw = fw->parentWidget();
+    }
+    
+    if (splitTabWidget->isVisible() && splitTabWidget->currentIndex() != -1) {
+        // إذا كان هناك محرر في الجانب الثاني نأخذ الأخير نشاطا
+    }
     return qobject_cast<TEditor*>(tabWidget->currentWidget());
+}
+
+void Taif::setupTabWidget(QTabWidget* tw) {
+    tw->setObjectName("MainTabs");
+    tw->setDocumentMode(true);
+    tw->setTabsClosable(true);
+    tw->setMovable(true);
+
+    tw->setStyleSheet(R"(
+    QTabWidget#MainTabs QTabWidget::pane {
+        border: none;
+        background-color: #1e202e;
+    }
+    QTabWidget#MainTabs QTabBar {
+        font-size: 9pt;
+        background-color: #1e202e;
+        border: none;
+        qproperty-drawBase: 0;
+        margin: 0px;
+        padding: 0px;
+    }
+    QTabWidget#MainTabs QTabBar::tab {
+        background: #2d2d30;
+        color: #909090;
+        padding: 0px 8px;
+        border: none;
+        border-top: 1px solid #444444;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+    }
+    QTabWidget#MainTabs QTabBar::tab:selected {
+        background: #1e1e1e;
+        color: #ffffff;
+        border-top: 1px solid #007acc;
+    }
+    QTabWidget#MainTabs QTabBar::tab:hover:!selected {
+        background: #3e3e42;
+    }
+    QTabWidget#MainTabs QTabBar::close-button {
+            image: url(:/icons/resources/close.svg);
+            background: transparent;
+            border: none;
+            subcontrol-position: right;
+            subcontrol-origin: padding;
+            border-radius: 3px;
+            padding: 1px;
+            margin-right: 2px;
+            min-width: 6px;
+            min-height: 6px;
+        }
+        QTabWidget#MainTabs QTabBar::close-button:hover { background: #5a5a5f; }
+    )");
+}
+
+void Taif::splitViewHorizontal() {
+    if (!splitTabWidget->isHidden() && workspaceSplitter->orientation() == Qt::Horizontal) {
+        splitTabWidget->hide();
+        return;
+    }
+    
+    workspaceSplitter->setOrientation(Qt::Horizontal);
+    splitTabWidget->show();
+    
+    TEditor* current = currentEditor();
+    if (current && splitTabWidget->count() == 0) {
+        QString path = current->property("filePath").toString();
+        if(!path.isEmpty()) {
+            openFile(path);
+        } else {
+            // إذا لم يكن هناك ملف محفوظ، ننشئ ملفاً جديداً في القسم الثاني
+            TEditor *newEditor = new TEditor(setting, this);
+            connect(newEditor, &TEditor::openRequest, this, [this](QString fp){this->openFile(fp);});
+            connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
+            splitTabWidget->addTab(newEditor, "غير معنون");
+            splitTabWidget->setCurrentWidget(newEditor);
+        }
+        if (splitTabWidget->currentWidget()) {
+            splitTabWidget->currentWidget()->setFocus();
+        }
+    }
+}
+
+void Taif::splitViewVertical() {
+    if (!splitTabWidget->isHidden() && workspaceSplitter->orientation() == Qt::Vertical) {
+        splitTabWidget->hide();
+        return;
+    }
+    
+    workspaceSplitter->setOrientation(Qt::Vertical);
+    splitTabWidget->show();
+    
+    TEditor* current = currentEditor();
+    if (current && splitTabWidget->count() == 0) {
+        QString path = current->property("filePath").toString();
+        if(!path.isEmpty()) {
+            openFile(path);
+        } else {
+            // إذا لم يكن هناك ملف محفوظ، ننشئ ملفاً جديداً في القسم الثاني
+            TEditor *newEditor = new TEditor(setting, this);
+            connect(newEditor, &TEditor::openRequest, this, [this](QString fp){this->openFile(fp);});
+            connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
+            splitTabWidget->addTab(newEditor, "غير معنون");
+            splitTabWidget->setCurrentWidget(newEditor);
+        }
+        if (splitTabWidget->currentWidget()) {
+            splitTabWidget->currentWidget()->setFocus();
+        }
+    }
+}
+
+// دالة نقل التبويب من قسم إلى آخر
+void Taif::moveTabToOtherPane(QTabWidget* source, int index) {
+    QTabWidget* target = (source == tabWidget) ? splitTabWidget : tabWidget;
+
+    // إذا كان القسم المقصود مخفياً نظهره
+    if (target == splitTabWidget && target->isHidden()) {
+        target->show();
+    }
+
+    // لا ننقل التبويب الأخير من القسم الرئيسي إذا لم يكن هناك قسم ثانٍ به تبويبات
+    if (source->count() <= 1 && source == tabWidget && target->count() == 0) {
+        return;
+    }
+
+    QWidget* widget = source->widget(index);
+    QString title = source->tabText(index);
+    QString tooltip = source->tabToolTip(index);
+
+    // إزالة من المصدر وإضافة للهدف
+    source->removeTab(index);
+    target->addTab(widget, title);
+    target->setTabToolTip(target->count() - 1, tooltip);
+    target->setCurrentWidget(widget);
+    widget->setFocus();
+
+    // إذا فرغ القسم الثانوي نخفيه
+    if (source == splitTabWidget && source->count() == 0) {
+        source->hide();
+    }
 }
 
 void Taif::closeTab(int index)
 {
+    QTabWidget *tw = qobject_cast<QTabWidget*>(sender());
+    if (!tw) tw = tabWidget;
 
-    if (tabWidget->count() <= 1) {
+    if (tw->count() <= 1 && tw == tabWidget && !splitTabWidget->isVisible()) {
         return;
     }
 
-    QWidget *tab = tabWidget->widget(index);
+    QWidget *tab = tw->widget(index);
 
     if (!tab) return;
 
-    TEditor* editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+    TEditor* editor = qobject_cast<TEditor*>(tab);
     if (!editor) return;
 
     if (editor && editor->document()->isModified()) {
@@ -1110,12 +1301,13 @@ void Taif::closeTab(int index)
         }
         else if (saveResult == 1) {
             this->saveFile();
-            return;
         }
-
     }
-    tabWidget->removeTab(index);
+    tw->removeTab(index);
 
+    if (tw == splitTabWidget && tw->count() == 0) {
+        splitTabWidget->hide();
+    }
 }
 
 /* ----------------------------------- Help Menu Button ----------------------------------- */

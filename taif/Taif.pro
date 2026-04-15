@@ -28,6 +28,7 @@ SOURCES += \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
     Taif.cpp \
     main.cpp \
+    ../source/texteditor/TMinimap.cpp \
     ../source/texteditor/TEditor.cpp \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
@@ -46,6 +47,7 @@ HEADERS += \
     ../source/texteditor/highlighter/TSyntaxThemes.h \
     ../source/texteditor/highlighter/TToken.h \
     Taif.h  \
+    ../source/texteditor/TMinimap.h \
     ../source/texteditor/TEditor.h \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
