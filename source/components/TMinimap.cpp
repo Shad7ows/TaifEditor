@@ -7,32 +7,96 @@
 #include <QScreen>
 #include <algorithm> // std::clamp
 
+TPreviewTooltip::TPreviewTooltip(QWidget* parent)
+    : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint)
+{
+    setAttribute(Qt::WA_TranslucentBackground);
+    font = QFont(QFontDatabase::applicationFontFamilies(2));
+    font.setPixelSize(10);
+    setFont(font);
+}
+
+void TPreviewTooltip::setContent(const QVector<QPair<int, QString>>& linesContent) {
+    lines = linesContent;
+    QFontMetrics fm(font);
+    lineSpacing = fm.lineSpacing();
+
+    numberWidth = 45;
+    textWidth = 250;
+
+    for (const auto& line : lines) {
+        // line number width
+        int numW = fm.horizontalAdvance(QString::number(line.first)) + 10;
+        numberWidth = std::max(numberWidth, numW);
+
+        // text width
+        QString text = line.second;
+        text.replace("\t", "    ");
+        int txtW = fm.horizontalAdvance(text);
+        textWidth = std::max(textWidth, txtW);
+    }
+
+    updateGeometry();
+    update();
+}
+
+QSize TPreviewTooltip::sizeHint() const {
+    if (lines.isEmpty()) return QSize(0, 0);
+
+    int h = lines.size() * lineSpacing + (padding * 2);
+    int w = numberWidth + textWidth + (padding * 2);
+    return QSize(w, h);
+}
+
+void TPreviewTooltip::paintEvent(QPaintEvent* event) {
+    Q_UNUSED(event);
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    QRect r = rect();
+    // this ensure not clipped at the edges
+    QRectF drawingRect = QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5);
+    int cornerRadius = 8;
+    painter.setBrush(QColor(30, 32, 46));
+    painter.setPen(QPen(QColor(0, 122, 204), 1));
+    painter.drawRoundedRect(drawingRect, cornerRadius, cornerRadius);
+
+    if (lines.isEmpty()) return;
+
+    painter.setFont(font);
+    int y = padding;
+
+    for (auto& line : lines) {
+        QRect numRect(width() - padding - numberWidth, y, numberWidth - 10, lineSpacing);
+        QRect textRect(padding, y, width() - numberWidth - padding, lineSpacing);
+
+        painter.setPen(QColor(100, 100, 100));
+        painter.drawText(numRect, Qt::AlignVCenter, QString::number(line.first));
+
+        line.second.replace("\t", "    ");
+        painter.setPen(QColor(200, 200, 200));
+        painter.drawText(textRect, Qt::AlignVCenter, line.second);
+
+        y += lineSpacing;
+    }
+}
+
+
+// =======================================================
+// TMinimap Implementation
+// =======================================================
+
 TMinimap::TMinimap(TEditor *editor, QWidget *parent)
     : QWidget(parent), editor(editor)
 {
     setMouseTracking(true);
 
-    // Setup preview label using modern object initialization
-    previewLabel = new QLabel(nullptr, Qt::ToolTip | Qt::FramelessWindowHint);
-    previewLabel->setStyleSheet(
-        "QLabel {"
-        "  background-color: #1e202e;"
-        "  color: #cccccc;"
-        "  border: 1px solid #007acc;"
-        "  border-radius: 4px;"
-        "  padding: 6px 10px;"
-        "  font-family: 'Noto Kufi Arabic', 'Courier New', monospace;"
-        "  font-size: 10px;"
-        "}"
-        );
-    previewLabel->setTextFormat(Qt::PlainText);
-    previewLabel->setMinimumWidth(300);
-    previewLabel->setWordWrap(false);
-    previewLabel->hide();
+    previewTooltip = new TPreviewTooltip(this);
+    previewTooltip->hide();
 
     previewTimer = new QTimer(this);
     previewTimer->setSingleShot(true);
-    previewTimer->setInterval(5); // Small delay to prevent tooltip spamming
+    previewTimer->setInterval(7);
 
     connect(previewTimer, &QTimer::timeout, this, [this]() {
         if (isHovering && !isDragging) {
@@ -103,12 +167,15 @@ void TMinimap::scrollTo(int y) {
 }
 
 void TMinimap::enterEvent(QEnterEvent* event) {
+    Q_UNUSED(event);
+    isHovering = true;
     setCursor(Qt::PointingHandCursor);
 }
 
 void TMinimap::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
         setCursor(Qt::ClosedHandCursor);
+        previewTimer->stop();
         hidePreviewTooltip();
 
         int visibleBlockCount;
@@ -130,7 +197,6 @@ void TMinimap::mousePressEvent(QMouseEvent* event) {
 
 void TMinimap::mouseMoveEvent(QMouseEvent* event) {
     if (isDragging) {
-        setCursor(Qt::ClosedHandCursor);
         scrollTo(event->pos().y());
     } else {
         isHovering = true;
@@ -141,8 +207,11 @@ void TMinimap::mouseMoveEvent(QMouseEvent* event) {
 void TMinimap::mouseReleaseEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
         isDragging = false;
+        setCursor(Qt::PointingHandCursor);
+        if (isHovering) {
+            previewTimer->start();
+        }
     }
-    setCursor(Qt::PointingHandCursor);
 }
 
 void TMinimap::leaveEvent(QEvent* event) {
@@ -175,7 +244,6 @@ void TMinimap::showPreviewTooltip(const QPoint& pos) {
     int currentVisibleIndex = 0;
     int targetBlockNumber = -1;
 
-    // Fast forward to target block
     for (QTextBlock b = editor->document()->firstBlock(); b.isValid(); b = b.next()) {
         if (b.isVisible()) {
             if (currentVisibleIndex == targetVisibleIndex) {
@@ -195,51 +263,52 @@ void TMinimap::showPreviewTooltip(const QPoint& pos) {
     const int startBlock = std::max(0, targetBlockNumber - CONTEXT_LINES);
     const int endBlock = std::min(editor->document()->blockCount() - 1, targetBlockNumber + CONTEXT_LINES);
 
-    QString previewText;
-    previewText.reserve(500); // Pre-allocate memory to prevent reallocation overhead
+    QVector<QPair<int, QString>> linesData;
+    linesData.reserve(endBlock - startBlock + 1);
 
     for (int i = startBlock; i <= endBlock; ++i) {
         QTextBlock block = editor->document()->findBlockByNumber(i);
         if (!block.isValid()) continue;
 
         QString line = block.text();
-        if (line.length() > 50) {
-            line.truncate(45);
+        if (line.length() > 53) { // Slight bump since custom widget calculates width dynamically
+            line.truncate(50);
             line.append("...");
         }
 
-        previewText += QString("%1 %2\n").arg(i + 1, 4).arg(line);
+        linesData.append({i + 1, line});
     }
-    previewText.chop(1); // Remove trailing newline efficiently
 
-    previewLabel->setText(previewText);
-    previewLabel->adjustSize();
+    previewTooltip->setContent(linesData);
+    previewTooltip->adjustSize();
 
-    QPoint globalPos = mapToGlobal(QPoint(width() + 5, pos.y() - previewLabel->height() / 2));
+    QPoint globalPos = mapToGlobal(QPoint(width() + 5, pos.y() - previewTooltip->height() / 2));
     const QRect screenRect = QGuiApplication::screenAt(globalPos)
-                                ? QGuiApplication::screenAt(globalPos)->availableGeometry()
-                                : QGuiApplication::primaryScreen()->availableGeometry();
+                                 ? QGuiApplication::screenAt(globalPos)->availableGeometry()
+                                 : QGuiApplication::primaryScreen()->availableGeometry();
 
-    if (globalPos.x() + previewLabel->width() > screenRect.right()) {
-        globalPos.setX(mapToGlobal(QPoint(0, 0)).x() - previewLabel->width() - 5);
+    // Prevent horizontal clipping (if it goes off the right edge of the screen, snap it inside)
+    if (globalPos.x() + previewTooltip->width() > screenRect.right()) {
+        globalPos.setX(mapToGlobal(QPoint(0, 0)).x() - previewTooltip->width() - 5);
     }
 
-    globalPos.setY(std::clamp(globalPos.y(), screenRect.top(), screenRect.bottom() - previewLabel->height()));
+    // Prevent vertical clipping
+    globalPos.setY(std::clamp(globalPos.y(), screenRect.top(), screenRect.bottom() - previewTooltip->height()));
 
-    previewLabel->move(globalPos);
-    previewLabel->show();
+    previewTooltip->move(globalPos);
+    previewTooltip->show();
 }
 
 void TMinimap::hidePreviewTooltip() {
-    if (previewLabel && previewLabel->isVisible()) {
-        previewLabel->hide();
+    if (previewTooltip && previewTooltip->isVisible()) {
+        previewTooltip->hide();
     }
 }
 
 void TMinimap::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, false);
-    painter.fillRect(event->rect(), QColor("#141520"));
+    painter.fillRect(event->rect(), QColor(20, 21, 32));
 
     if (editor->document()->blockCount() == 0) return;
 
@@ -252,8 +321,7 @@ void TMinimap::paintEvent(QPaintEvent *event) {
     double currentY = 0.0;
     const int widgetHeight = height();
     const double charWidth = 1.2;
-    const QColor defaultColor("#cccccc");
-
+    const QColor defaultColor(200, 200, 200);
     const double fixedIdent = 4.0;
 
     // Setting Qt::NoPen removes stroke computation overhead for drawing small rects

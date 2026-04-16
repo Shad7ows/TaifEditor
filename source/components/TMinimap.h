@@ -1,10 +1,30 @@
 #pragma once
 
 #include <QWidget>
-#include <QLabel>
 #include <QTimer>
+#include <QVector>
+#include <QPair>
 
 class TEditor;
+
+class TPreviewTooltip : public QWidget {
+    Q_OBJECT
+public:
+    explicit TPreviewTooltip(QWidget* parent = nullptr);
+    void setContent(const QVector<QPair<int, QString>>& linesContent);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+    QSize sizeHint() const override;
+
+private:
+    QVector<QPair<int, QString>> lines{};
+    QFont font{};
+    int padding = 3;
+    int lineSpacing = 1;
+    int textWidth = 0;
+    int numberWidth = 0;
+};
 
 class TMinimap : public QWidget {
     Q_OBJECT
@@ -34,12 +54,11 @@ private:
     TEditor* editor{};
     bool isDragging = false;
     bool isHovering = false;
-    double clickOffset = 0.0;
+    double clickOffset{};
 
-    // `constexpr` ensures this is evaluated at compile time
     static constexpr double MINIMAP_LINE_HEIGHT = 3.0;
     static constexpr int DOT_HEIGHT = 1;
 
-    QLabel* previewLabel{};
+    TPreviewTooltip* previewTooltip{};
     QTimer* previewTimer{};
 };
