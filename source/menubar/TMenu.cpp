@@ -25,7 +25,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     )");
 
     QMenu* fileMenu = addMenu("ملف");
-    QMenu* viewMenu = addMenu("عرض"); // قائمة جديدة للتقسيم
+    QMenu* viewMenu = addMenu("عرض");
     //QMenu* editMenu = addMenu("تحرير");
     QMenu* runMenu = addMenu("تشغيل");
     QMenu* helpMenu = addMenu("مساعدة");

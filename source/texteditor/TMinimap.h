@@ -1,17 +1,11 @@
 #pragma once
 
 #include <QWidget>
-#include <QPainter>
-#include <QTextBlock>
-#include <QMouseEvent>
-#include <QScrollBar>
 #include <QLabel>
 #include <QTimer>
-#include <QPlainTextEdit>
 
 class TEditor;
 
-// أداة خريطة الكود (Minimap)
 class TMinimap : public QWidget {
     Q_OBJECT
 public:
@@ -25,22 +19,27 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
+    void enterEvent(QEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;
 
 private:
     void scrollTo(int y);
-    void computeLayout(int& outVisibleBlockCount, double& outYRatio,
-                       double& outSliderHeight, double& outSliderY);
     void showPreviewTooltip(const QPoint& pos);
     void hidePreviewTooltip();
 
-    TEditor* editor;
-    bool isDragging;
-    double clickOffset; // لحفظ فرق المسافة عند الضغط على المربع
-    const double MINIMAP_LINE_HEIGHT = 2.0; // ارتفاع كل سطر في الخريطة المصغرة
+    void computeLayout(int& outVisibleBlockCount, double& outYRatio,
+                       double& outSliderHeight, double& outSliderY) const;
 
-    // نافذة المعاينة عند التمرير
+    TEditor* editor{};
+    bool isDragging = false;
+    bool isHovering = false;
+    double clickOffset = 0.0;
+
+    // `constexpr` ensures this is evaluated at compile time
+    static constexpr double MINIMAP_LINE_HEIGHT = 3.0;
+    static constexpr int DOT_HEIGHT = 1;
+
     QLabel* previewLabel{};
     QTimer* previewTimer{};
-    bool isHovering{};
 };

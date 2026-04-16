@@ -1,17 +1,18 @@
 #include "TMinimap.h"
 #include "TEditor.h"
-#include <QPainterPath>
-#include <QTextLayout>
-#include <QToolTip>
-#include <algorithm>
+#include <QPainter>
+#include <QTextBlock>
+#include <QScrollBar>
+#include <QApplication>
+#include <QScreen>
+#include <algorithm> // std::clamp
 
 TMinimap::TMinimap(TEditor *editor, QWidget *parent)
-    : QWidget(parent), editor(editor), isDragging(false), clickOffset(0)
+    : QWidget(parent), editor(editor)
 {
-    setCursor(Qt::PointingHandCursor);
-    setMouseTracking(true); // لتفعيل أحداث تحريك الماوس بدون ضغط
+    setMouseTracking(true);
 
-    // إعداد نافذة المعاينة
+    // Setup preview label using modern object initialization
     previewLabel = new QLabel(nullptr, Qt::ToolTip | Qt::FramelessWindowHint);
     previewLabel->setStyleSheet(
         "QLabel {"
@@ -21,16 +22,18 @@ TMinimap::TMinimap(TEditor *editor, QWidget *parent)
         "  border-radius: 4px;"
         "  padding: 6px 10px;"
         "  font-family: 'Noto Kufi Arabic', 'Courier New', monospace;"
-        "  font-size: 11px;"
+        "  font-size: 10px;"
         "}"
-    );
+        );
     previewLabel->setTextFormat(Qt::PlainText);
+    previewLabel->setMinimumWidth(300);
     previewLabel->setWordWrap(false);
     previewLabel->hide();
 
     previewTimer = new QTimer(this);
     previewTimer->setSingleShot(true);
-    // previewTimer->setInterval(50); // تأخير قبل إظهار المعاينة
+    previewTimer->setInterval(5); // Small delay to prevent tooltip spamming
+
     connect(previewTimer, &QTimer::timeout, this, [this]() {
         if (isHovering && !isDragging) {
             showPreviewTooltip(mapFromGlobal(QCursor::pos()));
@@ -42,45 +45,45 @@ void TMinimap::updateMinimap() {
     update();
 }
 
-// ============================================================================
-// دالة موحدة لحساب أبعاد الشريحة (Slider) - تُستخدم من جميع الدوال
-// تحل مشكلة التأخر بين حركة الماوس والخريطة
-// ============================================================================
 void TMinimap::computeLayout(int& outVisibleBlockCount, double& outYRatio,
-                             double& outSliderHeight, double& outSliderY)
+                             double& outSliderHeight, double& outSliderY) const
 {
     outVisibleBlockCount = 0;
-    int firstVisIndex = 0;
-    int visibleIndex = 0;
-    int firstVis = editor->firstVisibleBlock().blockNumber();
 
+    // Fast counting of visible blocks
     for (QTextBlock b = editor->document()->firstBlock(); b.isValid(); b = b.next()) {
-        if (b.isVisible()) {
-            if (b.blockNumber() == firstVis) firstVisIndex = visibleIndex;
-            visibleIndex++;
-            outVisibleBlockCount++;
-        }
+        if (b.isVisible()) outVisibleBlockCount++;
     }
 
-    double theoreticalHeight = outVisibleBlockCount * MINIMAP_LINE_HEIGHT;
-    outYRatio = 1.0;
-    if (theoreticalHeight > height()) {
-        outYRatio = (double)height() / theoreticalHeight;
+    if (outVisibleBlockCount == 0) {
+        outYRatio = 1.0;
+        outSliderHeight = 0.0;
+        outSliderY = 0.0;
+        return;
     }
+
+    const double theoreticalHeight = outVisibleBlockCount * MINIMAP_LINE_HEIGHT;
+    outYRatio = theoreticalHeight > height() ? static_cast<double>(height()) / theoreticalHeight : 1.0;
 
     int linesInEditor = 1;
     if (editor->fontMetrics().lineSpacing() > 0) {
         linesInEditor = editor->viewport()->height() / editor->fontMetrics().lineSpacing();
     }
 
-    outSliderHeight = linesInEditor * MINIMAP_LINE_HEIGHT * outYRatio;
-    outSliderHeight = qMax(10.0, outSliderHeight);
+    outSliderHeight = std::max(10.0, linesInEditor * MINIMAP_LINE_HEIGHT * outYRatio);
 
-    outSliderY = firstVisIndex * MINIMAP_LINE_HEIGHT * outYRatio;
+    const double contentHeight = theoreticalHeight * outYRatio;
+    const double maxSliderY = std::max(0.0, contentHeight - outSliderHeight);
+
+    const int maxScroll = editor->verticalScrollBar()->maximum();
+    const int currentScroll = editor->verticalScrollBar()->value();
+
+    outSliderY = (maxScroll > 0) ? (static_cast<double>(currentScroll) / maxScroll) * maxSliderY : 0.0;
 }
 
 void TMinimap::scrollTo(int y) {
-    if (editor->verticalScrollBar()->maximum() <= 0) return;
+    QScrollBar* vBar = editor->verticalScrollBar();
+    if (vBar->maximum() <= 0) return;
 
     int visibleBlockCount;
     double yRatio, sliderHeight, sliderY;
@@ -88,33 +91,35 @@ void TMinimap::scrollTo(int y) {
 
     if (visibleBlockCount == 0) return;
 
-    double targetY = y - clickOffset;
-    if (targetY < 0) targetY = 0;
+    double targetY = static_cast<double>(y) - clickOffset;
 
-    double maxSliderY = height() - sliderHeight;
-    if (maxSliderY <= 0) maxSliderY = 1;
-    if (targetY > maxSliderY) targetY = maxSliderY;
+    const double contentHeight = visibleBlockCount * MINIMAP_LINE_HEIGHT * yRatio;
+    const double maxSliderY = std::max(1.0, contentHeight - sliderHeight);
 
-    double ratio = targetY / maxSliderY;
-    int maxScroll = editor->verticalScrollBar()->maximum();
-    editor->verticalScrollBar()->setValue(static_cast<int>(ratio * maxScroll));
+    targetY = std::clamp(targetY, 0.0, maxSliderY);
+
+    const double ratio = targetY / maxSliderY;
+    vBar->setValue(static_cast<int>(ratio * vBar->maximum()));
+}
+
+void TMinimap::enterEvent(QEnterEvent* event) {
+    setCursor(Qt::PointingHandCursor);
 }
 
 void TMinimap::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
+        setCursor(Qt::ClosedHandCursor);
         hidePreviewTooltip();
 
         int visibleBlockCount;
         double yRatio, sliderHeight, sliderY;
         computeLayout(visibleBlockCount, yRatio, sliderHeight, sliderY);
 
-        double mouseY = event->pos().y();
+        const double mouseY = event->pos().y();
 
-        // إذا ضغط المستخدم داخل الشريحة، نحفظ الفرق
         if (mouseY >= sliderY && mouseY <= sliderY + sliderHeight) {
             clickOffset = mouseY - sliderY;
         } else {
-            // إذا ضغط خارج الشريحة، ننقل المنتصف للنقطة المضغوطة
             clickOffset = sliderHeight / 2.0;
             scrollTo(mouseY);
         }
@@ -125,9 +130,9 @@ void TMinimap::mousePressEvent(QMouseEvent* event) {
 
 void TMinimap::mouseMoveEvent(QMouseEvent* event) {
     if (isDragging) {
+        setCursor(Qt::ClosedHandCursor);
         scrollTo(event->pos().y());
     } else {
-        // إظهار المعاينة عند التمرير فوق الخريطة
         isHovering = true;
         previewTimer->start();
     }
@@ -137,6 +142,7 @@ void TMinimap::mouseReleaseEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
         isDragging = false;
     }
+    setCursor(Qt::PointingHandCursor);
 }
 
 void TMinimap::leaveEvent(QEvent* event) {
@@ -144,12 +150,14 @@ void TMinimap::leaveEvent(QEvent* event) {
     isHovering = false;
     previewTimer->stop();
     hidePreviewTooltip();
+    unsetCursor();
 }
 
-// ============================================================================
-// نافذة المعاينة - تُظهر محتوى الأسطر عند التحويم على الخريطة المصغرة
-// مثل محرر Kate
-// ============================================================================
+void TMinimap::wheelEvent(QWheelEvent* event) {
+    // Pass wheel scroll events to the editor so user can scroll while hovering over minimap
+    QApplication::sendEvent(editor->verticalScrollBar(), event);
+}
+
 void TMinimap::showPreviewTooltip(const QPoint& pos) {
     if (pos.y() < 0 || pos.y() >= height()) {
         hidePreviewTooltip();
@@ -160,15 +168,14 @@ void TMinimap::showPreviewTooltip(const QPoint& pos) {
     double yRatio, sliderHeight, sliderY;
     computeLayout(visibleBlockCount, yRatio, sliderHeight, sliderY);
 
-    if (visibleBlockCount == 0 || yRatio <= 0) return;
+    if (visibleBlockCount == 0 || yRatio <= 0.0) return;
 
-    // تحديد رقم السطر من موضع الماوس
-    double lineAtMouse = pos.y() / (MINIMAP_LINE_HEIGHT * yRatio);
-    int targetVisibleIndex = static_cast<int>(lineAtMouse);
+    const int targetVisibleIndex = static_cast<int>(pos.y() / (MINIMAP_LINE_HEIGHT * yRatio));
 
-    // تحويل الفهرس المرئي إلى رقم البلوك الفعلي
     int currentVisibleIndex = 0;
     int targetBlockNumber = -1;
+
+    // Fast forward to target block
     for (QTextBlock b = editor->document()->firstBlock(); b.isValid(); b = b.next()) {
         if (b.isVisible()) {
             if (currentVisibleIndex == targetVisibleIndex) {
@@ -184,70 +191,57 @@ void TMinimap::showPreviewTooltip(const QPoint& pos) {
         return;
     }
 
-    // جمع الأسطر المحيطة (5 أسطر قبل و5 بعد)
-    const int CONTEXT_LINES = 5;
-    int startBlock = qMax(0, targetBlockNumber - CONTEXT_LINES);
-    int endBlock = qMin(editor->document()->blockCount() - 1, targetBlockNumber + CONTEXT_LINES);
+    const int CONTEXT_LINES = 2;
+    const int startBlock = std::max(0, targetBlockNumber - CONTEXT_LINES);
+    const int endBlock = std::min(editor->document()->blockCount() - 1, targetBlockNumber + CONTEXT_LINES);
 
     QString previewText;
+    previewText.reserve(500); // Pre-allocate memory to prevent reallocation overhead
+
     for (int i = startBlock; i <= endBlock; ++i) {
         QTextBlock block = editor->document()->findBlockByNumber(i);
         if (!block.isValid()) continue;
 
         QString line = block.text();
-        // تقطيع الأسطر الطويلة
-        if (line.length() > 80) {
-            line = line.left(77) + "...";
+        if (line.length() > 50) {
+            line.truncate(45);
+            line.append("...");
         }
 
-        if (i == targetBlockNumber) {
-            previewText += QString("► %1: %2").arg(i + 1).arg(line);
-        } else {
-            previewText += QString("  %1: %2").arg(i + 1).arg(line);
-        }
-
-        if (i < endBlock) previewText += "\n";
+        previewText += QString("%1 %2\n").arg(i + 1, 4).arg(line);
     }
+    previewText.chop(1); // Remove trailing newline efficiently
 
     previewLabel->setText(previewText);
     previewLabel->adjustSize();
 
-    // حساب موضع المعاينة (على يمين الخريطة)
     QPoint globalPos = mapToGlobal(QPoint(width() + 5, pos.y() - previewLabel->height() / 2));
+    const QRect screenRect = QGuiApplication::screenAt(globalPos)
+                                ? QGuiApplication::screenAt(globalPos)->availableGeometry()
+                                : QGuiApplication::primaryScreen()->availableGeometry();
 
-    // التأكد من أن النافذة لا تخرج عن حدود الشاشة
-    QRect screenRect = screen()->availableGeometry();
     if (globalPos.x() + previewLabel->width() > screenRect.right()) {
         globalPos.setX(mapToGlobal(QPoint(0, 0)).x() - previewLabel->width() - 5);
     }
-    if (globalPos.y() < screenRect.top()) {
-        globalPos.setY(screenRect.top());
-    }
-    if (globalPos.y() + previewLabel->height() > screenRect.bottom()) {
-        globalPos.setY(screenRect.bottom() - previewLabel->height());
-    }
+
+    globalPos.setY(std::clamp(globalPos.y(), screenRect.top(), screenRect.bottom() - previewLabel->height()));
 
     previewLabel->move(globalPos);
     previewLabel->show();
 }
 
 void TMinimap::hidePreviewTooltip() {
-    if (previewLabel) {
+    if (previewLabel && previewLabel->isVisible()) {
         previewLabel->hide();
     }
 }
 
-// ============================================================================
-// رسم الخريطة المصغرة
-// ============================================================================
 void TMinimap::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, false);
-
     painter.fillRect(event->rect(), QColor("#141520"));
 
-    int blockCount = editor->document()->blockCount();
-    if (blockCount == 0) return;
+    if (editor->document()->blockCount() == 0) return;
 
     int visibleBlockCount;
     double yRatio, sliderHeight, sliderY;
@@ -255,72 +249,83 @@ void TMinimap::paintEvent(QPaintEvent *event) {
 
     if (visibleBlockCount == 0) return;
 
-    double currentY = 0;
+    double currentY = 0.0;
+    const int widgetHeight = height();
+    const double charWidth = 1.2;
+    const QColor defaultColor("#cccccc");
+
+    const double fixedIdent = 4.0;
+
+    // Setting Qt::NoPen removes stroke computation overhead for drawing small rects
+    painter.setPen(Qt::NoPen);
+
     QTextBlock block = editor->document()->firstBlock();
 
-    QColor defaultColor("#cccccc");
-    double charWidth = 1.5;
-
     while(block.isValid()) {
+        // Early Exit. If we've drawn past the widget bottom, stop processing completely.
+        if (currentY > widgetHeight) break;
+
         if (block.isVisible()) {
-            QString text = block.text();
+            const QString text = block.text();
+            const int textLen = text.length();
 
-            int leadingSpaces = 0;
-            while (leadingSpaces < text.length() && text[leadingSpaces].isSpace()) {
-                leadingSpaces++;
-            }
-
-            int textLen = text.length();
-            if (leadingSpaces < textLen) {
-                // في الواجهات التي تعتمد من اليمين لليسار RTL سنبدأ الرسم من مسافة اليمين
-                double currentX = width() - 4;
-                int rectHeight = static_cast<int>(qMax(1.0, MINIMAP_LINE_HEIGHT * yRatio));
-
-                QVector<QTextLayout::FormatRange> formats = block.layout()->formats();
-                std::sort(formats.begin(), formats.end(), [](const QTextLayout::FormatRange& a, const QTextLayout::FormatRange& b) {
-                    return a.start < b.start;
-                });
-
-                int stringIdx = leadingSpaces;
-                for (const auto& f : formats) {
-                    if (currentX <= 4 || stringIdx >= textLen) break;
-                    if (f.start + f.length <= stringIdx) continue;
-
-                    if (f.start > stringIdx) {
-                        int gapLen = f.start - stringIdx;
-                        int rectW = gapLen * charWidth;
-                        if (currentX - rectW < 4) rectW = currentX - 4;
-                        if (rectW > 0) {
-                            painter.fillRect(currentX - rectW, static_cast<int>(currentY), rectW, rectHeight, defaultColor);
-                            currentX -= rectW;
-                        }
-                        stringIdx = f.start;
-                    }
-
-                    int formatDrawLen = f.length;
-                    if (f.start < stringIdx) {
-                        formatDrawLen -= (stringIdx - f.start);
-                    }
-                    if (formatDrawLen > 0) {
-                        QColor color = f.format.foreground().color();
-                        if (!color.isValid()) color = defaultColor;
-
-                        int rectW = formatDrawLen * charWidth;
-                        if (currentX - rectW < 4) rectW = currentX - 4;
-                        if (rectW > 0) {
-                            painter.fillRect(currentX - rectW, static_cast<int>(currentY), rectW, rectHeight, color);
-                            currentX -= rectW;
-                        }
-                        stringIdx += formatDrawLen;
-                    }
+            // Skip fast if line is empty
+            if (textLen > 0) {
+                int leadingSpaces = 0;
+                while (leadingSpaces < textLen && text.at(leadingSpaces).isSpace()) {
+                    leadingSpaces++;
                 }
 
-                if (currentX > 4 && stringIdx < textLen) {
-                    int remain = textLen - stringIdx;
-                    int rectW = remain * charWidth;
-                    if (currentX - rectW < 4) rectW = currentX - 4;
-                    if (rectW > 0) {
-                        painter.fillRect(currentX - rectW, static_cast<int>(currentY), rectW, rectHeight, defaultColor);
+                if (leadingSpaces < textLen) {
+                    double indentOffset = leadingSpaces * fixedIdent;
+                    double currentX = (width() - 4.0) - indentOffset;
+
+                    QVector<QTextLayout::FormatRange> formats = block.layout()->formats();
+                    std::sort(formats.begin(), formats.end(), [](const QTextLayout::FormatRange& a, const QTextLayout::FormatRange& b) {
+                        return a.start < b.start;
+                    });
+
+                    int stringIdx = leadingSpaces;
+                    for (const auto& f : formats) {
+                        if (currentX <= 4.0 || stringIdx >= textLen) break;
+                        if (f.start + f.length <= stringIdx) continue;
+
+                        if (f.start > stringIdx) {
+                            const int gapLen = f.start - stringIdx;
+                            double rectW = gapLen * charWidth;
+                            rectW = (currentX - rectW < 4.0) ? (currentX - 4.0) : rectW;
+
+                            if (rectW > 0) {
+                                painter.fillRect(QRectF(currentX - rectW, currentY, rectW, DOT_HEIGHT), defaultColor);
+                                currentX -= rectW;
+                            }
+                            stringIdx = f.start;
+                        }
+
+                        int formatDrawLen = f.length - std::max(0, stringIdx - f.start);
+                        if (formatDrawLen > 0) {
+                            QColor color = f.format.foreground().color();
+                            if (!color.isValid()) color = defaultColor;
+
+                            double rectW = formatDrawLen * charWidth;
+                            rectW = (currentX - rectW < 4.0) ? (currentX - 4.0) : rectW;
+
+                            if (rectW > 0) {
+                                painter.fillRect(QRectF(currentX - rectW, currentY, rectW, DOT_HEIGHT), color);
+                                currentX -= rectW;
+                            }
+                            stringIdx += formatDrawLen;
+                        }
+                    }
+
+                    if (currentX > 4.0 && stringIdx < textLen) {
+                        const int remain = textLen - stringIdx;
+                        double rectW = remain * charWidth;
+                        rectW = (currentX - rectW < 4.0) ? (currentX - 4.0) : rectW;
+
+                        if (rectW > 0) {
+                            painter.fillRect(QRectF(currentX - rectW, currentY, rectW, DOT_HEIGHT), defaultColor);
+                        }
                     }
                 }
             }
@@ -329,8 +334,8 @@ void TMinimap::paintEvent(QPaintEvent *event) {
         block = block.next();
     }
 
-    // رسم شريحة العرض (المربع المحدد لمنطقة الرؤية)
-    painter.fillRect(0, static_cast<int>(sliderY), width(), static_cast<int>(sliderHeight), QColor(255, 255, 255, 30));
-    painter.setPen(QPen(QColor(255, 255, 255, 100), 1));
-    painter.drawRect(0, static_cast<int>(sliderY), width() - 1, static_cast<int>(sliderHeight));
+    // Draw the active viewport slider
+    painter.fillRect(QRectF(0, sliderY, width(), sliderHeight), QColor(56, 186, 255, 25));
+    painter.setPen(QPen(QColor(56, 186, 255, 75), 1));
+    painter.drawRect(QRectF(0, sliderY, width() - 1, sliderHeight));
 }

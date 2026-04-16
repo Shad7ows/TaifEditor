@@ -312,13 +312,20 @@ int TEditor::lineNumberAreaWidth() const {
     return space;
 }
 
+void TEditor::updateMinimapPosition() {
+    int mapX = 0;
+    // بسبب الاتجاه من اليمين لليسار قد يكون شريط التمرير على يمين الخريطة المصغرة
+    if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2) {
+        mapX = verticalScrollBar()->width();
+    }
+    // تم تنقيص 3 من الاعلى لكي لا يقوم بالتغطية على حواف المحرر
+    minimap->move(mapX, 3);
+}
 
 void TEditor::updateLineNumberAreaWidth() {
     int numsWidth = lineNumberAreaWidth();
     int mapWidth = 100;
 
-    // الهوامش في Qt دائماً فيزيائية (يسار = يسار، يمين = يمين) بغض النظر عن اتجاه اللغة
-    // الخريطة على اليسار دائماً، وأرقام الأسطر على اليمين دائماً
     setViewportMargins(mapWidth, 0, numsWidth, 0);
 }
 
@@ -338,15 +345,21 @@ void TEditor::resizeEvent(QResizeEvent* event) {
     QRect cr = contentsRect();
     int numsWidth = lineNumberAreaWidth();
 
-
     lineNumberArea->setGeometry(this->width() - numsWidth, cr.top(), numsWidth, cr.height());
+
     if (minimap) {
-        int mapX = 0;
-        // بسبب الاتجاه من اليمين لليسار قد يكون شريط التمرير على اليسار
-        if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2) {
-            mapX = verticalScrollBar()->width();
-        }
-        minimap->setGeometry(cr.left() + mapX, cr.top(), 100, cr.height());
+        updateMinimapPosition();
+    }
+}
+
+void TEditor::showEvent(QShowEvent* event) {
+    QPlainTextEdit::showEvent(event);
+
+    if (minimap) {
+        QRect cr = contentsRect();
+        // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
+        minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
+        updateMinimapPosition();
     }
 }
 

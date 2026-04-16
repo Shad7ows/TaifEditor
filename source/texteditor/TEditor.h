@@ -54,6 +54,7 @@ protected:
     void dragLeaveEvent(QDragLeaveEvent* event) override;
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void showEvent(QShowEvent* event) override;
 
     void keyPressEvent(QKeyEvent *e) override;
     // We override focusOutEvent to close the popup if the user clicks away
@@ -101,6 +102,7 @@ private:
     bool handleBracketSkip(QChar typedChar);
 
 private slots:
+    void updateMinimapPosition();
     void updateLineNumberAreaWidth();
     void highlightCurrentLine();
     inline void updateLineNumberArea(const QRect &rect, int dy);
