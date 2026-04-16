@@ -20,10 +20,6 @@ public:
     QAction* SettingsAction;
     QAction* exitAction;
 
-    // أدوات تقسيم الشاشة
-    QAction* splitHAction;
-    QAction* splitVAction;
-
     QAction* runAction;
     QAction* aboutAction;
 
@@ -35,8 +31,6 @@ signals:
     void saveAsRequested();
     void settingsRequest();
     void exitRequested();
-    void splitHRequested();
-    void splitVRequested();
     void runRequested();
     void aboutRequested();
     void updateRequested();

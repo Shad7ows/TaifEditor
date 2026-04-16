@@ -25,13 +25,11 @@ TMenuBar::TMenuBar(QWidget* parent) {
     )");
 
     QMenu* fileMenu = addMenu("ملف");
-    QMenu* viewMenu = addMenu("عرض");
     //QMenu* editMenu = addMenu("تحرير");
     QMenu* runMenu = addMenu("تشغيل");
     QMenu* helpMenu = addMenu("مساعدة");
 
     fileMenu->setMinimumWidth(200);
-    viewMenu->setMinimumWidth(200);
     //editMenu->setMinimumWidth(200);
     runMenu->setMinimumWidth(200);
     helpMenu->setMinimumWidth(200);
@@ -62,9 +60,6 @@ TMenuBar::TMenuBar(QWidget* parent) {
     fileMenu->addAction(SettingsAction);
     fileMenu->addSeparator();
     fileMenu->addAction(exitAction);
-
-    viewMenu->addAction(splitHAction);
-    viewMenu->addAction(splitVAction);
 
     runMenu->addAction(runAction);
 
@@ -98,7 +93,6 @@ TMenuBar::TMenuBar(QWidget* parent) {
         }
 )";
     fileMenu->setStyleSheet(style);
-    viewMenu->setStyleSheet(style);
     //editMenu->setStyleSheet(style);
     runMenu->setStyleSheet(style);
     helpMenu->setStyleSheet(style);
@@ -111,9 +105,6 @@ TMenuBar::TMenuBar(QWidget* parent) {
     connect(saveAsAction, &QAction::triggered, this, &TMenuBar::saveAsRequested);
     connect(SettingsAction, &QAction::triggered, this, &TMenuBar::settingsRequest);
     connect(exitAction, &QAction::triggered, this, &TMenuBar::exitRequested);
-
-    connect(splitHAction, &QAction::triggered, this, &TMenuBar::splitHRequested);
-    connect(splitVAction, &QAction::triggered, this, &TMenuBar::splitVRequested);
 
     connect(runAction, &QAction::triggered, this, &TMenuBar::runRequested);
 
