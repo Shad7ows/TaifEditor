@@ -335,7 +335,7 @@ void TMinimap::paintEvent(QPaintEvent *event) {
     }
 
     // Draw the active viewport slider
-    painter.fillRect(QRectF(0, sliderY, width(), sliderHeight), QColor(56, 186, 255, 25));
+    painter.fillRect(QRectF(1, sliderY, width() - 2, sliderHeight), QColor(56, 186, 255, 25));
     painter.setPen(QPen(QColor(56, 186, 255, 75), 1));
-    painter.drawRect(QRectF(0, sliderY, width() - 1, sliderHeight));
+    painter.drawRect(QRectF(1, sliderY, width() - 2, sliderHeight));
 }

@@ -348,6 +348,8 @@ void TEditor::resizeEvent(QResizeEvent* event) {
     lineNumberArea->setGeometry(this->width() - numsWidth, cr.top(), numsWidth, cr.height());
 
     if (minimap) {
+        // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
+        minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
         updateMinimapPosition();
     }
 }
