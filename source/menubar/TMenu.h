@@ -19,7 +19,6 @@ public:
     QAction* saveAsAction;
     QAction* SettingsAction;
     QAction* exitAction;
-
     QAction* runAction;
     QAction* aboutAction;
 

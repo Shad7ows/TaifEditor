@@ -42,10 +42,6 @@ TMenuBar::TMenuBar(QWidget* parent) {
     QAction* SettingsAction = new QAction("الإعدادات", parent);
     QAction* exitAction = new QAction("خروج", parent);
 
-    // أزرار تقسيم عرض المحرر (أفقياً وعمودياً)
-    QAction* splitHAction = new QAction("تقسيم الشاشة (أفقياً)", parent);
-    QAction* splitVAction = new QAction("تقسيم الشاشة (عمودياً)", parent);
-
     QAction* runAction = new QAction("تشغيل", parent);
 
     QAction* aboutAction = new QAction("عن المحرر", parent);
