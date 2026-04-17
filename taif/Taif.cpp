@@ -30,32 +30,53 @@ Taif::Taif(const QString& filePath, QWidget *parent)
 
     setAttribute(Qt::WA_DeleteOnClose);
 
-    // ===================================================================
-    // الخطوة 1: إنشاء المكونات الرئيسية
-    // ===================================================================
+    setting = new TSettings();
+
+    setupUI();
+    setupConnections();
+    setupStyle();
+
+    installEventFilter(this);
+
+    if (!filePath.isEmpty()) {
+        openFile(filePath);
+    } else {
+        newFile();
+    }
+}
+
+Taif::~Taif() {
+    if (thread) {
+        thread->wait();
+        thread->quit();
+    }
+    if (TEditor* editor = currentEditor()) {
+        QSettings settings("Alif", "Taif");
+        settings.setValue("editorFontSize", editor->font().pixelSize());
+        settings.setValue("editorFontType", editor->font().family());
+        settings.setValue("editorCodeTheme", setting->getThemeCombo()->currentIndex());
+        settings.sync();
+    }
+}
+
+void Taif::setupUI() {
     tabWidget = new QTabWidget(this);
     tabWidget->setObjectName("MainTabs");
     tabWidget->setDocumentMode(true);
     tabWidget->setTabsClosable(true);
     tabWidget->setMovable(true);
+
     menuBar = new TMenuBar(this);
+    setMenuBar(menuBar);
+
     mainSplitter = new QSplitter(Qt::Horizontal, this);
     fileTreeView = new QTreeView(this);
     fileSystemModel = new QFileSystemModel(this);
 
     editorSplitter = new QSplitter(Qt::Vertical, this);
-
-
     searchBar = new SearchPanel(this);
     searchBar->hide();
 
-    QShortcut *findShortcut = new QShortcut(QKeySequence::Find, this);
-    connect(findShortcut, &QShortcut::activated, this, &Taif::showFindBar);
-
-
-    // ===================================================================
-    // الخطوة 2: إعداد النافذة وشريط القوائم
-    // ===================================================================
     QScreen* screen = QGuiApplication::primaryScreen();
     QRect screenGeo = screen->availableGeometry();
     int margin = 100;
@@ -65,104 +86,69 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     int width = screenGeo.size().width() - margin * widthFixedNum;
     int height = screenGeo.size().height() - margin;
     this->setGeometry(x, y, width, height);
-    this->setMenuBar(menuBar);
-    // ===================================================================
-    //  الخطوة 3: إعداد شريط الأدوات وزر تبديل الشريط
-    // ===================================================================
+
     QToolBar *mainToolBar = new QToolBar("Main Toolbar", this);
     mainToolBar->setObjectName("mainToolBar");
     mainToolBar->setMovable(false);
     mainToolBar->setIconSize(QSize(25, 25));
-    mainToolBar->setStyleSheet("QToolButton:hover {background-color: #334466;}");
     this->addToolBar(Qt::RightToolBarArea, mainToolBar);
 
-    toggleSidebarAction = new QAction(this);
-    toggleSidebarAction->setIcon(QIcon(":/icons/resources/panel-right-open.svg"));
+    toggleSidebarAction = new QAction(QIcon(":/icons/resources/panel-right-open.svg"), "فتح القائمة", this);
     toggleSidebarAction->setCheckable(true);
     toggleSidebarAction->setChecked(false);
     mainToolBar->addAction(toggleSidebarAction);
 
-    QAction *runToolbarAction = new QAction(this);
-    runToolbarAction->setIcon(QIcon(":/icons/resources/run.svg"));
-    runToolbarAction->setToolTip("تشغيل الملف الحالي");
+    QAction *runToolbarAction = new QAction(QIcon(":/icons/resources/run.svg"), "تشغيل الملف الحالي", this);
 
     mainToolBar->addAction(runToolbarAction);
     connect(runToolbarAction, &QAction::triggered, this, &Taif::runAlif);
-    // mainToolBar->addSeparator();
-    // mainToolBar->addAction(menuBar->newAction);
 
-
-    // ===================================================================
-    // الخطوة 4: إعداد الشريط الجانبي
-    // ===================================================================
+    fileSystemModel->setRootPath(QDir::homePath());
     fileTreeView->setModel(fileSystemModel);
     fileTreeView->header()->setVisible(false);
-    fileTreeView->setStyleSheet("QTreeView { background: #03091A; } ");
-    fileTreeView->hideColumn(1);
-    fileTreeView->hideColumn(2);
-    fileTreeView->hideColumn(3);
-    fileSystemModel->setRootPath(QDir::homePath());
+    for(int i = 1; i <= 3; ++i) fileTreeView->hideColumn(i);
     fileTreeView->setRootIndex(fileSystemModel->index(QDir::homePath()));
     fileTreeView->setVisible(false);
-
-    // ===================================================================
-    // الخطوة 5: تجميع الواجهة (الفاصل)
-    // ===================================================================
-    mainSplitter->addWidget(fileTreeView);
-    mainSplitter->addWidget(tabWidget);
-    mainSplitter->setSizes({200, 700});
-    this->setCentralWidget(mainSplitter);
-
-    // ===================================================================
-
-    setting = new TSettings();
-
-    // ===================================================================
 
     consoleTabWidget = new QTabWidget(this);
     consoleTabWidget->setObjectName("consoleTabWidget");
     consoleTabWidget->setDocumentMode(true);
+    consoleTabWidget->hide();
 
     TConsole *cmdConsole = new TConsole(this);
-    QString terminalName = "طرفية (CMD)";
 #if defined(Q_OS_LINUX)
     terminalName = "طرفية (Bash)";
 #elif defined(Q_OS_MACOS)
     terminalName = "طرفية (Zsh)";
+#else
+    QString terminalName = "طرفية (CMD)";
 #endif
-
     consoleTabWidget->addTab(cmdConsole, terminalName);
     cmdConsole->setConsoleRTL();
     cmdConsole->startCmd();
-
 
     editorSplitter->addWidget(tabWidget);
     editorSplitter->addWidget(searchBar);
     editorSplitter->addWidget(consoleTabWidget);
     editorSplitter->setSizes({1000, 200});
 
-    consoleTabWidget->hide();
-
     mainSplitter->addWidget(fileTreeView);
     mainSplitter->addWidget(editorSplitter);
     mainSplitter->setSizes({200, 700});
     this->setCentralWidget(mainSplitter);
 
-    // ===================================================================
-
     cursorPositionLabel = new QLabel(this);
     cursorPositionLabel->setStyleSheet("QLabel{ color: white }");
     cursorPositionLabel->setText("UTF-8  السطر: 1  العمود: 1");
     statusBar()->addPermanentWidget(cursorPositionLabel);
+}
 
-    // ===================================================================
-    // الخطوة 6: ربط الإشارات والمقابس
-    // ===================================================================
+void Taif::setupConnections() {
+
     connect(fileTreeView, &QTreeView::doubleClicked, this, &Taif::onFileTreeDoubleClicked);
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &Taif::closeTab);
     connect(toggleSidebarAction, &QAction::triggered, this, &Taif::toggleSidebar);
-    QShortcut* saveShortcut = new QShortcut(QKeySequence::Save, this);
-    connect(saveShortcut, &QShortcut::activated, this, &Taif::saveFile);
+
     connect(menuBar, &TMenuBar::newRequested, this, &Taif::newFile);
     connect(menuBar, &TMenuBar::openFileRequested, this, [this](){this->openFile("");});
     connect(menuBar, &TMenuBar::saveRequested, this, &Taif::saveFile);
@@ -173,42 +159,30 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
     connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
+
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
+
     connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
     connect(searchBar, &SearchPanel::findText, this, &Taif::findText);
     connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
     connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
-    onCurrentTabChanged();
 
-    QShortcut *goToLineShortcut = new QShortcut(QKeySequence("Ctrl+G"), this);
-    connect(goToLineShortcut, &QShortcut::activated, this, &Taif::goToLine);
+    new QShortcut(QKeySequence::Find, this, SLOT(showFindBar()));
+    new QShortcut(QKeySequence::Save, this, SLOT(saveFile()));
+    new QShortcut(QKeySequence("Ctrl+G"), this, SLOT(goToLine()));
+    new QShortcut(QKeySequence("Ctrl+/"), this, [this](){ if (auto e = currentEditor()) e->toggleComment();});
+    new QShortcut(QKeySequence("Ctrl+D"), this, [this](){ if (auto e = currentEditor()) e->duplicateLine();});
+    new QShortcut(QKeySequence("Alt+Up"), this, [this](){ if (auto e = currentEditor()) e->moveLineUp(); });
+    new QShortcut(QKeySequence("Alt+Down"), this, [this](){ if (auto e = currentEditor()) e->moveLineDown(); });
+}
 
-    QShortcut *commentShortcut = new QShortcut(QKeySequence("Ctrl+/"), this);
-    connect(commentShortcut, &QShortcut::activated, this, [this](){
-        if (TEditor* editor = currentEditor()) editor->toggleComment();
-    });
-
-    QShortcut *duplicateShortcut = new QShortcut(QKeySequence("Ctrl+D"), this);
-    connect(duplicateShortcut, &QShortcut::activated, this, [this](){
-        if (TEditor* editor = currentEditor()) editor->duplicateLine();
-    });
-
-    QShortcut *moveUpShortcut = new QShortcut(QKeySequence("Alt+Up"), this);
-    connect(moveUpShortcut, &QShortcut::activated, this, [this](){
-        if (TEditor* editor = currentEditor()) editor->moveLineUp();
-    });
-
-    QShortcut *moveDownShortcut = new QShortcut(QKeySequence("Alt+Down"), this);
-    connect(moveDownShortcut, &QShortcut::activated, this, [this](){
-        if (TEditor* editor = currentEditor()) editor->moveLineDown();
-    });
-
-    // ===================================================================
-    //  الخطوة 7: تطبيق التصميم (QSS)
-    // ===================================================================
+void Taif::setupStyle() {
     QString styleSheet = R"(
-        QMainWindow { background-color: #1e202e;font-size: 12px;  }
+        QMainWindow {
+            background-color: #1e202e;
+            font-size: 12px;
+        }
 
         /* --- تصميم شريط القوائم --- */
         QMenuBar {
@@ -220,7 +194,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
             padding: 4px 10px;
         }
         QMenuBar::item:selected {
-            background-color: #3e3e42;
+            background-color: #334466;
         }
         QMenuBar::item:pressed {
             background-color: #007acc;
@@ -254,7 +228,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
         }
 
         QToolBar QToolButton:hover {
-            background-color: #4f5357;
+            background-color: #334466;
         }
 
         QToolBar QToolButton:pressed {
@@ -265,12 +239,14 @@ Taif::Taif(const QString& filePath, QWidget *parent)
             background-color: #0078d7; /* اللون الأزرق */
         }
 
-        /* --- تصميم الشريط الجانبي --- */
-        QTreeView { background-color: #232629; border: none; color: #cccccc;font-size: 10pt; }
-        QTreeView::item { padding: 5px 3px; border-radius: 3px; }
-        QTreeView::item:selected:active { background-color: #094771; color: #ffffff; }
-        QTreeView::item:selected:!active { background-color: #3a3d41; }
-        QTreeView::branch { background: transparent; }
+        /* --- تصميم شجرة المسارات--- */
+        QTreeView {
+            background-color: #03091A;
+            border: none;
+            color: #cccccc;
+            font-size: 14px;
+        }
+        QTreeView::item { padding: 3px 1px; }
 
         /* --- تصميم الفاصل --- */
         QSplitter::handle {
@@ -289,8 +265,9 @@ Taif::Taif(const QString& filePath, QWidget *parent)
             border: none;
             background-color: #1e202e;
         }
-        QTabWidget#MainTabs QTabBar { /* شريط التبويبات نفسه */
+        QTabWidget#MainTabs QTabBar { /* شريط التبويبات */
             background-color: #1e202e;
+            font-size: 12px;
             border: none;
             qproperty-drawBase: 0;
             margin: 0px;
@@ -301,7 +278,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
             font-size: 12px !important;
             color: #909090;
             min-height: 25px;
-            padding: 0px 0px;
+            padding: 0px 8px;
             border: none;
             border-top: 1px solid #444444;
             border-top-left-radius: 4px;
@@ -329,7 +306,9 @@ Taif::Taif(const QString& filePath, QWidget *parent)
             min-width: 12px;
             min-height: 12px;
         }
-        QTabWidget#MainTabs QTabBar::close-button:hover { background: #5a5a5f; }
+        QTabWidget#MainTabs QTabBar::close-button:hover {
+            background: #334466;
+        }
 
         QStatusBar {
             background-color: #333333;
@@ -359,77 +338,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
         }
 
     )";
-    tabWidget->setStyleSheet(styleSheet);
-    tabWidget->setTabsClosable(true);
-    tabWidget->setStyleSheet(R"(
-    QTabWidget#MainTabs QTabWidget::pane {
-        border: none;
-        background-color: #1e202e;
-    }
-    QTabWidget#MainTabs QTabBar {
-        font-size: 9pt;
-        background-color: #1e202e;
-        border: none;
-        qproperty-drawBase: 0;
-        margin: 0px;
-        padding: 0px;
-    }
-    QTabWidget#MainTabs QTabBar::tab {
-        background: #2d2d30;
-        color: #909090;
-        padding: 0px 8px;
-        border: none;
-        border-top: 1px solid #444444;
-        border-top-left-radius: 4px;
-        border-top-right-radius: 4px;
-    }
-    QTabWidget#MainTabs QTabBar::tab:selected {
-        background: #1e1e1e;
-        color: #ffffff;
-        border-top: 1px solid #007acc;
-    }
-    QTabWidget#MainTabs QTabBar::tab:hover:!selected {
-        background: #3e3e42;
-    }
-    QTabWidget#MainTabs QTabBar::close-button {
-            image: url(:/icons/resources/close.svg);
-            background: transparent;
-            border: none;
-            subcontrol-position: right;
-            subcontrol-origin: padding;
-            border-radius: 3px;
-            padding: 1px;
-            margin-right: 2px;
-            min-width: 6px;
-            min-height: 6px;
-        }
-        QTabWidget#MainTabs QTabBar::close-button:hover { background: #5a5a5f; }
-
-)");
-    this->setStyleSheet(styleSheet);
-
-
-    // ===================================================================
-    // الخطوة 8: تحميل الملف المبدئي أو إنشاء تبويب جديد
-    // ===================================================================
-    installEventFilter(this);
-
-    if (!filePath.isEmpty()) {
-        openFile(filePath);
-    } else {
-        newFile();
-    }
-}
-
-Taif::~Taif() {
-
-    if (TEditor* editor = currentEditor()) {
-        QSettings settings("Alif", "Taif");
-        settings.setValue("editorFontSize", editor->font().pixelSize());
-        settings.setValue("editorFontType", editor->font().family());
-        settings.setValue("editorCodeTheme", setting->getThemeCombo()->currentIndex());
-        settings.sync();
-    }
+    setStyleSheet(styleSheet);
 }
 
 void Taif::closeEvent(QCloseEvent *event) {
@@ -471,13 +380,19 @@ void Taif::goToLine()
                                           1, 1, maxLine, 1, &ok);
 
     if (ok) {
-        // نقل المؤشر
-        QTextCursor cursor = editor->textCursor();
-        cursor.setPosition(0); // ارجع للبداية
-        cursor.movePosition(QTextCursor::Down, QTextCursor::MoveAnchor, lineNumber - 1); // تحرك للأسفل
-        editor->setTextCursor(cursor);
-        editor->centerCursor(); // اجعل السطر في وسط الشاشة
-        editor->setFocus();
+        QTextBlock block = editor->document()->findBlockByNumber(lineNumber - 1);
+
+        if (block.isValid()) {
+            QTextCursor cursor = editor->textCursor();
+
+            // تحريك المؤشر الى الكتلة المختارة
+            cursor.setPosition(block.position());
+
+            // تحديث المحرر
+            editor->setTextCursor(cursor);
+            editor->centerCursor();
+            editor->setFocus();
+        }
     }
 }
 

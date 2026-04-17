@@ -10,8 +10,9 @@
 TPreviewTooltip::TPreviewTooltip(QWidget* parent)
     : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint)
 {
-    setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_TranslucentBackground); // to ensure fully rounded rectangle of preview tooltip
     font = QFont(QFontDatabase::applicationFontFamilies(2));
+    font.insertSubstitution("Arial", "Courier New");
     font.setPixelSize(10);
     setFont(font);
 }
@@ -22,18 +23,12 @@ void TPreviewTooltip::setContent(const QVector<QPair<int, QString>>& linesConten
     lineSpacing = fm.lineSpacing();
 
     numberWidth = 45;
-    textWidth = 250;
+    textWidth = 300; // we need fixed width of text to prevent the widget from change it's width
 
     for (const auto& line : lines) {
         // line number width
         int numW = fm.horizontalAdvance(QString::number(line.first)) + 10;
         numberWidth = std::max(numberWidth, numW);
-
-        // text width
-        QString text = line.second;
-        text.replace("\t", "    ");
-        int txtW = fm.horizontalAdvance(text);
-        textWidth = std::max(textWidth, txtW);
     }
 
     updateGeometry();
@@ -73,7 +68,6 @@ void TPreviewTooltip::paintEvent(QPaintEvent* event) {
         painter.setPen(QColor(100, 100, 100));
         painter.drawText(numRect, Qt::AlignVCenter, QString::number(line.first));
 
-        line.second.replace("\t", "    ");
         painter.setPen(QColor(200, 200, 200));
         painter.drawText(textRect, Qt::AlignVCenter, line.second);
 
@@ -271,8 +265,9 @@ void TMinimap::showPreviewTooltip(const QPoint& pos) {
         if (!block.isValid()) continue;
 
         QString line = block.text();
-        if (line.length() > 53) { // Slight bump since custom widget calculates width dynamically
-            line.truncate(50);
+        line.replace("\t", "    ");
+        if (line.length() > 60) {
+            line.truncate(57);
             line.append("...");
         }
 

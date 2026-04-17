@@ -7,7 +7,6 @@
 
 #include <QMainWindow>
 #include <QStatusBar>
-
 #include <QSplitter>
 
 
@@ -55,12 +54,17 @@ private slots:
     void findText();
     void findNextText();
     void findPrevText();
-
     void goToLine();
 
 private:
+    void setupUI();
+    void setupConnections();
+    void setupStyle();
     int needSave();
     TEditor* currentEditor();
+    // void setupTabWidget(QTabWidget* tw);
+    // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
+    // QTabWidget* getTargetTabWidget();
 
 private:
     QTabWidget *tabWidget{};
@@ -77,11 +81,12 @@ private:
     QSplitter *editorSplitter{};
     QTabWidget *consoleTabWidget{};
 
-    ProcessWorker *worker{};
+    ProcessWorker* worker{};
+    QThread* thread{};
 
     QLabel *cursorPositionLabel{};
-    QLabel *encodingLabel{};
-    QProcess *alifProcess{};
-    QProcess *currentAlifProcess{};
+    // QLabel *encodingLabel{};
+    // QProcess *alifProcess{};
+    // QProcess *currentAlifProcess{};
     SearchPanel *searchBar{};
 };
