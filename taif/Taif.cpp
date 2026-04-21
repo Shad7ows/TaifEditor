@@ -408,69 +408,31 @@ void Taif::hideFindBar() {
     }
 }
 
-void Taif::findText() {
+
+void Taif::performSearch(bool forward, bool next) {
     TEditor* editor = currentEditor();
-    if (!editor) return;
-
     QString text = searchBar->getText();
-    if (text.isEmpty()) return;
+    if (!editor or text.isEmpty()) return;
 
-    QTextDocument::FindFlags flags;
+    QTextDocument::FindFlags flags{};
     if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
+    if (!forward) flags |= QTextDocument::FindBackward;
 
-    // البحث للأمام
-    editor->moveCursor(QTextCursor::Start);
+    if (!next) editor->moveCursor(forward ? QTextCursor::Start : QTextCursor::End);
+
     bool found = editor->find(text, flags);
-
-    if (!found) {
-        // يمكن إضافة وميض أحمر أو صوت هنا ليدل على عدم العثور
-        QApplication::beep();
-    }
-}
-
-void Taif::findNextText() {
-    TEditor* editor = currentEditor();
-    if (!editor) return;
-
-    QString text = searchBar->getText();
-    if (text.isEmpty()) return;
-
-    QTextDocument::FindFlags flags;
-    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
-
-    // البحث للأمام
-    bool found = editor->find(text, flags);
-
-    if (!found) {
-        // إذا لم يجد، حاول البحث من البداية (Wrap around)
-        editor->moveCursor(QTextCursor::Start);
+    if (!found and next) {
+        editor->moveCursor(forward ? QTextCursor::Start : QTextCursor::End);
         found = editor->find(text, flags);
-        if (!found) {
-            // يمكن إضافة وميض أحمر أو صوت هنا ليدل على عدم العثور
-            QApplication::beep();
-        }
     }
+
+    if (!found) QApplication::beep();
 }
 
-void Taif::findPrevText() {
-    TEditor* editor = currentEditor();
-    if (!editor) return;
+void Taif::findText() { performSearch(true, false); }
+void Taif::findNextText() { performSearch(true, true); }
+void Taif::findPrevText() { performSearch(false, true); }
 
-    QString text = searchBar->getText();
-    if (text.isEmpty()) return;
-
-    QTextDocument::FindFlags flags = QTextDocument::FindBackward; // البحث للخلف
-    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
-
-    bool found = editor->find(text, flags);
-
-    if (!found) {
-        // Wrap around (من النهاية)
-        editor->moveCursor(QTextCursor::End);
-        found = editor->find(text, flags);
-        if (!found) QApplication::beep();
-    }
-}
 
 void Taif::toggleConsole()
 {
@@ -478,12 +440,10 @@ void Taif::toggleConsole()
     consoleTabWidget->setVisible(isVisible);
 
     if (isVisible) {
-        int totalHeight = editorSplitter->height();
         int consoleHeight = 250;
         int searchBarHeight = searchBar->isVisible() ? searchBar->height() : 0;
 
-        int editorHeight = totalHeight - consoleHeight - searchBarHeight;
-
+        int editorHeight = editorSplitter->height() - consoleHeight - searchBarHeight;
         editorSplitter->setSizes({editorHeight, 45, consoleHeight});
 
         if (QWidget* w = consoleTabWidget->currentWidget()) w->setFocus();

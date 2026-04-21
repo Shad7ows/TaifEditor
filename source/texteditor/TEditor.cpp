@@ -22,6 +22,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
     this->setLineWrapMode(QPlainTextEdit::WidgetWidth);
     this->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    this->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
     QTextDocument* editorDocument = this->document();
     QTextOption option = editorDocument->defaultTextOption();
