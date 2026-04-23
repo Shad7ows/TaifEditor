@@ -9,16 +9,8 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
 {
 
     setAttribute(Qt::WA_DeleteOnClose);
-    // ===================================================================
-    // الجزء الأول: القوائم وشريط الأدوات
-    // ===================================================================
 
-    TMenuBar *mainMenuBar = new TMenuBar(this);
-    this->setMenuBar(mainMenuBar);
-
-    // ===================================================================
-    // الجزء الثاني: بناء الواجهة المركزية
-    // ===================================================================
+    setupStyle();
 
     QWidget *centralWidget = new QWidget(this);
     QVBoxLayout *mainVLayout = new QVBoxLayout(centralWidget);
@@ -29,6 +21,7 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     logoLabel->setPixmap(QPixmap(":/icons/resources/TaifLogo.ico").scaled(90, 90, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     QVBoxLayout *textVLayout = new QVBoxLayout();
     QLabel *titleLabel = new QLabel("أهلا في محرر طيف");
+    titleLabel->setObjectName("titleLabel");
     QFont titleFont;
     QStringList NotoKufiArabicFont = QFontDatabase::applicationFontFamilies(2);
     titleFont.setFamily(NotoKufiArabicFont.at(0));
@@ -36,6 +29,7 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     titleFont.setBold(true);
     titleLabel->setFont(titleFont);
     QLabel *subtitleLabel = new QLabel("طيف - محرر لغة ألف");
+    subtitleLabel->setObjectName("titleLabel");
     textVLayout->addWidget(titleLabel);
     textVLayout->addWidget(subtitleLabel);
     headerContent->addWidget(logoLabel);
@@ -51,6 +45,7 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     QHBoxLayout *filesGroup = new QHBoxLayout();
     QVBoxLayout *filesButtons = new QVBoxLayout();
     newFileButton = new QPushButton("ملف جديد");
+    newFileButton->setObjectName("primaryButton");
     openFileButton = new QPushButton("فتح الملف");
     openFolderButton = new QPushButton("فتح المجلد");
     filesButtons->addWidget(newFileButton);
@@ -78,9 +73,6 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     sessionsGroup->addLayout(sessionsButtons);
     sessionsGroup->addWidget(noSessionsLabel);
 
-    // ===================================================================
-    //  توحيد أحجام المكونات
-    // ===================================================================
     int uniformWidth = 450;
     recentFilesList->setFixedWidth(uniformWidth);
     noSessionsLabel->setFixedWidth(uniformWidth);
@@ -92,9 +84,7 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     showOnStartupCheck->setChecked(true);
     showOnStartupCheck->setDisabled(true);
 
-    // ===================================================================
-    // الجزء الثالث: التجميع النهائي والمحاذاة للمنتصف
-    // ===================================================================
+
     mainVLayout->addStretch(1);
     QHBoxLayout *headerCenteringLayout = new QHBoxLayout();
     headerCenteringLayout->addStretch();
@@ -111,40 +101,6 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     // mainVLayout->addWidget(showOnStartupCheck, 0, Qt::AlignCenter);
     mainVLayout->addStretch(1);
 
-    // ===================================================================
-    // الجزء الرابع: تطبيق التصميم QSS (Styling)
-    // ===================================================================
-
-
-    QString styleSheet = R"(
-        QWidget {
-            background-color: #141520;
-            color: #eeeeee;
-            border-top-left-radius: 8px;
-            border-bottom-left-radius: 8px;
-        }
-        QLabel#titleLabel { color: #ffffff; }
-        QLabel { color: #eeeeee; }
-        QPushButton {
-            min-width: 70px;
-            background-color: #3a3d41; border: 1px solid #555555;
-            padding: 4px 12px; border-radius: 4px;
-        }
-        QPushButton:hover { background-color: #4f5357; }
-        QPushButton:pressed { background-color: #2a2d31; }
-        QListWidget, QLabel#sessionsBoxLabel {
-            background-color: #1e202e; border: 1px solid #555555;
-            border-radius: 8px; color: #909090;
-        }
-        TMenuBar{
-            background-color: #1e202e;
-            spacing: 5px; /* spacing between menu bar items */
-        }
-
-        QListWidget::item:hover { background-color: #2f2f3f; }
-    )";
-    this->setStyleSheet(styleSheet);
-
     this->setWindowTitle("صفحة الترحيب - محرر طيف");
     QScreen* screen = QGuiApplication::primaryScreen();
     QRect screenGeo = screen->availableGeometry();
@@ -156,16 +112,106 @@ WelcomeWindow::WelcomeWindow(QWidget *parent)
     int height = screenGeo.size().height() - margin;
     this->setGeometry(x, y, width, height);
 
-    connect(mainMenuBar, &TMenuBar::newRequested, this, &WelcomeWindow::handleNewFileRequest);
-    connect(mainMenuBar, &TMenuBar::openFileRequested, this, &WelcomeWindow::handleOpenFileRequest);
-    connect(mainMenuBar, &TMenuBar::exitRequested, this, &QWidget::close);
-
     // ربط أزرار الواجهة المركزية
     connect(newFileButton, &QPushButton::clicked, this, &WelcomeWindow::handleNewFileRequest);
     connect(openFileButton, &QPushButton::clicked, this, &WelcomeWindow::handleOpenFileRequest);
     connect(openFolderButton, &QPushButton::clicked, this, &WelcomeWindow::handleOpenFolderRequest);
     connect(recentFilesList, &QListWidget::itemDoubleClicked, this, &WelcomeWindow::onRecentFileClicked);
 }
+
+void WelcomeWindow::setupStyle() {
+    // Palette:
+    // Background: #0f172a (Deep Navy)
+    // Surface:    #1e293b (Slate Blue)
+    // Accent:     #3b82f6 (Electric Blue)
+    // Text:       #f1f5f9 (Off White)
+    // Muted:      #94a3b8 (Slate Grey)
+
+    QString styleSheet = R"(
+        /* Main Window Container */
+        QWidget {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            font-family: "Tajawal", Noto Kufi Arabic, Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* General Labels */
+        QLabel {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+        /* The Title Label - Large and Bold */
+        QLabel#titleLabel {
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+
+        /* --- Modern Buttons --- */
+        QPushButton {
+            min-width: 90px;
+            background-color: #1e293b;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+        QPushButton:hover {
+            background-color: #334155;
+            border-color: #3b82f6;
+            color: #ffffff;
+        }
+        QPushButton:pressed {
+            background-color: #0f172a;
+            color: #3b82f6;
+        }
+
+        /* Special Primary Button */
+        QPushButton#primaryButton {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+        }
+        QPushButton#primaryButton:hover {
+            background-color: #2563eb;
+        }
+
+        /* --- Sessions List --- */
+        QListWidget, QLabel#sessionsBoxLabel {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            color: #f1f5f9;
+            outline: none;
+            padding: 5px;
+            font-size: 14px;
+        }
+
+        /* Styling the items inside the list to look like cards */
+        QListWidget::item {
+            background-color: transparent;
+            color: #94a3b8;
+            padding: 8px;
+            border-radius: 8px;
+            margin: 2px 0px;
+        }
+        QListWidget::item:hover {
+            background-color: #334155;
+            color: #ffffff;
+        }
+        QListWidget::item:selected {
+            background-color: #3b82f6;
+            color: #ffffff;
+            border: 1px solid #60a5fa;
+        }
+    )";
+
+    this->setStyleSheet(styleSheet);
+}
+
 
 void WelcomeWindow::onRecentFileClicked(QListWidgetItem *item)
 {

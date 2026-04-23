@@ -36,6 +36,7 @@ int main(int argc, char *argv[])
     }
 
     // تخصيص شريط التمرير العمودي في كامل المحرر
+    // TODO: Fix the QScrollBar Background
     app.setStyleSheet(R"(
         QScrollBar:vertical {
             background: transparent;
@@ -61,7 +62,7 @@ int main(int argc, char *argv[])
 
         QScrollBar::handle:vertical:hover,
         QScrollBar::handle:horizontal:hover {
-            background: #325573;
+            background: #3b82f6;
         }
 
         QScrollBar::add-line:vertical { /* المكان الذي يحمل السهم السفلي */

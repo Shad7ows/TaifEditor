@@ -138,7 +138,7 @@ void Taif::setupUI() {
     this->setCentralWidget(mainSplitter);
 
     cursorPositionLabel = new QLabel(this);
-    cursorPositionLabel->setStyleSheet("QLabel{ color: white }");
+    cursorPositionLabel->setStyleSheet("QLabel{ color: #f1f5f9;}");
     cursorPositionLabel->setText("UTF-8  السطر: 1  العمود: 1");
     statusBar()->addPermanentWidget(cursorPositionLabel);
 }
@@ -180,163 +180,152 @@ void Taif::setupConnections() {
 void Taif::setupStyle() {
     QString styleSheet = R"(
         QMainWindow {
-            background-color: #1e202e;
-            font-size: 12px;
+            background-color: #0f172a;
+            font-size: 13px;
         }
 
         /* --- تصميم شريط القوائم --- */
         QMenuBar {
-            background-color: #1e202e; /* نفس لون الخلفية */
-            color: #cccccc;
+            background-color: #0f172a; /* نفس لون الخلفية */
+            color: #f1f5f9;
+            padding: 1px;
         }
         QMenuBar::item {
             background-color: transparent;
-            padding: 4px 10px;
+            padding: 6px 12px;
+            border-radius: 4px;
         }
         QMenuBar::item:selected {
-            background-color: #334466;
+            background-color: #1e293b;
+            color: #3b82f6;
         }
-        QMenuBar::item:pressed {
-            background-color: #007acc;
+
+        /* --- قوائم شريط القوائم --- */
+        QMenu {
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            color: #f1f5f9;
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QMenu::item {
+            background-color: transparent;
+            border-radius: 4px;
+            padding: 6px 21px 6px 18px;
+        }
+        QMenu::item:selected {
+            background-color: #3b82f6;
+            color: #ffffff;
+        }
+        QMenu::separator {
+            height: 1px;
+            background: #334155;
+            margin: 4px 8px;
         }
 
         /* --- تصميم شريط الأدوات --- */
         QToolBar {
-            background-color: #1e202e;
+            background-color: #0f172a;
             border: none;
-            /*  زيادة الحشو حول الشريط لجعله أعرض قليلاً */
-            padding: 5px;
-            spacing: 10px; /* مسافة بين كل زر والآخر */
+            padding: 6px;
+            spacing: 8px; /* مسافة بين كل زر والآخر */
         }
 
         /* تصميم أزرار شريط الأدوات */
         QToolBar QToolButton {
             background-color: transparent;
+            color: #f1f5f9;
             border: none;
-            border-radius: 6px; /* حواف دائرية ناعمة */
+            border-radius: 6px;
 
             /*  أهم جزء: تحديد حجم مربع الزر ليكون كبيراً ومربعاً */
             min-width: 40px;
             max-width: 40px;
             min-height: 40px;
             max-height: 40px;
-
-            /*  ضبط الحشو لضمان توسط الأيقونة (30px) داخل الزر (40px) */
-            /* 40 - 30 = 10، يعني 5 بكسل من كل جهة */
-            padding: 0px;
-            margin: 0px;
         }
 
         QToolBar QToolButton:hover {
-            background-color: #334466;
+            background-color: #1e293b;
         }
 
         QToolBar QToolButton:pressed {
-            background-color: #2a2d31;
+            background-color: #334155;
         }
 
         QToolBar QToolButton:checked {
-            background-color: #0078d7; /* اللون الأزرق */
+            background-color: #3b82f6; /* اللون الأزرق */
         }
 
         /* --- تصميم شجرة المسارات--- */
         QTreeView {
-            background-color: #03091A;
+            background-color: #0f172a;
             border: none;
-            color: #cccccc;
+            color: #94a3b8;
             font-size: 14px;
+            outline: none;
         }
-        QTreeView::item { padding: 3px 1px; }
+        QTreeView::item {
+            padding: 4px 2px;
+        }
+        QTreeView::item:hover {
+            background-color: #1e293b;
+            color: #f1f5f9;
+        }
+        QTreeView::item:selected {
+            background-color: #1e293b;
+            color: #3b82f6;
+        }
 
         /* --- تصميم الفاصل --- */
         QSplitter::handle {
             background-color: #094771;
             width: 1px;
         }
-        QSplitter::handle:horizontal {
-            width: 1px;
-        }
-        QSplitter::handle:vertical {
-            height: 1px;
-        }
 
         /* --- تصميم التبويبات --- */
-        QTabWidget#MainTabs::pane {
+        QTabWidget::pane {
             border: none;
-            background-color: #1e202e;
+            background-color: #0f172a;
         }
-        QTabWidget#MainTabs QTabBar { /* شريط التبويبات */
-            background-color: #1e202e;
-            font-size: 12px;
-            border: none;
+        QTabWidget QTabBar { /* شريط التبويبات */
+            background-color: #0f172a;
             qproperty-drawBase: 0;
-            margin: 0px;
-            padding: 0px;
         }
-       QTabWidget#MainTabs QTabBar::tab {
-            background: #2d2d30;
-            font-size: 12px !important;
-            color: #909090;
-            min-height: 25px;
-            padding: 0px 8px;
-            border: none;
-            border-top: 1px solid #444444;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
+       QTabWidget QTabBar::tab {
+            background: #0f172a;
+            color: #94a3b8;
+            padding: 3px 9px;
+            min-width: 100px;
         }
-       QTabWidget#MainTabs QTabBar::tab:selected {
-            background: #1e1e1e;
-            color: #ffffff;
-            border-top: 1px solid #007acc;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
+       QTabWidget QTabBar::tab:selected {
+            background: #0f172a;
+            color: #3b82f6;
+            border-bottom: 2px solid #3b82f6;
         }
-        QTabWidget#MainTabs QTabBar::tab:hover:!selected {
-            background: #3e3e42;
+        QTabWidget QTabBar::tab:hover:!selected {
+            background: #334466;
+            color: #f1f5f9;
         }
-        QTabWidget#MainTabs QTabBar::close-button {
+        QTabWidget QTabBar::close-button {
             image: url(:/icons/resources/close.svg);
             background: transparent;
-            border: none;
-            subcontrol-position: right;
-            subcontrol-origin: padding;
-            border-radius: 3px;
+            border-radius: 2px;
             padding: 1px;
-            margin-right: 2px;
-            min-width: 12px;
-            min-height: 12px;
+            margin: 0px;
         }
-        QTabWidget#MainTabs QTabBar::close-button:hover {
-            background: #334466;
+        QTabWidget QTabBar::close-button:hover {
+            background: #ef4444;
         }
 
+        /* --- Status Bar --- */
         QStatusBar {
-            background-color: #333333;
-            color: #cccccc;
-            // border-top: 1px solid #4f4f4f;
-            font-size: 6pt;
+            background-color: #0f172a;
+            color: #64748b;
+            border-top: 1px solid #1e293b;
+            font-size: 11px;
+            padding-left: 10px;
         }
-
-        QMenu {
-            background-color: #252526;
-            border: 1px solid #454545;
-            color: #cccccc;
-            padding: 5px 0;
-        }
-        QMenu::item {
-            background-color: transparent;
-            padding: 5px 20px 5px 20px;
-        }
-        QMenu::item:selected {
-            background-color: #094771;
-            color: #ffffff;
-        }
-        QMenu::separator {
-            height: 1px;
-            background: #454545;
-            margin: 4px 0px;
-        }
-
     )";
     setStyleSheet(styleSheet);
 }
@@ -851,20 +840,6 @@ void Taif::runAlif() {
         if (tab->objectName() == "interactiveConsole")
             console = qobject_cast<TConsole*>(tab);
     }
-    consoleTabWidget->setStyleSheet(R"(
-    QTabBar::tab {
-            background: transparent;
-            color: white;
-            border-top: 1px solid #30B5FF;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
-            min-width: 12ex;
-            padding: 2px;
-        }
-    QTabBar::tab:selected, QTabBar::tab:hover {
-        background: #006EAB;
-    }
-    )");
 
     if (!console) {
         console = new TConsole(this);
@@ -1018,7 +993,7 @@ void Taif::aboutTaif() {
         يجب قراءة الرخصة جيداً قبل البدأ بإستخدام المحرر
                                     )"
                           );
-
+    // TODO: Fix This Dialog Style
     messageDialog.setStyleSheet("background: #03091A; color: white");
 
     messageDialog.exec();

@@ -22,8 +22,6 @@ public:
 
     QVector<std::shared_ptr<SyntaxTheme>> getAvailableThemes() const;
 
-    // TODO: add getFontCombo() and getFontSpin() to use it to save the settings values
-    // instade of using the editor current values to save the values
     QComboBox *getThemeCombo() const;
     void setThemes();
 
@@ -37,6 +35,8 @@ signals:
 
 
 private:
+    void setupStyling();
+    void setCategoryActive(TFlatButton* category, bool active);
     void switchPage();
     void createCategory(const QString&, const QString&);
     void createAppearancePage(QVBoxLayout*);

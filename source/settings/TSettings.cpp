@@ -4,7 +4,7 @@ TSettings::TSettings(QWidget* parent) : QWidget(parent) {
     setWindowTitle("الإعدادات");
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
     setMinimumSize(800, 600);
-    setStyleSheet("color: #dddddd; background-color: #1e202e;");
+    setupStyling();
 
     // Layout setup
     QHBoxLayout* mainLayout = new QHBoxLayout();
@@ -23,7 +23,7 @@ TSettings::TSettings(QWidget* parent) : QWidget(parent) {
     optionsLayout->setSpacing(0);
 
     QWidget* optionsWidget = new QWidget();
-    optionsWidget->setStyleSheet(".QWidget { border-left-width: 3px; border-left-style: ridge; border-left-color: #1e202f; }");
+    optionsWidget->setObjectName("optionsWidget");
     optionsWidget->setLayout(optionsLayout);
     optionsWidget->setMinimumWidth(200);
     optionsWidget->setMaximumWidth(300);
@@ -40,6 +40,145 @@ TSettings::TSettings(QWidget* parent) : QWidget(parent) {
     setLayout(mainLayout);
 }
 
+// TODO: Fix Active Buttons
+void TSettings::setupStyling() {
+    // Theme Palette
+    // Background: #0f172a | Surface: #1e293b
+    // Accent: #3b82f6 | Text: #f1f5f9 | Muted: #94a3b8
+
+    QString mainStyle = R"(
+        /* --- Main Dialog Background --- */
+        QWidget {
+            background-color: #0f172a;
+            color: #f1f5f9;
+            font-family: "Tajawal", Noto Kufi Arabic, Helvetica, Arial, sans-serif;
+        }
+
+        /* --- Sidebar / Options Container --- */
+        QWidget#optionsWidget {
+            background-color: #0f172a;
+            border-left: 3px solid #1e293b;
+        }
+
+        /* --- Category Labels/Buttons --- */
+        QLabel#categoryLabel {
+            color: #94a3b8;
+            font-size: 14px;
+            padding: 8px;
+            background: transparent;
+        }
+        /* This class will be toggled via C++ */
+        QLabel#categoryLabel[active="true"] {
+            color: #3b82f6;
+            font-weight: bold;
+            background-color: #1e293b;
+            border-radius: 4px;
+        }
+
+        /* Description Text */
+        QLabel#descLabel {
+            color: #64748b;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        /* Modern GroupBoxes */
+        QGroupBox {
+            background-color: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            margin-top: 2.0ex;
+            font-weight: bold;
+            color: #f1f5f9;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 12px;
+            padding: 0 5px;
+            color: #f1f5f9;
+        }
+
+        /* --- Inputs inside GroupBoxes --- */
+        QLineEdit, QComboBox, QSpinBox {
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 5px 10px;
+            background-color: #0f172a;
+            selection-background-color: #339af0;
+            color: #f1f5f9;
+            font-size: 13px;
+        }
+
+        /* Hover effect */
+        QLineEdit:hover, QComboBox:hover, QSpinBox:hover {
+            border: 1px solid #339af0;
+        }
+
+        /* Focus effect (Modern blue outline) */
+        QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
+            border: 1px solid #339af0;
+        }
+
+        /* --- QComboBox Specifics --- */
+        QComboBox::drop-down {
+            subcontrol-origin: padding;
+            subcontrol-position: top right;
+            width: 25px;
+            border-left-width: 0px; /* Removes the internal line */
+            border-top-right-radius: 6px;
+            border-bottom-right-radius: 6px;
+        }
+
+        QComboBox::down-arrow {
+            image: url(:/icons/resources/chevron-down.svg);
+            width: 18px;
+            height: 18px;
+        }
+
+        /* The dropdown menu list */
+        QComboBox QAbstractItemView {
+            border: 1px solid #339af0;
+            border-radius: 6px;
+            background-color: #0f172a;
+            selection-background-color: #1e293b;
+            selection-color: #1c7ed6;
+            outline: none;
+        }
+
+        /* QSpinBox Specifics */
+        QSpinBox::up-button, QSpinBox::down-button {
+            width: 20px;
+            border-radius: 3px;
+            background-color: #0f172a;
+        }
+
+        QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+            background-color: #1e293b;
+        }
+
+        QSpinBox::up-arrow {
+            image: url(:/icons/resources/chevron-up.svg);
+            width: 16px;
+        }
+        QSpinBox::down-arrow {
+            image: url(:/icons/resources/chevron-down.svg);
+            width: 16px;
+        }
+    )";
+
+    this->setStyleSheet(mainStyle);
+}
+
+void TSettings::setCategoryActive(TFlatButton* category, bool active) {
+    category->setProperty("active", active);
+
+    // IMPORTANT: In Qt, you must polish the widget to refresh the style
+    // after changing a dynamic property
+    category->style()->unpolish(category);
+    category->style()->polish(category);
+    category->update();
+}
 
 void TSettings::closeEvent(QCloseEvent* event) {
     QSettings settings("Alif", "Taif");
@@ -61,10 +200,9 @@ void TSettings::switchPage() {
 
         // Update button states
         for (TFlatButton* category : categories) {
+            category->setObjectName("categoryLabel");
             bool active = (category == btn);
-            category->setStyleSheet(active ?
-                                        "font-weight: bold; color: #10a8f4;" :
-                                        "");
+            setCategoryActive(category, active);
         }
     }
 }
@@ -86,7 +224,8 @@ void TSettings::createCategory(const QString& name, const QString& description) 
     // Add description label
     QLabel* descLabel = new QLabel(description);
     descLabel->setWordWrap(true);
-    descLabel->setStyleSheet("color: #888; margin-bottom: 20px;");
+    // descLabel->setStyleSheet("color: #888; margin-bottom: 20px;");
+    descLabel->setObjectName("descLabel");
     pageLayout->addWidget(descLabel);
 
     // Add category-specific content
@@ -105,8 +244,7 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
 
     // ================== Font selection ==================
     QGroupBox* fontGroup = new QGroupBox("الخط");
-    fontGroup->setStyleSheet("QGroupBox { border: 1px solid gray; border-radius: 6px; margin-top: 2.0ex;}"
-                             " QGroupBox::title { subcontrol-origin: margin; padding: 0 2px; left: 10px; }");
+    fontGroup->setObjectName("fontGroup");
     QVBoxLayout* fontLayout = new QVBoxLayout(fontGroup);
     QFormLayout* fontSizeLayout = new QFormLayout();
     QFormLayout* fontFamilyLayout = new QFormLayout();
@@ -153,8 +291,7 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
 
     // ================== Themes ==================
     QGroupBox* themeGroup = new QGroupBox("المظهر");
-    themeGroup->setStyleSheet("QGroupBox { border: 1px solid gray; border-radius: 6px; margin-top: 2.0ex;}"
-                             " QGroupBox::title { subcontrol-origin: margin; padding: 0 2px; left: 10px; }");
+    themeGroup->setObjectName("themeGroup");
     QVBoxLayout* themeLayout = new QVBoxLayout(themeGroup);
     QFormLayout* comboLayout = new QFormLayout();
 

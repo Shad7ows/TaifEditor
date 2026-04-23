@@ -21,5 +21,7 @@
         <file>resources/run.svg</file>
         <file>resources/left-arrow.png</file>
         <file>resources/right-arrow.png</file>
+        <file>resources/chevron-down.svg</file>
+        <file>resources/chevron-up.svg</file>
     </qresource>
 </RCC>

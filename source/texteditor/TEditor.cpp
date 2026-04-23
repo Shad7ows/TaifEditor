@@ -15,7 +15,7 @@
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setAcceptDrops(true);
-    this->setStyleSheet("QPlainTextEdit { background-color: #141520; color: #cccccc; }");
+    this->setStyleSheet("QPlainTextEdit { background-color: #141520; color: #dddddd; }");
 
     // set tab distance
     UpdateTabStopDistance(font());
@@ -286,14 +286,6 @@ void TEditor::contextMenuEvent(QContextMenuEvent *event)
     duplicateAction->setShortcut(QKeySequence("Ctrl+D"));
     connect(duplicateAction, &QAction::triggered, this, &TEditor::duplicateLine);
     menu->addAction(duplicateAction);
-
-
-    menu->setStyleSheet(
-        "QMenu { background-color: #252526; color: #cccccc; border: 1px solid #454545; }"
-        "QMenu::item { padding: 5px 20px; background-color: transparent; }"
-        "QMenu::item:selected { background-color: #094771; color: #ffffff; }"
-        "QMenu::separator { height: 1px; background: #454545; margin: 5px 0; }"
-        );
 
     menu->exec(event->globalPos());
 
