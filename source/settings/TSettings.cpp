@@ -226,7 +226,6 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
 
     // ================== Font selection ==================
     QGroupBox* fontGroup = new QGroupBox("الخط");
-    fontGroup->setObjectName("fontGroup");
     QVBoxLayout* fontLayout = new QVBoxLayout(fontGroup);
     QFormLayout* fontSizeLayout = new QFormLayout();
     QFormLayout* fontFamilyLayout = new QFormLayout();
@@ -273,7 +272,6 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
 
     // ================== Themes ==================
     QGroupBox* themeGroup = new QGroupBox("المظهر");
-    themeGroup->setObjectName("themeGroup");
     QVBoxLayout* themeLayout = new QVBoxLayout(themeGroup);
     QFormLayout* comboLayout = new QFormLayout();
 

@@ -117,9 +117,9 @@ void Taif::setupUI() {
 
     TConsole *cmdConsole = new TConsole(this);
 #if defined(Q_OS_LINUX)
-    terminalName = "طرفية (Bash)";
+    QString terminalName = "طرفية (Bash)";
 #elif defined(Q_OS_MACOS)
-    terminalName = "طرفية (Zsh)";
+    QString terminalName = "طرفية (Zsh)";
 #else
     QString terminalName = "طرفية (CMD)";
 #endif
@@ -186,6 +186,7 @@ void Taif::setupStyle() {
 
         /* --- تصميم شريط القوائم --- */
         QMenuBar {
+            font-family: "Tajawal", "Noto Kufi Arabic";
             background-color: #0f172a;
             color: #f1f5f9;
             padding: 3px;
@@ -203,6 +204,7 @@ void Taif::setupStyle() {
 
         /* --- قوائم شريط القوائم --- */
         QMenu {
+            font-family: "Tajawal", "Noto Kufi Arabic";
             background-color: #1e293b;
             border: 1px solid #334155;
             color: #f1f5f9;
@@ -994,7 +996,7 @@ void Taif::aboutTaif() {
         يجب قراءة الرخصة جيداً قبل البدأ بإستخدام المحرر
                                     )"
                           );
-    messageDialog.setStyleSheet("background: #1e293b; color: #f1f5f9");
+    messageDialog.setStyleSheet("background: #1e293b; color: #f1f5f9; font-family: 'Tajawal', 'Noto Kufi Arabic';");
 
     messageDialog.exec();
 }
