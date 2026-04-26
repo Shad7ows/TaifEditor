@@ -23,5 +23,7 @@
         <file>resources/right-arrow.png</file>
         <file>resources/chevron-down.svg</file>
         <file>resources/chevron-up.svg</file>
+        <file>resources/pencil-ruler.svg</file>
+        <file>resources/settings.svg</file>
     </qresource>
 </RCC>

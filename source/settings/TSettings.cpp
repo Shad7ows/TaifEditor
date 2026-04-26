@@ -4,107 +4,148 @@ TSettings::TSettings(QWidget* parent) : QWidget(parent) {
     setWindowTitle("الإعدادات");
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
     setMinimumSize(800, 600);
+    setLayoutDirection(Qt::RightToLeft);
+
+    setupLayout();
     setupStyling();
-
-    // Layout setup
-    QHBoxLayout* mainLayout = new QHBoxLayout();
-    QVBoxLayout* mainPropertyLayout = new QVBoxLayout();
-    optionsLayout = new QVBoxLayout();
-    QHBoxLayout* buttonLayout = new QHBoxLayout();
-
-    stackedWidget = new QStackedWidget();
-
-    createCategory("المحرر", "إعدادات مظهر المحرر");
-    // createCategory("متقدم", "الإعداد المتقدمة");
-
-
-    optionsLayout->setAlignment(Qt::AlignTop);
-    optionsLayout->setContentsMargins(0, 0, 0, 0);
-    optionsLayout->setSpacing(0);
-
-    QWidget* optionsWidget = new QWidget();
-    optionsWidget->setObjectName("optionsWidget");
-    optionsWidget->setLayout(optionsLayout);
-    optionsWidget->setMinimumWidth(200);
-    optionsWidget->setMaximumWidth(300);
-
-    QWidget* propertyWidget = new QWidget();
-    propertyWidget->setLayout(mainPropertyLayout);
-    propertyWidget->setMinimumWidth(400);
-
-    mainLayout->addWidget(optionsWidget);
-    mainLayout->addWidget(stackedWidget);
-
-    mainPropertyLayout->addLayout(buttonLayout);
-
-    setLayout(mainLayout);
 }
 
-// TODO: Fix Active Buttons
-void TSettings::setupStyling() {
-    // Theme Palette
-    // Background: #0f172a | Surface: #1e293b
-    // Accent: #3b82f6 | Text: #f1f5f9 | Muted: #94a3b8
+void TSettings::setupLayout() {
+    QHBoxLayout* mainLayout = new QHBoxLayout(this);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setSpacing(0);
 
-    QString mainStyle = R"(
-        /* --- Main Dialog Background --- */
+    // Sidebar
+    sidebar = new QListWidget();
+    sidebar->setObjectName("sidebar");
+    sidebar->setFixedWidth(260);
+    sidebar->setSpacing(5);
+    sidebar->setFrameShape(QFrame::NoFrame);
+
+    // Content Area
+    stackedWidget = new QStackedWidget();
+    stackedWidget->setObjectName("contentArea");
+
+    // Connect Sidebar to StackedWidget
+    connect(sidebar, &QListWidget::currentRowChanged, stackedWidget, &QStackedWidget::setCurrentIndex);
+
+    // Build Pages
+    addSettingPage("المحرر", "إعدادات مظهر المحرر", ":/icons/resources/pencil-ruler.svg");
+    addSettingPage("متقدم", "خيارات النظام المتقدمة", ":/icons/resources/settings.svg");
+
+    mainLayout->addWidget(sidebar);
+    mainLayout->addWidget(stackedWidget);
+
+    // Default to first page
+    sidebar->setCurrentRow(0);
+}
+
+void TSettings::addSettingPage(const QString& name, const QString& description, const QString& iconPath) {
+    // Create List Item
+    QListWidgetItem* item = new QListWidgetItem(sidebar);
+    item->setText(name);
+    item->setIcon(QIcon(iconPath));
+    item->setSizeHint(QSize(0, 50));
+    item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+
+    // Create Page
+    QWidget* page = new QWidget();
+    QVBoxLayout* pageLayout = new QVBoxLayout(page);
+    pageLayout->setContentsMargins(30, 30, 30, 30);
+    pageLayout->setAlignment(Qt::AlignTop);
+
+    QLabel* descLabel = new QLabel(description);
+    descLabel->setObjectName("descLabel");
+    pageLayout->addWidget(descLabel);
+
+    if (name == "المحرر") {
+        createAppearancePage(pageLayout);
+    }
+
+    stackedWidget->addWidget(page);
+}
+
+void TSettings::setupStyling() {
+    QString style = R"(
+        /*  Theme Palette
+            Background: #0f172a | Surface: #1e293b
+            Accent: #3b82f6 | Text: #f1f5f9 | Muted: #94a3b8
+        */
+
+        /* Main Container */
         QWidget {
             background-color: #0f172a;
             color: #f1f5f9;
-            font-family: "Tajawal", Noto Kufi Arabic, Helvetica, Arial, sans-serif;
+            font-family: "Tajawal", "Noto Kufi Arabic", "Segoe UI", sans-serif;
         }
 
-        /* --- Sidebar / Options Container --- */
-        QWidget#optionsWidget {
-            background-color: #0f172a;
-            border-left: 3px solid #1e293b;
+        /* Sidebar Styling */
+        QListWidget#sidebar {
+            background-color: #1e293b;
+            border-left: 3px double #334155;
+            padding-top: 10px;
+            outline: none;
+            font-size: 18px;
         }
 
-        /* --- Category Labels/Buttons --- */
-        QLabel#categoryLabel {
+        /* The "Buttons" (List Items) */
+        QListWidget#sidebar::item {
             color: #94a3b8;
-            font-size: 14px;
-            padding: 8px;
-            background: transparent;
+            padding-right: 5px;
+            border-right: 4px solid transparent;
+            margin: 2px 0px;
         }
-        /* This class will be toggled via C++ */
-        QLabel#categoryLabel[active="true"] {
+
+        QListWidget#sidebar::item:hover {
+            background-color: #334155;
+            color: #f1f5f9;
+            border-radius: 8px;
+        }
+
+        /* The Active/Selected State */
+        QListWidget#sidebar::item:selected {
             color: #3b82f6;
             font-weight: bold;
-            background-color: #1e293b;
-            border-radius: 4px;
+            border-right: 4px solid #3b82f6;
+            border-radius: 0px;
         }
 
-        /* Description Text */
+        /* Content Area Background */
+        QStackedWidget#contentArea {
+            background-color: #0f172a;
+        }
+
         QLabel#descLabel {
             color: #64748b;
-            font-size: 16px;
-            margin-bottom: 20px;
+            font-size: 21px;
+            margin-bottom: 15px;
         }
 
-        /* Modern GroupBoxes */
+        /* Group Boxes */
         QGroupBox {
-            background-color: #0f172a;
+            background-color: #1e293b;
             border: 1px solid #334155;
             border-radius: 8px;
-            margin-top: 2.0ex;
-            font-weight: bold;
-            color: #f1f5f9;
+            margin-top: 25px;
+            padding-top: 15px;
         }
         QGroupBox::title {
             subcontrol-origin: margin;
             subcontrol-position: top left;
-            left: 12px;
-            padding: 0 5px;
-            color: #f1f5f9;
+            left: 20px;
+            color: #3b82f6;
         }
 
-        /* --- Inputs inside GroupBoxes --- */
-        QLineEdit, QComboBox, QSpinBox {
+        /* --- Inputs --- */
+        QGroupBox QLabel {
+            background-color: #1e293b;
+        }
+
+        QLineEdit, QComboBox, QSpinBox{
             border: 1px solid #334155;
             border-radius: 6px;
             padding: 5px 10px;
-            background-color: #0f172a;
+            background-color: #1e293b;
             selection-background-color: #339af0;
             color: #f1f5f9;
             font-size: 13px;
@@ -122,16 +163,17 @@ void TSettings::setupStyling() {
 
         /* --- QComboBox Specifics --- */
         QComboBox::drop-down {
+            background-color: #1e293b;
             subcontrol-origin: padding;
             subcontrol-position: top right;
             width: 25px;
             border-left-width: 0px; /* Removes the internal line */
-            border-top-right-radius: 6px;
-            border-bottom-right-radius: 6px;
+            border-radius: 6px;
         }
 
         QComboBox::down-arrow {
             image: url(:/icons/resources/chevron-down.svg);
+            border-radius: 6px;
             width: 18px;
             height: 18px;
         }
@@ -140,8 +182,8 @@ void TSettings::setupStyling() {
         QComboBox QAbstractItemView {
             border: 1px solid #339af0;
             border-radius: 6px;
-            background-color: #0f172a;
-            selection-background-color: #1e293b;
+            background-color: #1e293b;
+            selection-background-color: #0f172a;
             selection-color: #1c7ed6;
             outline: none;
         }
@@ -149,12 +191,12 @@ void TSettings::setupStyling() {
         /* QSpinBox Specifics */
         QSpinBox::up-button, QSpinBox::down-button {
             width: 20px;
-            border-radius: 3px;
-            background-color: #0f172a;
+            border-radius: 6px;
+            background-color: #1e293b;
         }
 
         QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-            background-color: #1e293b;
+            background-color: #1c7ed6;
         }
 
         QSpinBox::up-arrow {
@@ -167,17 +209,7 @@ void TSettings::setupStyling() {
         }
     )";
 
-    this->setStyleSheet(mainStyle);
-}
-
-void TSettings::setCategoryActive(TFlatButton* category, bool active) {
-    category->setProperty("active", active);
-
-    // IMPORTANT: In Qt, you must polish the widget to refresh the style
-    // after changing a dynamic property
-    category->style()->unpolish(category);
-    category->style()->polish(category);
-    category->update();
+    this->setStyleSheet(style);
 }
 
 void TSettings::closeEvent(QCloseEvent* event) {
@@ -187,57 +219,7 @@ void TSettings::closeEvent(QCloseEvent* event) {
     settings.setValue("editorCodeTheme", themeCombo->currentIndex());
     settings.sync();
 
-    // emit windowClosed();
-    // event->accept();
-}
-
-
-void TSettings::switchPage() {
-    TFlatButton* btn = qobject_cast<TFlatButton*>(sender());
-    if (btn) {
-        int index = btn->property("pageIndex").toInt();
-        stackedWidget->setCurrentIndex(index);
-
-        // Update button states
-        for (TFlatButton* category : categories) {
-            category->setObjectName("categoryLabel");
-            bool active = (category == btn);
-            setCategoryActive(category, active);
-        }
-    }
-}
-
-void TSettings::createCategory(const QString& name, const QString& description) {
-    // Create and configure button
-    TFlatButton* btn = new TFlatButton(this, name);
-    btn->setProperty("pageIndex", categories.size());
-    connect(btn, &QPushButton::clicked, this, &TSettings::switchPage);
-
-    // Add button to left panel
-    optionsLayout->addWidget(btn);
-
-    // Create settings page
-    QWidget* page = new QWidget;
-    QVBoxLayout* pageLayout = new QVBoxLayout(page);
-    pageLayout->setAlignment(Qt::AlignTop);
-
-    // Add description label
-    QLabel* descLabel = new QLabel(description);
-    descLabel->setWordWrap(true);
-    // descLabel->setStyleSheet("color: #888; margin-bottom: 20px;");
-    descLabel->setObjectName("descLabel");
-    pageLayout->addWidget(descLabel);
-
-    // Add category-specific content
-    if (name == "المحرر") {
-        createAppearancePage(pageLayout);
-    } else if (name == "متقدم") {
-        // createFontsPage(pageLayout);
-    }
-
-    // Add page to stacked widget
-    stackedWidget->addWidget(page);
-    categories.append(btn);
+    event->accept();
 }
 
 void TSettings::createAppearancePage(QVBoxLayout* layout) {
@@ -316,8 +298,8 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
 
 
 
-
     layout->addWidget(fontGroup);
+    layout->setSpacing(30);
     layout->addWidget(themeGroup);
 }
 

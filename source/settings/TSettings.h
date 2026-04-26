@@ -14,6 +14,7 @@
 #include <QSpinBox>
 #include <QFontDatabase>
 #include <QFormLayout>
+#include <QListWidget>
 
 class TSettings : public QWidget {
     Q_OBJECT
@@ -35,15 +36,13 @@ signals:
 
 
 private:
+    void setupLayout();
     void setupStyling();
-    void setCategoryActive(TFlatButton* category, bool active);
-    void switchPage();
-    void createCategory(const QString&, const QString&);
+    void addSettingPage(const QString& name, const QString& description, const QString& iconPath);
     void createAppearancePage(QVBoxLayout*);
 
-    QVBoxLayout* optionsLayout{};
     QStackedWidget* stackedWidget{};
-    QList<TFlatButton*> categories{};
+    QListWidget* sidebar;
 
     QSpinBox* fontSpin{};
     QComboBox* fontCombo{};
