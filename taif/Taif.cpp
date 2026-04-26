@@ -993,8 +993,7 @@ void Taif::aboutTaif() {
         يجب قراءة الرخصة جيداً قبل البدأ بإستخدام المحرر
                                     )"
                           );
-    // TODO: Fix This Dialog Style
-    messageDialog.setStyleSheet("background: #03091A; color: white");
+    messageDialog.setStyleSheet("background: #1e293b; color: #f1f5f9");
 
     messageDialog.exec();
 }
