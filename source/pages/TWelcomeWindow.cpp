@@ -135,6 +135,11 @@ void WelcomeWindow::setupStyle() {
             font-family: "Tajawal", Noto Kufi Arabic, Roboto, Helvetica, Arial, sans-serif;
         }
 
+        /* very important for QScrollBar background */
+        QListWidget QWidget {
+            background-color: #1e293b;
+        }
+
         /* General Labels */
         QLabel {
             color: #94a3b8;

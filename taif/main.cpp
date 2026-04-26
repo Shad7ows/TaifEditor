@@ -36,7 +36,6 @@ int main(int argc, char *argv[])
     }
 
     // تخصيص شريط التمرير العمودي في كامل المحرر
-    // TODO: Fix the QScrollBar Background
     app.setStyleSheet(R"(
         QScrollBar:vertical {
             background: transparent;
