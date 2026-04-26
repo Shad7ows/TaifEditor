@@ -186,9 +186,10 @@ void Taif::setupStyle() {
 
         /* --- تصميم شريط القوائم --- */
         QMenuBar {
-            background-color: #0f172a; /* نفس لون الخلفية */
+            background-color: #0f172a;
             color: #f1f5f9;
-            padding: 1px;
+            padding: 3px;
+            font-size: 14px;
         }
         QMenuBar::item {
             background-color: transparent;
