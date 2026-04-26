@@ -1,5 +1,7 @@
 #include "TSettings.h"
 
+#include <QStyledItemDelegate>
+
 TSettings::TSettings(QWidget* parent) : QWidget(parent) {
     setWindowTitle("الإعدادات");
     setWindowFlags(Qt::Window | Qt::WindowCloseButtonHint);
@@ -151,6 +153,28 @@ void TSettings::setupStyling() {
             font-size: 13px;
         }
 
+        /* The dropdown menu list */
+        QComboBox QAbstractItemView {
+            border: 1px solid #339af0;
+            border-radius: 6px;
+            background-color: #1e293b;
+            outline: none;
+            padding: 4px;
+        }
+        QComboBox QAbstractItemView::item {
+            color: #f1f5f9;
+            background-color: transparent;
+            padding: 8px 10px;
+            min-height: 24px;
+            border-radius: 6px;
+            margin-bottom: 2px;
+        }
+        QComboBox QAbstractItemView::item:hover,
+        QComboBox QAbstractItemView::item:selected {
+            background-color: #334155;
+            color: #3b82f6;
+        }
+
         /* Hover effect */
         QLineEdit:hover, QComboBox:hover, QSpinBox:hover {
             border: 1px solid #339af0;
@@ -176,16 +200,6 @@ void TSettings::setupStyling() {
             border-radius: 6px;
             width: 18px;
             height: 18px;
-        }
-
-        /* The dropdown menu list */
-        QComboBox QAbstractItemView {
-            border: 1px solid #339af0;
-            border-radius: 6px;
-            background-color: #1e293b;
-            selection-background-color: #0f172a;
-            selection-color: #1c7ed6;
-            outline: none;
         }
 
         /* QSpinBox Specifics */
@@ -244,6 +258,7 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
 
 
     fontCombo = new QComboBox();
+    fontCombo->setItemDelegate(new QStyledItemDelegate(fontCombo)); // important for drop-down list styling
     fontCombo->setEditable(true);
     fontCombo->setInsertPolicy(QComboBox::NoInsert);
     fontCombo->setMinimumHeight(40);
@@ -276,6 +291,8 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     QFormLayout* comboLayout = new QFormLayout();
 
     themeCombo = new QComboBox();
+    themeCombo->setItemDelegate(new QStyledItemDelegate(themeCombo)); // important for drop-down list styling
+    themeCombo->setEditable(true);
     themeCombo->setInsertPolicy(QComboBox::NoInsert);
     themeCombo->setMinimumHeight(40);
     themeCombo->setMaximumWidth(250);
