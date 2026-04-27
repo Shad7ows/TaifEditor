@@ -142,15 +142,6 @@ void TConsole::processFinished(int code, QProcess::ExitStatus status)
 void TConsole::onInputReturn()
 {
     QString cmd = m_input->text();
-    if (cmd.isEmpty()) {
-        if (m_process->state() != QProcess::NotRunning) {
-#if defined(Q_OS_WIN)
-            m_process->write("\r\n");
-#else
-            m_process->write("\n");
-#endif
-        }
-    }
 
     if (m_history.isEmpty() || m_history.last() != cmd) {
         m_history.append(cmd);
