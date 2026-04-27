@@ -19,15 +19,20 @@ int main(int argc, char *argv[])
     int fontId1 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/Tajawal/Tajawal-Regular.ttf");
     int fontId2 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/KawkabMono-Regular.ttf");
     int fontId3 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/NotoKufiArabic-Regular.ttf");
-    if(fontId1 == -1 or fontId2 == -1 or fontId3 == -1) {
+    int fontId4 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/Alaq-Halab.otf");
+    int fontId5 = QFontDatabase::addApplicationFont(":/fonts/resources/fonts/Hasubi-Mono.ttf");
+    if(fontId1 == -1 or fontId2 == -1 or
+        fontId3 == -1 or fontId4 == -1 or fontId5 == -1) {
         qWarning() << "لم يستطع تحميل الخط";
     } else {
         QString tajawal = QFontDatabase::applicationFontFamilies(fontId1).at(0);
         QString kawkabMono = QFontDatabase::applicationFontFamilies(fontId2).at(0);
         QString notoKufi = QFontDatabase::applicationFontFamilies(fontId3).at(0);
+        QString alaqHalab = QFontDatabase::applicationFontFamilies(fontId4).at(0);
+        QString hasubiMono = QFontDatabase::applicationFontFamilies(fontId5).at(0);
         QFont font{};
         QStringList fontFamilies{};
-        fontFamilies << notoKufi << tajawal << kawkabMono;
+        fontFamilies << notoKufi << tajawal << kawkabMono << alaqHalab << hasubiMono;
         font.setFamilies(fontFamilies);
         font.setPixelSize(14);
         font.setWeight(QFont::Weight::Normal);

@@ -904,7 +904,7 @@ void Taif::runAlif() {
     }
     console->clear();
     console->appendPlainTextThreadSafe("🚀 بدء تشغيل ملف ألف...\n");
-    console->appendPlainTextThreadSafe("📄 الملف: " + QFileInfo(filePath).fileName() + "\n");
+    console->appendPlainTextThreadSafe("📄 الملف: " + QFileInfo(filePath).fileName() + "\n\n");
 
     worker = new ProcessWorker(program, args, workingDir);
     QThread *thread = new QThread();

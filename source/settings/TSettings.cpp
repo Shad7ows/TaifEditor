@@ -265,13 +265,11 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     fontCombo->setMaximumWidth(200);
 
     QStringList fontFamilies{};
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 5; i++) {
         QStringList font = QFontDatabase::applicationFontFamilies(i);
         fontFamilies.append(font.at(0));
     }
 
-    // QStringList fontFamilies = QFontDatabase::families();
-    // fontFamilies.sort(Qt::CaseInsensitive);
     // Add fonts to combobox
     foreach (const QString &family, fontFamilies) {
         fontCombo->addItem(family);

@@ -29,7 +29,12 @@ TConsole::TConsole(QWidget *parent)
     m_output->setFont(f);
     m_input->setFont(f);
 
-    setStyleSheet("QWidget {background-color: #03091A; color: #DEE8FF;}");
+    setStyleSheet(R"(
+        QWidget {
+            background-color: #03091A;
+            color: #DEE8FF;
+        }
+)");
 
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(0,0,0,0);
