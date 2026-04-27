@@ -125,7 +125,6 @@ private:
     bool m_autoscroll{};
 
     // helpers
-    void appendOutput(const QString &text); // needs to run in GUI thread
     QString ansiToHtmlFragment(const QString &chunk); // simple ansi -> html/text formatting
     bool eventFilter(QObject *obj, QEvent *ev) override;
 

@@ -49,7 +49,7 @@ TConsole::TConsole(QWidget *parent)
 
     m_input->installEventFilter(this);
 
-    m_flushTimer->setInterval(25);
+    m_flushTimer->setInterval(10);
     connect(m_flushTimer, &QTimer::timeout, this, &TConsole::flushPending);
     m_flushTimer->start();
 }
@@ -110,24 +110,20 @@ void TConsole::setConsoleRTL()
 void TConsole::appendPlainTextThreadSafe(const QString &text)
 {
     QMutexLocker locker(&m_pendingMutex);
-    QStringList parts = text.split('\n');
-    for (QString s : parts) {
-        if (s.endsWith('\r')) s.chop(1);
-        m_pending.append(s);
-    }
+    m_pending.append(text);
     locker.unlock();
 }
 
 void TConsole::processStdout()
 {
     QByteArray d = m_process->readAllStandardOutput();
+    QString s;
 #if defined(Q_OS_WIN)
-    QString s = QString::fromLocal8Bit(d);
+    s = QString::fromLocal8Bit(d);
 #else
-    QString s = QString::fromUtf8(d); // لينكس يستخدم UTF-8
+    s = QString::fromUtf8(d);
 #endif
     appendPlainTextThreadSafe(s);
-
 }
 
 void TConsole::processStderr()
@@ -140,7 +136,7 @@ void TConsole::processStderr()
 void TConsole::processFinished(int code, QProcess::ExitStatus status)
 {
     Q_UNUSED(status);
-    appendPlainTextThreadSafe(QString("\n[Process finished with code %1]\n").arg(code));
+    appendPlainTextThreadSafe(QString("\n[العملية إنتهت بالرمز %1]\n").arg(code));
 }
 
 void TConsole::onInputReturn()
@@ -162,7 +158,6 @@ void TConsole::onInputReturn()
     m_historyIndex = -1;
 
 // echo the command locally (like terminal)
-// appendPlainTextThreadSafe(cmd + "\n");
 #if defined(Q_OS_WIN)
     appendPlainTextThreadSafe(cmd + "\n");
 #endif
@@ -191,91 +186,45 @@ void TConsole::flushPending() {
         m_pending.clear();
     }
 
-    for (const QString &line : items) {
-        m_buffer.append(line);
+    // Ensure we have at least one empty line to work with
+    if (m_buffer.isEmpty()) {
+        m_buffer.append("");
     }
-    while (m_buffer.size() > m_maxLines)
-        m_buffer.pop_front();
 
-    m_output->setPlainText(m_buffer.join("\n"));
+    for (const QString &chunk : items) {
+        for (int i = 0; i < chunk.length(); ++i) {
+            QChar c = chunk[i];
 
-    if (m_autoscroll) {
-        QScrollBar *sb = m_output->verticalScrollBar();
-        sb->setValue(sb->maximum());
-    }
-}
-
-void TConsole::appendOutput(const QString &text)
-{
-    static QRegularExpression re("\x1B\\[([0-9;]+)m");
-    int pos = 0;
-    QRegularExpressionMatch match;
-
-    QTextCursor cur = m_output->textCursor();
-    cur.movePosition(QTextCursor::End);
-    m_output->setTextCursor(cur);
-
-    QTextCharFormat curFmt = m_output->currentCharFormat();
-
-    QString s = text;
-    int idx = 0;
-    while ((match = re.match(s, idx)).hasMatch()) {
-        int start = match.capturedStart();
-        int end = match.capturedEnd();
-        if (start > idx) {
-            QString piece = s.mid(idx, start - idx);
-            m_output->moveCursor(QTextCursor::End);
-            m_output->setCurrentCharFormat(curFmt);
-            m_output->insertPlainText(piece);
-        }
-        QString codeStr = match.captured(1);
-        QStringList parts = codeStr.split(';');
-        for (const QString &p : parts) {
-            bool ok = false;
-            int v = p.toInt(&ok);
-            if (!ok) continue;
-            if (v == 0) {
-                curFmt = QTextCharFormat();
-            } else if (v == 1) {
-                curFmt.setFontWeight(QFont::Bold);
-            } else if (v >= 30 && v <= 37) {
-                QColor c;
-                switch (v) {
-                case 30: c = Qt::black; break;
-                case 31: c = Qt::red; break;
-                case 32: c = Qt::green; break;
-                case 33: c = QColor(255, 165, 0); break;
-                case 34: c = Qt::blue; break;
-                case 35: c = Qt::magenta; break;
-                case 36: c = Qt::cyan; break;
-                case 37: c = Qt::lightGray; break;
-                default: c = Qt::white; break;
+            if (c == '\r') {
+                // Check if this is a Windows style \r\n
+                if (i + 1 < chunk.length() && chunk[i + 1] == '\n') {
+                    // Skip the \r and let the \n handle the line break next iteration
+                    continue;
+                } else {
+                    // Independent \r: Move "cursor" to start of line.
+                    // In a simple buffer, this effectively means clearing the current line
+                    // so the next characters overwrite it.
+                    m_buffer.last().clear();
                 }
-                curFmt.setForeground(c);
-            } else if (v >= 40 && v <= 47) {
-                QColor c;
-                switch (v) {
-                case 40: c = Qt::black; break;
-                case 41: c = Qt::red; break;
-                case 42: c = Qt::green; break;
-                case 43: c = QColor(255, 165, 0); break;
-                case 44: c = Qt::blue; break;
-                case 45: c = Qt::magenta; break;
-                case 46: c = Qt::cyan; break;
-                case 47: c = Qt::lightGray; break;
-                default: c = Qt::white; break;
-                }
-                curFmt.setBackground(c);
+            }
+            else if (c == '\n') {
+                // New line: finalize the current line and move to next
+                m_buffer.append("");
+            }
+            else {
+                // Regular character: append to the current active line
+                m_buffer.last().append(c);
             }
         }
-        idx = end;
     }
-    if (idx < s.length()) {
-        QString rest = s.mid(idx);
-        m_output->moveCursor(QTextCursor::End);
-        m_output->setCurrentCharFormat(curFmt);
-        m_output->insertPlainText(rest);
+
+    // Keep buffer within limits
+    while (m_buffer.size() > m_maxLines) {
+        m_buffer.pop_front();
     }
+
+    // Update the UI
+    m_output->setPlainText(m_buffer.join("\n"));
 
     if (m_autoscroll) {
         QScrollBar *sb = m_output->verticalScrollBar();
