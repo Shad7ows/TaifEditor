@@ -303,7 +303,7 @@ void TMinimap::hidePreviewTooltip() {
 void TMinimap::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, false);
-    painter.fillRect(event->rect(), QColor(20, 21, 32));
+    painter.fillRect(event->rect(), QColor("transparent"));
 
     if (editor->document()->blockCount() == 0) return;
 
@@ -313,7 +313,7 @@ void TMinimap::paintEvent(QPaintEvent *event) {
 
     if (visibleBlockCount == 0) return;
 
-    double currentY = 0.0;
+    double currentY = 3.0; // offset the minimap content -3px in y
     const int widgetHeight = height();
     const double charWidth = 1.2;
     const QColor defaultColor(200, 200, 200);
@@ -398,7 +398,7 @@ void TMinimap::paintEvent(QPaintEvent *event) {
     }
 
     // Draw the active viewport slider
-    painter.fillRect(QRectF(1, sliderY, width() - 2, sliderHeight), QColor(56, 186, 255, 25));
+    painter.fillRect(QRectF(1, sliderY + 1, width() - 2, sliderHeight), QColor(56, 186, 255, 25));
     painter.setPen(QPen(QColor(56, 186, 255, 75), 1));
-    painter.drawRect(QRectF(1, sliderY, width() - 2, sliderHeight));
+    painter.drawRect(QRectF(1, sliderY + 1, width() - 2, sliderHeight));
 }

@@ -15,7 +15,12 @@
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setAcceptDrops(true);
-    this->setStyleSheet("QPlainTextEdit { background-color: #141520; color: #dddddd; }");
+    this->setStyleSheet(R"(
+    QPlainTextEdit {
+        background-color: #091021;
+        color: #f1f5f9;
+    }
+)");
 
     // set tab distance
     UpdateTabStopDistance(font());
@@ -370,7 +375,7 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
     int bottom = top + qRound(blockBoundingRect(block).height());
 
     // Arrow pen
-    QPen arrowPen(QColor("#254663"));
+    QPen arrowPen(QColor(37, 70, 99));
     arrowPen.setWidth(3);
     arrowPen.setJoinStyle(Qt::RoundJoin);
     arrowPen.setCapStyle(Qt::RoundCap);
@@ -386,7 +391,7 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
             for (const auto& region : foldRegions) {
                 if (region.startBlockNumber == blockNumber) {
                     painter.setPen(arrowPen);
-                    painter.setBrush(QColor("#254663"));
+                    painter.setBrush(QColor(37, 70, 99));
 
                     int midY = top + fontMetrics().height() / 2;
                     int rightEdge = lineNumberArea->width() - 6;
@@ -423,7 +428,7 @@ void TEditor::highlightCurrentLine() {
     if (!isReadOnly()) {
         QTextEdit::ExtraSelection selection;
 
-        QColor lineColor = QColor(23, 24, 36, 240);
+        QColor lineColor = QColor(16, 23, 48, 225);
 
         selection.format.setBackground(lineColor);
         selection.format.setProperty(QTextFormat::FullWidthSelection, true);
