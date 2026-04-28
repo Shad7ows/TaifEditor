@@ -1021,7 +1021,11 @@ void Taif::aboutTaif() {
 }
 
 void Taif::checkForUpdates() {
+    #if defined(Q_OS_WIN)
     QString path = QCoreApplication::applicationDirPath() + "/MaintenanceTool.exe";
+    #else
+    QString path = QCoreApplication::applicationDirPath() + "/maintenancetool";
+    #endif
     // Use --updater to skip the "Add/Remove" page and go straight to updates
     QProcess::startDetached(path, {"--su"});
 }
