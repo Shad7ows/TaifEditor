@@ -113,6 +113,7 @@ private:
     QLineEdit *m_input{};
     QProcess *m_process{};
     QTimer *m_flushTimer{};
+    bool m_carriageReturnPending = false;
 
     QMutex m_pendingMutex{};
     QStringList m_pending{}; // staging lines

@@ -116,7 +116,6 @@ void TConsole::appendPlainTextThreadSafe(const QString &text)
 {
     QMutexLocker locker(&m_pendingMutex);
     m_pending.append(text);
-    locker.unlock();
 }
 
 void TConsole::processStdout()
@@ -182,49 +181,61 @@ void TConsole::flushPending() {
         m_pending.clear();
     }
 
-    // Ensure we have at least one empty line to work with
-    if (m_buffer.isEmpty()) {
-        m_buffer.append("");
-    }
+    // Ensure we have a starting point
+    if (m_buffer.isEmpty()) m_buffer.append("");
 
-    for (const QString &chunk : items) {
-        for (int i = 0; i < chunk.length(); ++i) {
-            QChar c = chunk[i];
+    // Merge all chunks into one processing string
+    QString incomingData = items.join("");
 
-            if (c == '\r') {
-                // Check if this is a Windows style \r\n
-                if (i + 1 < chunk.length() && chunk[i + 1] == '\n') {
-                    // Skip the \r and let the \n handle the line break next iteration
-                    continue;
-                } else {
-                    // Independent \r: Move "cursor" to start of line.
-                    // In a simple buffer, this effectively means clearing the current line
-                    // so the next characters overwrite it.
-                    m_buffer.last().clear();
-                }
-            }
-            else if (c == '\n') {
-                // New line: finalize the current line and move to next
-                m_buffer.append("");
-            }
-            else {
-                // Regular character: append to the current active line
-                m_buffer.last().append(c);
-            }
+    // Process character by character with state awareness
+    for (int i = 0; i < incomingData.length(); ++i) {
+        QChar c = incomingData[i];
+
+        // Handle \n (Line Feed)
+        if (c == '\n') {
+            m_buffer.append("");
+            m_carriageReturnPending = false; // \n resets any \r state
+            continue;
         }
+
+        // Handle \r (Carriage Return)
+        if (c == '\r') {
+            // Check if \n follows immediately in this same chunk
+            if (i + 1 < incomingData.length() && incomingData[i + 1] == '\n') {
+                // It's a CRLF pair; let the next iteration (\n) handle it
+                continue;
+            }
+            // Otherwise, it's a standalone \r (potentially a CRLF split across chunks)
+            m_carriageReturnPending = true;
+            continue;
+        }
+
+        // Handle normal characters
+        if (m_carriageReturnPending) {
+            // If we have a pending \r and the next char isn't \n,
+            // it's a true "overwrite" command (like a progress bar).
+            m_buffer.last().clear();
+            m_carriageReturnPending = false;
+        }
+
+        m_buffer.last().append(c);
     }
 
-    // Keep buffer within limits
+    // Keep buffer within memory limits
     while (m_buffer.size() > m_maxLines) {
         m_buffer.pop_front();
     }
 
-    // Update the UI
-    m_output->setPlainText(m_buffer.join("\n"));
+    // Atomic UI Update
+    // Optimization: Only update if the text actually changed
+    QString newText = m_buffer.join("\n");
+    if (m_output->toPlainText() != newText) {
+        m_output->setPlainText(newText);
 
-    if (m_autoscroll) {
-        QScrollBar *sb = m_output->verticalScrollBar();
-        sb->setValue(sb->maximum());
+        if (m_autoscroll) {
+            QScrollBar *sb = m_output->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        }
     }
 }
 
