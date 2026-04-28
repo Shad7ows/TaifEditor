@@ -899,12 +899,27 @@ void Taif::runAlif() {
     QString workingDir = QFileInfo(filePath).absolutePath();
 
     if (worker) {
-        worker->finished(0);
+        worker->disconnect();
+        worker->deleteLater();
         worker = nullptr;
     }
+
     console->clear();
-    console->appendPlainTextThreadSafe("🚀 بدء تشغيل ملف ألف...\n");
-    console->appendPlainTextThreadSafe("📄 الملف: " + QFileInfo(filePath).fileName() + "\n\n");
+
+    // Fetch and print the version (alif -ن)
+    QProcess versionCheck{};
+    versionCheck.setWorkingDirectory(QFileInfo(program).absolutePath());
+    versionCheck.start(program, {"-ن"});
+
+    // We wait briefly (max 2s) for the version check as it's a fast command
+    if (versionCheck.waitForFinished(2000)) {
+        QString versionOutput = versionCheck.readAll();
+        if (!versionOutput.isEmpty()) {
+            console->appendPlainTextThreadSafe(versionOutput);
+        }
+    }
+
+    console->appendPlainTextThreadSafe("🚀 بدء تشغيل ملف ألف: " + QFileInfo(filePath).fileName() + "\n\n");
 
     worker = new ProcessWorker(program, args, workingDir);
     QThread *thread = new QThread();
@@ -925,9 +940,13 @@ void Taif::runAlif() {
         thread->quit();
     });
 
-    // يسببان الخروج من البرنامج عند إعادة تشغيل ملف ألف اكثر من مرة بعد إنتهاء التنفيذ
-    // connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-    // connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(worker, &QObject::destroyed, this, [this]() {
+        worker = nullptr;
+    });
+    // Clean up thread and worker memory when finished
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    connect(worker, &QObject::destroyed, thread, &QThread::quit); // Quit thread when worker is gone
+    connect(thread, &QThread::finished, worker, &QObject::deleteLater);
 
     connect(console, &TConsole::commandEntered,
             worker, &ProcessWorker::sendInput);
