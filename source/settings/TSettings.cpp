@@ -247,7 +247,8 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     fontSpin = new QSpinBox;
     fontSpin->setRange(12, 36);
     fontSpin->setMinimumHeight(40);
-    fontSpin->setMaximumWidth(80);
+    fontSpin->setMinimumWidth(60);
+    fontSpin->setMaximumWidth(100);
 
     QSettings settingsVal("Alif", "Taif");
     int savedSize = settingsVal.value("editorFontSize").toInt();
@@ -262,7 +263,8 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     fontCombo->setEditable(true);
     fontCombo->setInsertPolicy(QComboBox::NoInsert);
     fontCombo->setMinimumHeight(40);
-    fontCombo->setMaximumWidth(200);
+    fontCombo->setMinimumWidth(150);
+    fontCombo->setMaximumWidth(250);
 
     QStringList fontFamilies{};
     for (int i = 0; i < 5; i++) {
@@ -280,6 +282,8 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     fontFamilyLayout->addRow("نوع الخط: ", fontCombo);
     connect(fontCombo, &QComboBox::currentTextChanged, this, &TSettings::fontTypeChanged);
 
+    fontSizeLayout->setFormAlignment(Qt::AlignLeft); // necessary for macos
+    fontFamilyLayout->setFormAlignment(Qt::AlignLeft);
     fontLayout->addLayout(fontSizeLayout);
     fontLayout->addLayout(fontFamilyLayout);
 
@@ -307,6 +311,7 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     comboLayout->addRow("مظهر الشيفرة: ", themeCombo);
     connect(themeCombo, &QComboBox::currentIndexChanged, this, &TSettings::highlighterThemeChanged);
 
+    comboLayout->setFormAlignment(Qt::AlignLeft); // necessary for macos
     themeLayout->addLayout(comboLayout);
 
 
