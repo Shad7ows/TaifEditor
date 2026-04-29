@@ -30,11 +30,14 @@ Linux:
   		note: for ubuntu version above 22 use this options => -unsupported-bundle-everything -unsupported-allow-new-glibc
   
 	Packaging:
-		/home/"name"/Qt/Tools/QtInstallerFramework/4.'*'/bin/binarycreator --hybrid -c config/config.xml -p packages TaifInstaller-Linux-X64
+		~/Qt/Tools/QtInstallerFramework/4.'*'/bin/binarycreator --hybrid -c config/config.xml -p packages TaifInstaller-Linux-X64
 
 
 MacOS:
-
+	Deployment:
+		~/Qt/6.`*.*`/macos/bin/macdeployqt6 Taif.app
+	Packaging:
+		~/Qt/Tools/QtInstallerFramework/4.'*'/bin/binarycreator --hybrid -c config/config.xml -p packages TaifInstaller-MacOS-X64
 
 
 
@@ -48,5 +51,6 @@ Repository generate for updates:
 note: after changing the version number do the next
 windows: ~:\Qt\Tools\QtInstallerFramework\4.`*`\bin\repogen.exe -p packages NAME_OF_REPO_HERE
 linux: ~/Qt/Tools/QtInstallerFramework/4.`*`/bin/repogen -p packages "TaifUpdateFiles"
+macos: ~/Qt/Tools/QtInstallerFramework/4.`*`/bin/repogen -p packages "TaifUpdateFiles"
 
 
