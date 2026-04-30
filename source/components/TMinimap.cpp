@@ -10,8 +10,9 @@
 TPreviewTooltip::TPreviewTooltip(QWidget* parent)
     : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint)
 {
-    setAttribute(Qt::WA_TranslucentBackground);
+    setAttribute(Qt::WA_TranslucentBackground); // to ensure fully rounded rectangle of preview tooltip
     font = QFont(QFontDatabase::applicationFontFamilies(2));
+    font.insertSubstitution("Arial", "Courier New");
     font.setPixelSize(10);
     setFont(font);
 }
@@ -22,18 +23,12 @@ void TPreviewTooltip::setContent(const QVector<QPair<int, QString>>& linesConten
     lineSpacing = fm.lineSpacing();
 
     numberWidth = 45;
-    textWidth = 250;
+    textWidth = 300; // we need fixed width of text to prevent the widget from change it's width
 
     for (const auto& line : lines) {
         // line number width
         int numW = fm.horizontalAdvance(QString::number(line.first)) + 10;
         numberWidth = std::max(numberWidth, numW);
-
-        // text width
-        QString text = line.second;
-        text.replace("\t", "    ");
-        int txtW = fm.horizontalAdvance(text);
-        textWidth = std::max(textWidth, txtW);
     }
 
     updateGeometry();
@@ -73,7 +68,6 @@ void TPreviewTooltip::paintEvent(QPaintEvent* event) {
         painter.setPen(QColor(100, 100, 100));
         painter.drawText(numRect, Qt::AlignVCenter, QString::number(line.first));
 
-        line.second.replace("\t", "    ");
         painter.setPen(QColor(200, 200, 200));
         painter.drawText(textRect, Qt::AlignVCenter, line.second);
 
@@ -271,8 +265,9 @@ void TMinimap::showPreviewTooltip(const QPoint& pos) {
         if (!block.isValid()) continue;
 
         QString line = block.text();
-        if (line.length() > 53) { // Slight bump since custom widget calculates width dynamically
-            line.truncate(50);
+        line.replace("\t", "    ");
+        if (line.length() > 60) {
+            line.truncate(57);
             line.append("...");
         }
 
@@ -308,7 +303,7 @@ void TMinimap::hidePreviewTooltip() {
 void TMinimap::paintEvent(QPaintEvent *event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, false);
-    painter.fillRect(event->rect(), QColor(20, 21, 32));
+    painter.fillRect(event->rect(), QColor("transparent"));
 
     if (editor->document()->blockCount() == 0) return;
 
@@ -318,7 +313,7 @@ void TMinimap::paintEvent(QPaintEvent *event) {
 
     if (visibleBlockCount == 0) return;
 
-    double currentY = 0.0;
+    double currentY = 3.0; // offset the minimap content -3px in y
     const int widgetHeight = height();
     const double charWidth = 1.2;
     const QColor defaultColor(200, 200, 200);
@@ -403,7 +398,7 @@ void TMinimap::paintEvent(QPaintEvent *event) {
     }
 
     // Draw the active viewport slider
-    painter.fillRect(QRectF(1, sliderY, width() - 2, sliderHeight), QColor(56, 186, 255, 25));
+    painter.fillRect(QRectF(1, sliderY + 1, width() - 2, sliderHeight), QColor(56, 186, 255, 25));
     painter.setPen(QPen(QColor(56, 186, 255, 75), 1));
-    painter.drawRect(QRectF(1, sliderY, width() - 2, sliderHeight));
+    painter.drawRect(QRectF(1, sliderY + 1, width() - 2, sliderHeight));
 }

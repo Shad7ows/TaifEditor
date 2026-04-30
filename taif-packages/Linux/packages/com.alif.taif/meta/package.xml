@@ -2,8 +2,8 @@
 <Package>
     <DisplayName>Taif</DisplayName>
     <Description>Taif Editor for Alif language.</Description>
-    <Version>3.2.0</Version>
-    <ReleaseDate>2026-01-20</ReleaseDate>
+    <Version>3.3.0</Version>
+    <ReleaseDate>2026-05-18</ReleaseDate>
     <Licenses>
         <License name="Public License Agreement" file="license.txt" />
     </Licenses>
@@ -21,7 +21,7 @@
             <Argument>
                 Type=Application
                 Name=Taif
-                Version=3.2.0
+                Version=3.3.0
                 Exec=@TargetDir@/Taif
                 Icon=@TargetDir@/resources/TaifLogo.png
                 Terminal=false

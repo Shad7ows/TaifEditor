@@ -14,6 +14,7 @@
 #include <QSpinBox>
 #include <QFontDatabase>
 #include <QFormLayout>
+#include <QListWidget>
 
 class TSettings : public QWidget {
     Q_OBJECT
@@ -22,8 +23,6 @@ public:
 
     QVector<std::shared_ptr<SyntaxTheme>> getAvailableThemes() const;
 
-    // TODO: add getFontCombo() and getFontSpin() to use it to save the settings values
-    // instade of using the editor current values to save the values
     QComboBox *getThemeCombo() const;
     void setThemes();
 
@@ -37,13 +36,13 @@ signals:
 
 
 private:
-    void switchPage();
-    void createCategory(const QString&, const QString&);
+    void setupLayout();
+    void setupStyling();
+    void addSettingPage(const QString& name, const QString& description, const QString& iconPath);
     void createAppearancePage(QVBoxLayout*);
 
-    QVBoxLayout* optionsLayout{};
     QStackedWidget* stackedWidget{};
-    QList<TFlatButton*> categories{};
+    QListWidget* sidebar;
 
     QSpinBox* fontSpin{};
     QComboBox* fontCombo{};

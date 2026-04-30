@@ -32,6 +32,8 @@ private:
 
     QCheckBox *showOnStartupCheck;
 
+    void setupStyle();
+
 private slots:
     void handleNewFileRequest();
     void handleOpenFileRequest();

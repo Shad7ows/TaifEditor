@@ -113,6 +113,7 @@ private:
     QLineEdit *m_input{};
     QProcess *m_process{};
     QTimer *m_flushTimer{};
+    bool m_carriageReturnPending = false;
 
     QMutex m_pendingMutex{};
     QStringList m_pending{}; // staging lines
@@ -125,7 +126,6 @@ private:
     bool m_autoscroll{};
 
     // helpers
-    void appendOutput(const QString &text); // needs to run in GUI thread
     QString ansiToHtmlFragment(const QString &chunk); // simple ansi -> html/text formatting
     bool eventFilter(QObject *obj, QEvent *ev) override;
 
