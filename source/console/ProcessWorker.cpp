@@ -93,10 +93,6 @@ void ProcessWorker::flushBuffers() {
 // ✅ التنفيذ (الكود) يجب أن يكون هنا في ملف .cpp
 void ProcessWorker::sendInput(const QString &text) {
     if (process && process->state() == QProcess::Running) {
-#if defined(Q_OS_WINDOWS)
-        process->write((text + "\r\n").toLocal8Bit());
-#else
         process->write((text + "\n").toLocal8Bit());
-#endif
     }
 }

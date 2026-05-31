@@ -29,7 +29,12 @@ TConsole::TConsole(QWidget *parent)
     m_output->setFont(f);
     m_input->setFont(f);
 
-    setStyleSheet("QWidget {background-color: #03091A; color: #DEE8FF;}");
+    setStyleSheet(R"(
+        QWidget {
+            background-color: #03091A;
+            color: #DEE8FF;
+        }
+)");
 
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(0,0,0,0);
@@ -49,7 +54,7 @@ TConsole::TConsole(QWidget *parent)
 
     m_input->installEventFilter(this);
 
-    m_flushTimer->setInterval(25);
+    m_flushTimer->setInterval(10);
     connect(m_flushTimer, &QTimer::timeout, this, &TConsole::flushPending);
     m_flushTimer->start();
 }
@@ -110,24 +115,19 @@ void TConsole::setConsoleRTL()
 void TConsole::appendPlainTextThreadSafe(const QString &text)
 {
     QMutexLocker locker(&m_pendingMutex);
-    QStringList parts = text.split('\n');
-    for (QString s : parts) {
-        if (s.endsWith('\r')) s.chop(1);
-        m_pending.append(s);
-    }
-    locker.unlock();
+    m_pending.append(text);
 }
 
 void TConsole::processStdout()
 {
     QByteArray d = m_process->readAllStandardOutput();
+    QString s;
 #if defined(Q_OS_WIN)
-    QString s = QString::fromLocal8Bit(d);
+    s = QString::fromLocal8Bit(d);
 #else
-    QString s = QString::fromUtf8(d); // لينكس يستخدم UTF-8
+    s = QString::fromUtf8(d);
 #endif
     appendPlainTextThreadSafe(s);
-
 }
 
 void TConsole::processStderr()
@@ -140,21 +140,12 @@ void TConsole::processStderr()
 void TConsole::processFinished(int code, QProcess::ExitStatus status)
 {
     Q_UNUSED(status);
-    appendPlainTextThreadSafe(QString("\n[Process finished with code %1]\n").arg(code));
+    appendPlainTextThreadSafe(QString("\n[العملية إنتهت بالرمز %1]\n").arg(code));
 }
 
 void TConsole::onInputReturn()
 {
     QString cmd = m_input->text();
-    if (cmd.isEmpty()) {
-        if (m_process->state() != QProcess::NotRunning) {
-#if defined(Q_OS_WIN)
-            m_process->write("\r\n");
-#else
-            m_process->write("\n");
-#endif
-        }
-    }
 
     if (m_history.isEmpty() || m_history.last() != cmd) {
         m_history.append(cmd);
@@ -162,7 +153,6 @@ void TConsole::onInputReturn()
     m_historyIndex = -1;
 
 // echo the command locally (like terminal)
-// appendPlainTextThreadSafe(cmd + "\n");
 #if defined(Q_OS_WIN)
     appendPlainTextThreadSafe(cmd + "\n");
 #endif
@@ -191,95 +181,61 @@ void TConsole::flushPending() {
         m_pending.clear();
     }
 
-    for (const QString &line : items) {
-        m_buffer.append(line);
-    }
-    while (m_buffer.size() > m_maxLines)
-        m_buffer.pop_front();
+    // Ensure we have a starting point
+    if (m_buffer.isEmpty()) m_buffer.append("");
 
-    m_output->setPlainText(m_buffer.join("\n"));
+    // Merge all chunks into one processing string
+    QString incomingData = items.join("");
 
-    if (m_autoscroll) {
-        QScrollBar *sb = m_output->verticalScrollBar();
-        sb->setValue(sb->maximum());
-    }
-}
+    // Process character by character with state awareness
+    for (int i = 0; i < incomingData.length(); ++i) {
+        QChar c = incomingData[i];
 
-void TConsole::appendOutput(const QString &text)
-{
-    static QRegularExpression re("\x1B\\[([0-9;]+)m");
-    int pos = 0;
-    QRegularExpressionMatch match;
-
-    QTextCursor cur = m_output->textCursor();
-    cur.movePosition(QTextCursor::End);
-    m_output->setTextCursor(cur);
-
-    QTextCharFormat curFmt = m_output->currentCharFormat();
-
-    QString s = text;
-    int idx = 0;
-    while ((match = re.match(s, idx)).hasMatch()) {
-        int start = match.capturedStart();
-        int end = match.capturedEnd();
-        if (start > idx) {
-            QString piece = s.mid(idx, start - idx);
-            m_output->moveCursor(QTextCursor::End);
-            m_output->setCurrentCharFormat(curFmt);
-            m_output->insertPlainText(piece);
+        // Handle \n (Line Feed)
+        if (c == '\n') {
+            m_buffer.append("");
+            m_carriageReturnPending = false; // \n resets any \r state
+            continue;
         }
-        QString codeStr = match.captured(1);
-        QStringList parts = codeStr.split(';');
-        for (const QString &p : parts) {
-            bool ok = false;
-            int v = p.toInt(&ok);
-            if (!ok) continue;
-            if (v == 0) {
-                curFmt = QTextCharFormat();
-            } else if (v == 1) {
-                curFmt.setFontWeight(QFont::Bold);
-            } else if (v >= 30 && v <= 37) {
-                QColor c;
-                switch (v) {
-                case 30: c = Qt::black; break;
-                case 31: c = Qt::red; break;
-                case 32: c = Qt::green; break;
-                case 33: c = QColor(255, 165, 0); break;
-                case 34: c = Qt::blue; break;
-                case 35: c = Qt::magenta; break;
-                case 36: c = Qt::cyan; break;
-                case 37: c = Qt::lightGray; break;
-                default: c = Qt::white; break;
-                }
-                curFmt.setForeground(c);
-            } else if (v >= 40 && v <= 47) {
-                QColor c;
-                switch (v) {
-                case 40: c = Qt::black; break;
-                case 41: c = Qt::red; break;
-                case 42: c = Qt::green; break;
-                case 43: c = QColor(255, 165, 0); break;
-                case 44: c = Qt::blue; break;
-                case 45: c = Qt::magenta; break;
-                case 46: c = Qt::cyan; break;
-                case 47: c = Qt::lightGray; break;
-                default: c = Qt::white; break;
-                }
-                curFmt.setBackground(c);
+
+        // Handle \r (Carriage Return)
+        if (c == '\r') {
+            // Check if \n follows immediately in this same chunk
+            if (i + 1 < incomingData.length() && incomingData[i + 1] == '\n') {
+                // It's a CRLF pair; let the next iteration (\n) handle it
+                continue;
             }
+            // Otherwise, it's a standalone \r (potentially a CRLF split across chunks)
+            m_carriageReturnPending = true;
+            continue;
         }
-        idx = end;
-    }
-    if (idx < s.length()) {
-        QString rest = s.mid(idx);
-        m_output->moveCursor(QTextCursor::End);
-        m_output->setCurrentCharFormat(curFmt);
-        m_output->insertPlainText(rest);
+
+        // Handle normal characters
+        if (m_carriageReturnPending) {
+            // If we have a pending \r and the next char isn't \n,
+            // it's a true "overwrite" command (like a progress bar).
+            m_buffer.last().clear();
+            m_carriageReturnPending = false;
+        }
+
+        m_buffer.last().append(c);
     }
 
-    if (m_autoscroll) {
-        QScrollBar *sb = m_output->verticalScrollBar();
-        sb->setValue(sb->maximum());
+    // Keep buffer within memory limits
+    while (m_buffer.size() > m_maxLines) {
+        m_buffer.pop_front();
+    }
+
+    // Atomic UI Update
+    // Optimization: Only update if the text actually changed
+    QString newText = m_buffer.join("\n");
+    if (m_output->toPlainText() != newText) {
+        m_output->setPlainText(newText);
+
+        if (m_autoscroll) {
+            QScrollBar *sb = m_output->verticalScrollBar();
+            sb->setValue(sb->maximum());
+        }
     }
 }
 

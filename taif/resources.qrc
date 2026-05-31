@@ -9,6 +9,8 @@
         <file>resources/fonts/Tajawal/Tajawal-Medium.ttf</file>
         <file>resources/fonts/Tajawal/Tajawal-Regular.ttf</file>
         <file>resources/fonts/NotoKufiArabic-Regular.ttf</file>
+        <file>resources/fonts/Alaq-Halab.otf</file>
+        <file>resources/fonts/Hasubi-Mono.ttf</file>
     </qresource>
     <qresource prefix="/icons">
         <file>resources/TaifLogo.icns</file>
@@ -21,5 +23,9 @@
         <file>resources/run.svg</file>
         <file>resources/left-arrow.png</file>
         <file>resources/right-arrow.png</file>
+        <file>resources/chevron-down.svg</file>
+        <file>resources/chevron-up.svg</file>
+        <file>resources/pencil-ruler.svg</file>
+        <file>resources/settings.svg</file>
     </qresource>
 </RCC>
