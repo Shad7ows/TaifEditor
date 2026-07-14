@@ -49,7 +49,6 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
 
     connect(this, &TEditor::blockCountChanged, this, &TEditor::updateLineNumberAreaWidth);
     connect(this, &TEditor::updateRequest, this, &TEditor::updateLineNumberArea);
-    connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightCurrentLine);
     connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightSelectedWordMatches);
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
@@ -64,7 +63,6 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
         } });
 
     updateLineNumberAreaWidth();
-    highlightCurrentLine();
 
     // set saved setting font size to the editor
     QSettings settingsVal("Alif", "Taif");
@@ -481,25 +479,6 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
     }
 }
 
-void TEditor::highlightCurrentLine()
-{
-    QList<QTextEdit::ExtraSelection> extraSelections;
-
-    if (!isReadOnly())
-    {
-        QTextEdit::ExtraSelection selection;
-
-        QColor lineColor = QColor(16, 23, 48, 225);
-
-        selection.format.setBackground(lineColor);
-        selection.format.setProperty(QTextFormat::FullWidthSelection, true);
-        selection.cursor = textCursor();
-        selection.cursor.clearSelection();
-        extraSelections.append(selection);
-    }
-
-    setExtraSelections(extraSelections);
-}
 
 void TEditor::updateFoldRegions()
 {
@@ -1523,17 +1502,17 @@ void TEditor::startAsyncWordHighlight()
         return;
     }
 
-    // Clean up highlights if nothing is selected
+    // If there is no selection, clear the word highlights but KEEP the line highlight!
     if (trimmedText.isEmpty())
     {
         highlightSearchInProgress = true;
 
         // Safely clear selections on the main thread
         QMetaObject::invokeMethod(this, [this]() {
-            setExtraSelections({});
             highlightSearchInProgress = false;
             lastHighlightedText.clear();
             lastHighlightedPosition = -1;
+            applyLineAndWordHighlights(QList<MatchRange>{}, QString(), -1);
         }, Qt::QueuedConnection);
         return;
     }
@@ -1554,7 +1533,7 @@ void TEditor::startAsyncWordHighlight()
 
                                              // 2. Dispatch the results back to the GUI thread
                                              QMetaObject::invokeMethod(this, [this, matches, searchText, startPos]() {
-                                                 applyWordHighlights(matches, searchText, startPos);
+                                                 applyLineAndWordHighlights(matches, searchText, startPos);
                                              }, Qt::QueuedConnection);
                                          });
 }
@@ -1581,13 +1560,13 @@ QList<TEditor::MatchRange> TEditor::searchWordMatches(
 }
 
 // RUNS ON MAIN GUI THREAD: Translates basic indexes back into Qt cursors
-void TEditor::applyWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos)
+void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos)
 {
     QList<QTextEdit::ExtraSelection> extraSelections;
 
     // Configure the highlight format
     QTextCharFormat highlightFormat;
-    highlightFormat.setBackground(QColor(200, 200, 230, 90));
+    highlightFormat.setBackground(QColor(200, 200, 255, 72));
 
     // Access to the text document and cursor layout is 100% safe here
     QTextDocument *doc = document();
@@ -1605,7 +1584,24 @@ void TEditor::applyWordHighlights(const QList<MatchRange> &matches, const QStrin
         extraSelections.append(selection);
     }
 
+
+    // highlight current selected line
+    if (!isReadOnly())
+    {
+        QTextEdit::ExtraSelection selection;
+
+        QColor lineColor = QColor(16, 23, 48, 225);
+
+        selection.format.setBackground(lineColor);
+        selection.format.setProperty(QTextFormat::FullWidthSelection, true);
+        selection.cursor = textCursor();
+        selection.cursor.clearSelection();
+        extraSelections.append(selection);
+    }
+
+
     setExtraSelections(extraSelections);
+
     highlightSearchInProgress = false;
 
     // Update Cache safely

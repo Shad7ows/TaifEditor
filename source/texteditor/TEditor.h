@@ -52,7 +52,7 @@ public slots:
     void highlightSelectedWordMatches();
     void startAsyncWordHighlight();
     static QList<MatchRange> searchWordMatches(const QString &searchText, const QString &documentText);
-    void applyWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos);
+    void applyLineAndWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -126,7 +126,6 @@ private:
 private slots:
     void updateMinimapPosition();
     void updateLineNumberAreaWidth();
-    void highlightCurrentLine();
     inline void updateLineNumberArea(const QRect &rect, int dy);
     void insertCompletion(const QString &completion, CompletionType type);
 signals:
