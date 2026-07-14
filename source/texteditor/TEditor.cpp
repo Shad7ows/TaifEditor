@@ -1,16 +1,16 @@
 #include "TEditor.h"
 #include "TMinimap.h"
 
-#include <QPainter>
-#include <QTextBlock>
-#include <QScrollBar>
-#include <QMimeData>
-#include <QSettings>
-#include <QPainterPath>
-#include <QStack>
-#include <QMenu>
 #include <QAction>
 #include <QFile>
+#include <QMenu>
+#include <QMimeData>
+#include <QPainter>
+#include <QPainterPath>
+#include <QScrollBar>
+#include <QSettings>
+#include <QStack>
+#include <QTextBlock>
 
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
@@ -50,6 +50,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     connect(this, &TEditor::blockCountChanged, this, &TEditor::updateLineNumberAreaWidth);
     connect(this, &TEditor::updateRequest, this, &TEditor::updateLineNumberArea);
     connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightCurrentLine);
+    connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightSelectedWordMatches);
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
     updateLineNumberAreaWidth();
@@ -1286,4 +1287,48 @@ bool TEditor::handleBracketSkip(QChar typedChar) {
     }
 
     return false;
+}
+
+
+
+void TEditor::highlightSelectedWordMatches() {
+    QList<QTextEdit::ExtraSelection> extraSelections;
+
+    // Get the current cursor and selected text
+    QTextCursor currentCursor = textCursor();
+    QString selectedText = currentCursor.selectedText();
+
+    // Avoid highlighting if nothing is selected or if it's just whitespaces/too
+    // short
+    if (selectedText.trimmed().isEmpty()) {
+        setExtraSelections(extraSelections);
+        return;
+    }
+
+    // Configure the highlight format
+    QTextCharFormat highlightFormat;
+    highlightFormat.setBackground(QColor(200, 200, 230, 90));
+
+    // Setup document search
+    QTextDocument *doc = document();
+    QTextCursor searchCursor(doc);
+
+    // Options: Case-insensitive and partial matching (default behavior if
+    // FindFlags are omitted)
+    QTextDocument::FindFlags findFlags = {};
+
+    // Loop through the document to find all matches
+    while (!searchCursor.isNull() && !searchCursor.atEnd()) {
+        searchCursor = doc->find(selectedText, searchCursor, findFlags);
+
+        if (!searchCursor.isNull()) {
+            QTextEdit::ExtraSelection selection;
+            selection.format = highlightFormat;
+            selection.cursor = searchCursor;
+            extraSelections.append(selection);
+        }
+    }
+
+    // 5. Apply all the highlights to the editor
+    setExtraSelections(extraSelections);
 }

@@ -44,6 +44,7 @@ public slots:
     void moveLineDown();
     void performAutoSave();
     void updateHighlighterTheme(std::shared_ptr<SyntaxTheme>);
+    void highlightSelectedWordMatches();
 
 protected:
     void resizeEvent(QResizeEvent* event) override;
