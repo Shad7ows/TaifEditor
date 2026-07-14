@@ -11,17 +11,17 @@
 #include "AutoComplete.h"
 #include "AutoCompleteUI.h"
 
-
 class LineNumberArea;
 class TMinimap;
 
-class TEditor : public QPlainTextEdit {
+class TEditor : public QPlainTextEdit
+{
     Q_OBJECT
 
 public:
-    TEditor(TSettings* setting = nullptr, QWidget* parent = nullptr);
+    TEditor(TSettings *setting = nullptr, QWidget *parent = nullptr);
 
-    void lineNumberAreaPaintEvent(QPaintEvent* event);
+    void lineNumberAreaPaintEvent(QPaintEvent *event);
     int lineNumberAreaWidth() const;
     QString filePath{};
 
@@ -34,6 +34,11 @@ public:
     void stopAutoSave();
     void removeBackupFile();
 
+    struct MatchRange {
+        int start;
+        int length;
+    };
+
 public slots:
     void UpdateTabStopDistance(QFont);
     void updateFontSize(int);
@@ -45,17 +50,20 @@ public slots:
     void performAutoSave();
     void updateHighlighterTheme(std::shared_ptr<SyntaxTheme>);
     void highlightSelectedWordMatches();
+    void startAsyncWordHighlight();
+    static QList<MatchRange> searchWordMatches(const QString &searchText, const QString &documentText);
+    void applyWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos);
 
 protected:
-    void resizeEvent(QResizeEvent* event) override;
-    bool eventFilter(QObject* obj, QEvent* event) override;
-    void dragEnterEvent(QDragEnterEvent* event) override;
-    void dropEvent(QDropEvent* event) override;
-    void dragMoveEvent(QDragMoveEvent* event) override;
-    void dragLeaveEvent(QDragLeaveEvent* event) override;
+    void resizeEvent(QResizeEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
+    void dragMoveEvent(QDragMoveEvent *event) override;
+    void dragLeaveEvent(QDragLeaveEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
-    void showEvent(QShowEvent* event) override;
+    void showEvent(QShowEvent *event) override;
 
     void keyPressEvent(QKeyEvent *e) override;
     // We override focusOutEvent to close the popup if the user clicks away
@@ -64,28 +72,41 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
-    TSyntaxHighlighter* highlighter{};
+    TSyntaxHighlighter *highlighter{};
 
-    LineNumberArea* lineNumberArea{};
-    TMinimap* minimap{};
+    LineNumberArea *lineNumberArea{};
+    TMinimap *minimap{};
 
-    struct FoldRegion {
+    // HighlightSelectedWordMatches enhancements
+    QTimer *highlightDebounceTimer{};
+    QString lastHighlightedText{};
+    int lastHighlightedPosition{-1};
+    bool highlightSearchInProgress{false};
+
+    void updateFoldRegions();
+    void toggleFold(int blockNum);
+
+    struct FoldRegion
+    {
         int startBlockNumber;
         int endBlockNumber;
         bool folded = false;
     };
     QVector<FoldRegion> foldRegions;
 
-    void updateFoldRegions();
-    void toggleFold(int blockNum);
-
-
     QTimer *autoSaveTimer;
 
     friend class LineNumberArea;
     friend class TMinimap;
 
-    QCompleter* c{};
+    // Helper function for background word match search
+    static QList<QTextEdit::ExtraSelection> searchWordMatches(
+        const QString &searchText,
+        const QString &documentText,
+        int searchStartPosition,
+        bool isPartialWord);
+
+    QCompleter *c{};
     CompletionModel *model{};
     std::vector<std::unique_ptr<ICompletionStrategy>> strategies{};
     QStringList snippetTargets{};
@@ -93,11 +114,11 @@ private:
     void performCompletion();
     bool processSnippetNavigation();
     void setupAutoComplete();
-    void insertWord(const QString& completion, QTextCursor& tc);
-    void insertBuiltinFunction(const QString& functionName, QTextCursor& tc);
-    void insertSnippet(const QString& snippet, QTextCursor& tc);
+    void insertWord(const QString &completion, QTextCursor &tc);
+    void insertBuiltinFunction(const QString &functionName, QTextCursor &tc);
+    void insertSnippet(const QString &snippet, QTextCursor &tc);
     // Bracket auto-completion methods
-    bool handleAutoPairing(QKeyEvent* e);
+    bool handleAutoPairing(QKeyEvent *e);
     bool handleBracketCompletion(QChar openingBracket, QChar closingBracket);
     bool handleQuoteCompletion(QChar quoteChar);
     bool handleBracketSkip(QChar typedChar);
@@ -112,31 +133,35 @@ signals:
     void openRequest(QString filePath);
 };
 
-
-class LineNumberArea : public QWidget {
+class LineNumberArea : public QWidget
+{
 public:
-    LineNumberArea(TEditor* editor) : QWidget(editor), tEditor(editor) {
+    LineNumberArea(TEditor *editor) : QWidget(editor), tEditor(editor)
+    {
         this->setStyleSheet(
             "QWidget {"
             "   border-left: 1px solid #10a8f4;"
             "   border-top-left-radius: 9px;"
             "   border-bottom-left-radius: 9px;"
-            "}"
-        );
+            "}");
     }
 
-    QSize sizeHint() const override {
+    QSize sizeHint() const override
+    {
         return QSize(tEditor->lineNumberAreaWidth(), 0);
     }
 
-    void mousePressEvent(QMouseEvent* event) override {
+    void mousePressEvent(QMouseEvent *event) override
+    {
         int y = event->position().y();
         QTextBlock block = tEditor->firstVisibleBlock();
         int top = qRound(tEditor->blockBoundingGeometry(block).translated(tEditor->contentOffset()).top());
         int height = qRound(tEditor->blockBoundingRect(block).height());
 
-        while (block.isValid() && top <= y) {
-            if (y >= top && y < top + height) {
+        while (block.isValid() && top <= y)
+        {
+            if (y >= top && y < top + height)
+            {
                 int blockNum = block.blockNumber();
                 tEditor->toggleFold(blockNum);
                 return;
@@ -147,13 +172,12 @@ public:
         }
     }
 
-
 protected:
-    void paintEvent(QPaintEvent* event) override {
+    void paintEvent(QPaintEvent *event) override
+    {
         tEditor->lineNumberAreaPaintEvent(event);
     }
 
-
 private:
-    TEditor* tEditor{};
+    TEditor *tEditor{};
 };

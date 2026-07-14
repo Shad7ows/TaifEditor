@@ -11,9 +11,10 @@
 #include <QSettings>
 #include <QStack>
 #include <QTextBlock>
+#include <QThreadPool>
 
-
-TEditor::TEditor(TSettings* setting, QWidget* parent) {
+TEditor::TEditor(TSettings *setting, QWidget *parent)
+{
     setAcceptDrops(true);
     this->setStyleSheet(R"(
     QPlainTextEdit {
@@ -29,12 +30,11 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     this->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     this->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 
-    QTextDocument* editorDocument = this->document();
+    QTextDocument *editorDocument = this->document();
     QTextOption option = editorDocument->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
     option.setAlignment(Qt::AlignRight);
     editorDocument->setDefaultTextOption(option);
-
 
     highlighter = new TSyntaxHighlighter(editorDocument);
     lineNumberArea = new LineNumberArea(this);
@@ -53,22 +53,38 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightSelectedWordMatches);
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
+    // Set up debounce timer for highlightSelectedWordMatches
+    highlightDebounceTimer = new QTimer(this);
+    highlightDebounceTimer->setSingleShot(true);
+    highlightDebounceTimer->setInterval(300);
+    connect(highlightDebounceTimer, &QTimer::timeout, this, [this]()
+            {
+        if (!highlightSearchInProgress) {
+            startAsyncWordHighlight();
+        } });
+
     updateLineNumberAreaWidth();
     highlightCurrentLine();
 
     // set saved setting font size to the editor
     QSettings settingsVal("Alif", "Taif");
     int savedSize = settingsVal.value("editorFontSize").toInt();
-    if (savedSize > 10) {
+    if (savedSize > 10)
+    {
         updateFontSize(savedSize);
-    } else {
+    }
+    else
+    {
         updateFontSize(18);
     }
     // set saved setting font type to the editor
     QString savedFont = settingsVal.value("editorFontType").toString();
-    if (savedFont.isEmpty()) {
+    if (savedFont.isEmpty())
+    {
         updateFontType("Noto Kufi Arabic");
-    } else {
+    }
+    else
+    {
         updateFontType(savedFont);
     }
     // set saved setting theme to the editor
@@ -86,36 +102,46 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     installEventFilter(this);
 }
 
-void TEditor::UpdateTabStopDistance(QFont font) {
+void TEditor::UpdateTabStopDistance(QFont font)
+{
     QFontMetricsF metrics(font);
     qreal spaceWidth = metrics.horizontalAdvance(' ');
     setTabStopDistance(8 * spaceWidth);
 }
 
-void TEditor::wheelEvent(QWheelEvent *event) {
-    if (event->modifiers() & Qt::ControlModifier) {
+void TEditor::wheelEvent(QWheelEvent *event)
+{
+    if (event->modifiers() & Qt::ControlModifier)
+    {
         const int delta = event->angleDelta().y();
-        if (delta == 0) return;
+        if (delta == 0)
+            return;
 
         QFont font = this->font();
         int currentSize = font.pixelSize();
 
         int step = 1;
 
-        if (delta > 0) {
+        if (delta > 0)
+        {
             currentSize += step;
-        } else {
+        }
+        else
+        {
             currentSize -= step;
         }
 
-        if (currentSize < 12) currentSize = 12;
-        if (currentSize > 36) currentSize = 36;
+        if (currentSize < 12)
+            currentSize = 12;
+        if (currentSize > 36)
+            currentSize = 36;
 
         font.setPixelSize(currentSize);
         UpdateTabStopDistance(font);
         this->setFont(font);
 
-        if (lineNumberArea) {
+        if (lineNumberArea)
+        {
             QFont lineFont = lineNumberArea->font();
             lineFont.setPixelSize(currentSize);
             lineNumberArea->setFont(lineFont);
@@ -127,8 +153,10 @@ void TEditor::wheelEvent(QWheelEvent *event) {
     QPlainTextEdit::wheelEvent(event);
 }
 
-void TEditor::updateFontSize(int size) {
-    if (size < 10) {
+void TEditor::updateFontSize(int size)
+{
+    if (size < 10)
+    {
         size = 18;
     }
 
@@ -144,7 +172,8 @@ void TEditor::updateFontSize(int size) {
     lineNumberArea->setFont(fontNums);
 }
 
-void TEditor::updateFontType(QString font) {
+void TEditor::updateFontType(QString font)
+{
     QFont currentFont = this->font();
     currentFont.setFamily(font);
 
@@ -152,7 +181,6 @@ void TEditor::updateFontType(QString font) {
 
     this->setFont(currentFont);
 }
-
 
 // 1. دالة تعليق/إلغاء تعليق الأكواد
 void TEditor::toggleComment()
@@ -169,25 +197,31 @@ void TEditor::toggleComment()
     cursor.setPosition(endPos, QTextCursor::KeepAnchor);
     int endBlock = cursor.blockNumber();
 
-    if (cursor.atBlockStart() && endBlock > startBlock) {
+    if (cursor.atBlockStart() && endBlock > startBlock)
+    {
         endBlock--;
     }
 
     bool shouldComment = false;
 
     QTextBlock block = document()->findBlockByNumber(startBlock);
-    if (!block.text().trimmed().startsWith("#")) {
+    if (!block.text().trimmed().startsWith("#"))
+    {
         shouldComment = true;
     }
 
-    for (int i = startBlock; i <= endBlock; ++i) {
+    for (int i = startBlock; i <= endBlock; ++i)
+    {
         block = document()->findBlockByNumber(i);
         QTextCursor lineCursor(block);
 
-        if (shouldComment) {
+        if (shouldComment)
+        {
             lineCursor.movePosition(QTextCursor::StartOfBlock);
             lineCursor.insertText("#");
-        } else {
+        }
+        else
+        {
             QString text = block.text();
             int idx = text.indexOf("#");
             lineCursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, idx);
@@ -219,7 +253,8 @@ void TEditor::moveLineUp()
     QTextBlock currentBlock = cursor.block();
     QTextBlock prevBlock = currentBlock.previous();
 
-    if (!prevBlock.isValid()) return;
+    if (!prevBlock.isValid())
+        return;
 
     cursor.beginEditBlock();
 
@@ -244,7 +279,8 @@ void TEditor::moveLineDown()
     QTextBlock currentBlock = cursor.block();
     QTextBlock nextBlock = currentBlock.next();
 
-    if (!nextBlock.isValid()) return;
+    if (!nextBlock.isValid())
+        return;
 
     cursor.beginEditBlock();
 
@@ -252,7 +288,8 @@ void TEditor::moveLineDown()
     cursor.movePosition(QTextCursor::StartOfBlock);
     cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
     cursor.removeSelectedText();
-    if (cursor.atBlockStart()) cursor.deleteChar();
+    if (cursor.atBlockStart())
+        cursor.deleteChar();
 
     cursor.movePosition(QTextCursor::EndOfBlock);
     cursor.insertText("\n" + currentText);
@@ -261,13 +298,16 @@ void TEditor::moveLineDown()
     cursor.endEditBlock();
 }
 
-bool TEditor::eventFilter(QObject* obj, QEvent* event) {
-    if (obj == this and event->type() == QEvent::KeyPress) {
-        QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
+bool TEditor::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == this and event->type() == QEvent::KeyPress)
+    {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
 
-        if (keyEvent->key() == Qt::Key_Return
-             or keyEvent->key() == Qt::Key_Enter) {
-            if (keyEvent->modifiers() & Qt::ShiftModifier) {
+        if (keyEvent->key() == Qt::Key_Return or keyEvent->key() == Qt::Key_Enter)
+        {
+            if (keyEvent->modifiers() & Qt::ShiftModifier)
+            {
                 return true;
             }
             curserIndentation();
@@ -298,10 +338,12 @@ void TEditor::contextMenuEvent(QContextMenuEvent *event)
     delete menu;
 }
 
-int TEditor::lineNumberAreaWidth() const {
+int TEditor::lineNumberAreaWidth() const
+{
     int digits = 1;
     int max = qMax(1, blockCount());
-    while (max >= 10) {
+    while (max >= 10)
+    {
         max /= 10;
         ++digits;
     }
@@ -311,24 +353,28 @@ int TEditor::lineNumberAreaWidth() const {
     return space;
 }
 
-void TEditor::updateMinimapPosition() {
+void TEditor::updateMinimapPosition()
+{
     int mapX = 0;
     // بسبب الاتجاه من اليمين لليسار قد يكون شريط التمرير على يمين الخريطة المصغرة
-    if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2) {
+    if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2)
+    {
         mapX = verticalScrollBar()->width();
     }
     // تم تنقيص 3 من الاعلى لكي لا يقوم بالتغطية على حواف المحرر
     minimap->move(mapX, 3);
 }
 
-void TEditor::updateLineNumberAreaWidth() {
+void TEditor::updateLineNumberAreaWidth()
+{
     int numsWidth = lineNumberAreaWidth();
     int mapWidth = 100;
 
     setViewportMargins(mapWidth, 0, numsWidth, 0);
 }
 
-inline void TEditor::updateLineNumberArea(const QRect &rect, int dy) {
+inline void TEditor::updateLineNumberArea(const QRect &rect, int dy)
+{
     if (dy)
         lineNumberArea->scroll(0, dy);
     else
@@ -338,7 +384,8 @@ inline void TEditor::updateLineNumberArea(const QRect &rect, int dy) {
         updateLineNumberAreaWidth();
 }
 
-void TEditor::resizeEvent(QResizeEvent* event) {
+void TEditor::resizeEvent(QResizeEvent *event)
+{
     QPlainTextEdit::resizeEvent(event);
 
     QRect cr = contentsRect();
@@ -346,17 +393,20 @@ void TEditor::resizeEvent(QResizeEvent* event) {
 
     lineNumberArea->setGeometry(this->width() - numsWidth, cr.top(), numsWidth, cr.height());
 
-    if (minimap) {
+    if (minimap)
+    {
         // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
         minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
         updateMinimapPosition();
     }
 }
 
-void TEditor::showEvent(QShowEvent* event) {
+void TEditor::showEvent(QShowEvent *event)
+{
     QPlainTextEdit::showEvent(event);
 
-    if (minimap) {
+    if (minimap)
+    {
         QRect cr = contentsRect();
         // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
         minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
@@ -364,7 +414,8 @@ void TEditor::showEvent(QShowEvent* event) {
     }
 }
 
-void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
+void TEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
+{
 
     QPainter painter(lineNumberArea);
     painter.fillRect(event->rect(), Qt::transparent);
@@ -381,16 +432,20 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
     arrowPen.setJoinStyle(Qt::RoundJoin);
     arrowPen.setCapStyle(Qt::RoundCap);
 
-    while (block.isValid() && top <= event->rect().bottom()) {
-        if (block.isVisible() && bottom >= event->rect().top()) {
+    while (block.isValid() && top <= event->rect().bottom())
+    {
+        if (block.isVisible() && bottom >= event->rect().top())
+        {
             QString number = QString::number(blockNumber + 1);
 
             painter.setPen(QColor(200, 200, 200));
             painter.drawText(12, top, lineNumberArea->width(), fontMetrics().height(),
-                                     Qt::AlignRight | Qt::AlignVCenter, number);
+                             Qt::AlignRight | Qt::AlignVCenter, number);
 
-            for (const auto& region : foldRegions) {
-                if (region.startBlockNumber == blockNumber) {
+            for (const auto &region : foldRegions)
+            {
+                if (region.startBlockNumber == blockNumber)
+                {
                     painter.setPen(arrowPen);
                     painter.setBrush(QColor(37, 70, 99));
 
@@ -399,16 +454,19 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
                     int leftEdge = rightEdge - 8;
 
                     QPolygonF arrow;
-                    if (region.folded) {
+                    if (region.folded)
+                    {
                         // Left-pointing Triangle
                         arrow << QPoint(rightEdge, midY - 4)
-                        << QPoint(leftEdge, midY)
-                        << QPoint(rightEdge, midY + 4);
-                    } else {
+                              << QPoint(leftEdge, midY)
+                              << QPoint(rightEdge, midY + 4);
+                    }
+                    else
+                    {
                         // Down-pointing Triangle
                         arrow << QPoint(leftEdge, midY - 3)
-                        << QPoint(rightEdge, midY - 3)
-                        << QPoint((leftEdge + rightEdge) / 2.0, midY + 4);
+                              << QPoint(rightEdge, midY - 3)
+                              << QPoint((leftEdge + rightEdge) / 2.0, midY + 4);
                     }
 
                     painter.drawPolygon(arrow);
@@ -423,10 +481,12 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
     }
 }
 
-void TEditor::highlightCurrentLine() {
+void TEditor::highlightCurrentLine()
+{
     QList<QTextEdit::ExtraSelection> extraSelections;
 
-    if (!isReadOnly()) {
+    if (!isReadOnly())
+    {
         QTextEdit::ExtraSelection selection;
 
         QColor lineColor = QColor(16, 23, 48, 225);
@@ -441,24 +501,26 @@ void TEditor::highlightCurrentLine() {
     setExtraSelections(extraSelections);
 }
 
-void TEditor::updateFoldRegions() {
+void TEditor::updateFoldRegions()
+{
 
     // we use static array for zero memory allocation per call
     static const QStringView foldTriggers[] = {
         u"صنف", u"دالة", u"اذا", u"إذا", u"والا", u"وإلا",
-        u"اواذا", u"أوإذا", u"بينما", u"لكل", u"حاول", u"خلل", u"نهاية"
-    };
+        u"اواذا", u"أوإذا", u"بينما", u"لكل", u"حاول", u"خلل", u"نهاية"};
 
     // Preserve previous fold states
     QHash<int, bool> previousFoldStates;
     previousFoldStates.reserve(foldRegions.size());
-    for (const FoldRegion& region : foldRegions) {
+    for (const FoldRegion &region : foldRegions)
+    {
         previousFoldStates.insert(region.startBlockNumber, region.folded);
     }
     foldRegions.clear();
 
     // here we use single-pass O(N) fold detection using a Stack
-    struct ActiveFold {
+    struct ActiveFold
+    {
         int startBlock;
         int indent;
     };
@@ -466,28 +528,36 @@ void TEditor::updateFoldRegions() {
     int lastValidBlockNumber = -1;
 
     QTextBlock block = document()->firstBlock();
-    while (block.isValid()) {
+    while (block.isValid())
+    {
         QString text = block.text();
         // using QStringView here to avoids making a copy of the string just to trim it
         QStringView trimmed = QStringView(text).trimmed();
 
-        if (trimmed.isEmpty()) {
+        if (trimmed.isEmpty())
+        {
             block = block.next();
             continue;
         }
 
         // Fast inline indent calculation
         int indent = 0;
-        for (QChar c : text) {
-            if (c == u'\t') indent += 8;
-            else if (c == u' ') indent += 1;
-            else break;
+        for (QChar c : text)
+        {
+            if (c == u'\t')
+                indent += 8;
+            else if (c == u' ')
+                indent += 1;
+            else
+                break;
         }
 
         // Close fold regions where indentation drops back to or below the parent
-        while (!stack.isEmpty() && indent <= stack.top().indent) {
+        while (!stack.isEmpty() && indent <= stack.top().indent)
+        {
             ActiveFold af = stack.pop();
-            if (lastValidBlockNumber > af.startBlock) {
+            if (lastValidBlockNumber > af.startBlock)
+            {
                 FoldRegion region{};
                 region.startBlockNumber = af.startBlock;
                 region.endBlockNumber = lastValidBlockNumber;
@@ -498,14 +568,17 @@ void TEditor::updateFoldRegions() {
 
         // now check if the current line starts with any trigger word
         bool isTrigger = false;
-        for (const QStringView& trigger : foldTriggers) {
-            if (trimmed.startsWith(trigger)) {
+        for (const QStringView &trigger : foldTriggers)
+        {
+            if (trimmed.startsWith(trigger))
+            {
                 isTrigger = true;
                 break;
             }
         }
 
-        if (isTrigger) {
+        if (isTrigger)
+        {
             stack.push({block.blockNumber(), indent});
         }
 
@@ -514,9 +587,11 @@ void TEditor::updateFoldRegions() {
     }
 
     // at the end close any unclosed folds remaining at the end of the document
-    while (!stack.isEmpty()) {
+    while (!stack.isEmpty())
+    {
         ActiveFold af = stack.pop();
-        if (lastValidBlockNumber > af.startBlock) {
+        if (lastValidBlockNumber > af.startBlock)
+        {
             FoldRegion region;
             region.startBlockNumber = af.startBlock;
             region.endBlockNumber = lastValidBlockNumber;
@@ -525,7 +600,8 @@ void TEditor::updateFoldRegions() {
         }
     }
 
-    if (lineNumberArea) {
+    if (lineNumberArea)
+    {
         lineNumberArea->update();
     }
 
@@ -533,8 +609,10 @@ void TEditor::updateFoldRegions() {
     // to prevents inner child folds from unhiding blocks that belong to a folded parent.
     std::vector<std::pair<int, int>> hiddenIntervals;
     hiddenIntervals.reserve(foldRegions.size());
-    for (const FoldRegion& r : foldRegions) {
-        if (r.folded) {
+    for (const FoldRegion &r : foldRegions)
+    {
+        if (r.folded)
+        {
             hiddenIntervals.push_back({r.startBlockNumber + 1, r.endBlockNumber});
         }
     }
@@ -543,10 +621,14 @@ void TEditor::updateFoldRegions() {
     std::sort(hiddenIntervals.begin(), hiddenIntervals.end());
     std::vector<std::pair<int, int>> mergedHidden;
     mergedHidden.reserve(hiddenIntervals.size());
-    for (const auto& interval : hiddenIntervals) {
-        if (mergedHidden.empty() || mergedHidden.back().second < interval.first) {
+    for (const auto &interval : hiddenIntervals)
+    {
+        if (mergedHidden.empty() || mergedHidden.back().second < interval.first)
+        {
             mergedHidden.push_back(interval);
-        } else {
+        }
+        else
+        {
             mergedHidden.back().second = std::max(mergedHidden.back().second, interval.second);
         }
     }
@@ -554,17 +636,20 @@ void TEditor::updateFoldRegions() {
     // Single pass to apply block visibility changes (Here massive UI performance boost :)
     block = document()->firstBlock();
     auto intervalIt = mergedHidden.begin();
-    while (block.isValid()) {
+    while (block.isValid())
+    {
         int bNum = block.blockNumber();
 
-        while (intervalIt != mergedHidden.end() && intervalIt->second < bNum) {
+        while (intervalIt != mergedHidden.end() && intervalIt->second < bNum)
+        {
             ++intervalIt;
         }
 
         bool shouldBeHidden = (intervalIt != mergedHidden.end() && bNum >= intervalIt->first && bNum <= intervalIt->second);
 
         // Only trigger a state change if necessary to avoid unnecessary Qt paint events
-        if (block.isVisible() == shouldBeHidden) {
+        if (block.isVisible() == shouldBeHidden)
+        {
             block.setVisible(!shouldBeHidden);
         }
 
@@ -575,25 +660,34 @@ void TEditor::updateFoldRegions() {
     viewport()->update();
 }
 
-void TEditor::toggleFold(int blockNumber) {
-    for (FoldRegion &region : foldRegions) {
-        if (region.startBlockNumber == blockNumber) {
+void TEditor::toggleFold(int blockNumber)
+{
+    for (FoldRegion &region : foldRegions)
+    {
+        if (region.startBlockNumber == blockNumber)
+        {
             region.folded = !region.folded;
 
             QTextBlock block = document()->findBlockByNumber(region.startBlockNumber + 1);
-            while (block.isValid() && block.blockNumber() <= region.endBlockNumber) {
+            while (block.isValid() && block.blockNumber() <= region.endBlockNumber)
+            {
                 block.setVisible(!region.folded);
                 block = block.next();
             }
 
-            if (!region.folded) {
-                for (FoldRegion &subRegion : foldRegions) {
+            if (!region.folded)
+            {
+                for (FoldRegion &subRegion : foldRegions)
+                {
                     if (subRegion.startBlockNumber > region.startBlockNumber &&
-                        subRegion.endBlockNumber <= region.endBlockNumber) {
+                        subRegion.endBlockNumber <= region.endBlockNumber)
+                    {
                         QTextBlock subBlock = document()->findBlockByNumber(subRegion.startBlockNumber + 1);
                         bool allVisible = true;
-                        while (subBlock.isValid() && subBlock.blockNumber() <= subRegion.endBlockNumber) {
-                            if (!subBlock.isVisible()) {
+                        while (subBlock.isValid() && subBlock.blockNumber() <= subRegion.endBlockNumber)
+                        {
+                            if (!subBlock.isVisible())
+                            {
                                 allVisible = false;
                                 break;
                             }
@@ -611,7 +705,8 @@ void TEditor::toggleFold(int blockNumber) {
     }
 }
 
-void TEditor::paintEvent(QPaintEvent *event) {
+void TEditor::paintEvent(QPaintEvent *event)
+{
     // Let the editor draw the actual text first
     QPlainTextEdit::paintEvent(event);
 
@@ -633,20 +728,28 @@ void TEditor::paintEvent(QPaintEvent *event) {
     int bottom = top + static_cast<int>(blockBoundingRect(block).height());
 
     // lambda func to calculate indent level (8 spaces = 1 tab)
-    auto getIndentLevel = [](const QString& text) -> int {
+    auto getIndentLevel = [](const QString &text) -> int
+    {
         int indent = 0;
         int spaces = 0;
-        for (QChar c : text) {
-            if (c == '\t') {
+        for (QChar c : text)
+        {
+            if (c == '\t')
+            {
                 indent++;
                 spaces = 0;
-            } else if (c == ' ') {
+            }
+            else if (c == ' ')
+            {
                 spaces++;
-                if (spaces == 8) {
+                if (spaces == 8)
+                {
                     indent++;
                     spaces = 0;
                 }
-            } else {
+            }
+            else
+            {
                 break;
             }
         }
@@ -654,39 +757,49 @@ void TEditor::paintEvent(QPaintEvent *event) {
     };
 
     // Iterate through all visible blocks
-    while (block.isValid() && top <= event->rect().bottom()) {
-        if (block.isVisible()) {
+    while (block.isValid() && top <= event->rect().bottom())
+    {
+        if (block.isVisible())
+        {
             QString text = block.text();
             int indentLevel = 0;
 
             // Handle empty lines (continue scope lines across them)
-            if (text.trimmed().isEmpty()) {
+            if (text.trimmed().isEmpty())
+            {
                 int prevIndent = 0;
                 int nextIndent = 0;
 
                 // Look back for the previous non-empty line
                 QTextBlock prev = block.previous();
-                while (prev.isValid() && prev.text().trimmed().isEmpty()) {
+                while (prev.isValid() && prev.text().trimmed().isEmpty())
+                {
                     prev = prev.previous();
                 }
-                if (prev.isValid()) prevIndent = getIndentLevel(prev.text());
+                if (prev.isValid())
+                    prevIndent = getIndentLevel(prev.text());
 
                 // Look ahead for the next non-empty line
                 QTextBlock next = block.next();
-                while (next.isValid() && next.text().trimmed().isEmpty()) {
+                while (next.isValid() && next.text().trimmed().isEmpty())
+                {
                     next = next.next();
                 }
-                if (next.isValid()) nextIndent = getIndentLevel(next.text());
+                if (next.isValid())
+                    nextIndent = getIndentLevel(next.text());
 
                 // Use the minimum of surrounding indents to safely connect/close scopes
                 indentLevel = qMin(prevIndent, nextIndent);
-            } else {
+            }
+            else
+            {
                 indentLevel = getIndentLevel(text);
             }
 
             // Draw vertical lines from Right to Left
             // Starting from i = 0 to places the line Under the parent keyword
-            for (int i = 0; i < indentLevel; ++i) {
+            for (int i = 0; i < indentLevel; ++i)
+            {
                 // Calculate X from the right edge, shifting left based on the scope depth
                 qreal x = viewWidth - rightOffset - (i * tabStopDistance);
 
@@ -701,38 +814,47 @@ void TEditor::paintEvent(QPaintEvent *event) {
     }
 }
 
-
 /* ---------------------------------- Drag and Drop ---------------------------------- */
 
-void TEditor::dragEnterEvent(QDragEnterEvent* event) {
-    if (event->mimeData()->hasUrls()) {
-        for (const QUrl& url : event->mimeData()->urls()) {
+void TEditor::dragEnterEvent(QDragEnterEvent *event)
+{
+    if (event->mimeData()->hasUrls())
+    {
+        for (const QUrl &url : event->mimeData()->urls())
+        {
             if (url.fileName().endsWith(".alif", Qt::CaseInsensitive) or
                 url.fileName().endsWith(".aliflib", Qt::CaseInsensitive) or
-                url.fileName().endsWith(".txt", Qt::CaseInsensitive)) {
+                url.fileName().endsWith(".txt", Qt::CaseInsensitive))
+            {
                 event->acceptProposedAction();
                 return;
             }
         }
     }
 
-    if (event->mimeData()->hasText()) {
+    if (event->mimeData()->hasText())
+    {
         event->acceptProposedAction();
         return;
     }
     event->ignore();
 }
 
-void TEditor::dragMoveEvent(QDragMoveEvent* event) {
+void TEditor::dragMoveEvent(QDragMoveEvent *event)
+{
     event->acceptProposedAction();
 }
 
-void TEditor::dropEvent(QDropEvent* event) {
-    if (event->mimeData()->hasUrls()) {
-        for (const QUrl& url : event->mimeData()->urls()) {
+void TEditor::dropEvent(QDropEvent *event)
+{
+    if (event->mimeData()->hasUrls())
+    {
+        for (const QUrl &url : event->mimeData()->urls())
+        {
             if (url.fileName().endsWith(".alif", Qt::CaseInsensitive) or
                 url.fileName().endsWith(".aliflib", Qt::CaseInsensitive) or
-                url.fileName().endsWith(".txt", Qt::CaseInsensitive)) {
+                url.fileName().endsWith(".txt", Qt::CaseInsensitive))
+            {
 
                 QString filePath = url.toLocalFile();
                 emit openRequest(filePath);
@@ -743,12 +865,13 @@ void TEditor::dropEvent(QDropEvent* event) {
         }
     }
 
-    if (event->mimeData()->hasText()) {
+    if (event->mimeData()->hasText())
+    {
         QTextCursor dropCursor = cursorForPosition(event->position().toPoint());
         int dropPosition = dropCursor.position();
 
-        if (dropPosition >= textCursor().selectionStart()
-            and dropPosition <= textCursor().selectionEnd()) {
+        if (dropPosition >= textCursor().selectionStart() and dropPosition <= textCursor().selectionEnd())
+        {
             event->ignore();
             return;
         }
@@ -758,7 +881,8 @@ void TEditor::dropEvent(QDropEvent* event) {
 
         originalCursor.removeSelectedText();
 
-        if (originalCursor.position() < dropPosition) {
+        if (originalCursor.position() < dropPosition)
+        {
             dropPosition -= droppedText.length();
         }
 
@@ -772,26 +896,30 @@ void TEditor::dropEvent(QDropEvent* event) {
     event->ignore();
 }
 
-void TEditor::dragLeaveEvent(QDragLeaveEvent* event) {
+void TEditor::dragLeaveEvent(QDragLeaveEvent *event)
+{
     event->accept();
 }
 
-
 /* ---------------------------------- Indentation ---------------------------------- */
 
-void TEditor::curserIndentation() {
+void TEditor::curserIndentation()
+{
     QTextCursor cursor = textCursor();
     QString lineText = cursor.block().text();
     int cursorPosInLine = cursor.positionInBlock();
     QString currentIndentation = getCurrentLineIndentation(cursor);
 
-    if (cursorPosInLine > 0) {
+    if (cursorPosInLine > 0)
+    {
         int checkPos = cursorPosInLine - 1;
-        while (checkPos >= 0 and lineText.at(checkPos).isSpace()) {
+        while (checkPos >= 0 and lineText.at(checkPos).isSpace())
+        {
             checkPos--;
         }
 
-        if (checkPos >= 0 and lineText.at(checkPos) == ':') {
+        if (checkPos >= 0 and lineText.at(checkPos) == ':')
+        {
             currentIndentation += "\t";
         }
     }
@@ -802,72 +930,83 @@ void TEditor::curserIndentation() {
     setTextCursor(cursor);
 }
 
-QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const {
+QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const
+{
     QTextBlock block = cursor.block();
-    if (!block.isValid()) {
+    if (!block.isValid())
+    {
         return QString();
     }
 
     QString lineText = block.text();
     QString indentation;
-    for (const QChar &ch : lineText) {
-        if (ch == ' ' or ch == '\t') {
+    for (const QChar &ch : lineText)
+    {
+        if (ch == ' ' or ch == '\t')
+        {
             indentation += ch;
-        } else {
+        }
+        else
+        {
             break;
         }
     }
     return indentation;
 }
 
-
-
-
-void TEditor::startAutoSave() {
-    if (!autoSaveTimer->isActive()) {
+void TEditor::startAutoSave()
+{
+    if (!autoSaveTimer->isActive())
+    {
         autoSaveTimer->start();
     }
 }
 
-void TEditor::stopAutoSave() {
+void TEditor::stopAutoSave()
+{
     autoSaveTimer->stop();
 }
 
-void TEditor::performAutoSave() {
+void TEditor::performAutoSave()
+{
     QString filePath = this->property("filePath").toString();
-    if (filePath.isEmpty() || !this->document()->isModified()) return;
+    if (filePath.isEmpty() || !this->document()->isModified())
+        return;
 
     QString backupPath = filePath + ".~";
 
     QFile file(backupPath);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
         QTextStream out(&file);
         out << this->toPlainText();
         file.close();
     }
 }
 
-void TEditor::removeBackupFile() {
+void TEditor::removeBackupFile()
+{
     QString filePath = this->property("filePath").toString();
-    if (filePath.isEmpty()) return;
+    if (filePath.isEmpty())
+        return;
 
     QString backupPath = filePath + ".~";
-    if (QFile::exists(backupPath)) {
+    if (QFile::exists(backupPath))
+    {
         QFile::remove(backupPath);
     }
     stopAutoSave();
 }
 
-
-void TEditor::updateHighlighterTheme(std::shared_ptr<SyntaxTheme> theme) {
+void TEditor::updateHighlighterTheme(std::shared_ptr<SyntaxTheme> theme)
+{
     this->highlighter->setTheme(theme);
 }
 
-
-
 // --- autocomplete system ---
 
-void TEditor::setupAutoComplete() {
+void TEditor::setupAutoComplete()
+{
     // set autocomplete system
     model = new CompletionModel(this);
     strategies.push_back(std::make_unique<SnippetStrategy>());
@@ -879,10 +1018,13 @@ void TEditor::setupAutoComplete() {
     setCompleter(completer);
 }
 
-void TEditor::setCompleter(QCompleter *completer) {
-    if (c) disconnect(c, nullptr, this, nullptr);
+void TEditor::setCompleter(QCompleter *completer)
+{
+    if (c)
+        disconnect(c, nullptr, this, nullptr);
     c = completer;
-    if (!c) return;
+    if (!c)
+        return;
 
     c->setWidget(this);
     c->setCompletionMode(QCompleter::PopupCompletion);
@@ -901,7 +1043,8 @@ void TEditor::setCompleter(QCompleter *completer) {
 
     // To this lambda that captures the type:
     connect(c, QOverload<const QString &>::of(&QCompleter::activated),
-            this, [this](const QString &completion) {
+            this, [this](const QString &completion)
+            {
                 // Get the current index from the completer popup
                 QModelIndex index = c->popup()->currentIndex();
                 if (index.isValid()) {
@@ -914,26 +1057,30 @@ void TEditor::setCompleter(QCompleter *completer) {
                 } else {
                     // Fallback to just the string without type
                     insertCompletion(completion, CompletionType::DynamicWord);
-                }
-            });
+                } });
 }
 
-void TEditor::focusOutEvent(QFocusEvent *e) {
-    if (c && c->popup()->isVisible()) {
+void TEditor::focusOutEvent(QFocusEvent *e)
+{
+    if (c && c->popup()->isVisible())
+    {
         c->popup()->hide();
     }
     QPlainTextEdit::focusOutEvent(e);
 }
 
-void TEditor::keyPressEvent(QKeyEvent *e) {
+void TEditor::keyPressEvent(QKeyEvent *e)
+{
     // handleing Brackets and Quotes
-    if (handleAutoPairing(e)) {
+    if (handleAutoPairing(e))
+    {
         e->accept();
         return;
     }
 
     // Handle Navigation for Live Update (Arrow Keys) ---
-    if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right) {
+    if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right)
+    {
         // Let the editor move the cursor first
         QPlainTextEdit::keyPressEvent(e);
         // Then immediately trigger completion to update the list based on the new cursor position
@@ -941,8 +1088,10 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
         return;
     }
 
-    if (c && c->popup()->isVisible()) {
-        switch (e->key()) {
+    if (c && c->popup()->isVisible())
+    {
+        switch (e->key())
+        {
         case Qt::Key_Enter:
         case Qt::Key_Return:
         case Qt::Key_Escape:
@@ -950,20 +1099,26 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_Backtab:
             e->ignore();
             return;
-        default: break;
+        default:
+            break;
         }
     }
-    if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)) {
-        if (!snippetTargets.isEmpty()) {
-            if (processSnippetNavigation()) {
+    if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter))
+    {
+        if (!snippetTargets.isEmpty())
+        {
+            if (processSnippetNavigation())
+            {
                 e->accept();
                 return;
             }
         }
     }
 
-    if (e->key() == Qt::Key_Tab && !snippetTargets.isEmpty()) {
-        if (processSnippetNavigation()) {
+    if (e->key() == Qt::Key_Tab && !snippetTargets.isEmpty())
+    {
+        if (processSnippetNavigation())
+        {
             e->accept();
             return;
         }
@@ -973,15 +1128,18 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
 
     QPlainTextEdit::keyPressEvent(e);
 
-    if (!isShortcut && e->text().isEmpty()) return;
+    if (!isShortcut && e->text().isEmpty())
+        return;
 
     performCompletion();
 }
 
-void TEditor::performCompletion() {
+void TEditor::performCompletion()
+{
     QString textUnder = textUnderCursor().selectedText();
     // Allow empty text for shortcut (Ctrl+Space) to show all
-    if (textUnder.length() < 1) {
+    if (textUnder.length() < 1)
+    {
         // Optional: Trigger immediately on Ctrl+Space even if empty?
         // For now, keep logic to hide if empty, unless you want "all suggestion" behavior.
         c->popup()->hide();
@@ -991,14 +1149,16 @@ void TEditor::performCompletion() {
     std::vector<CompletionItem> allSuggestions;
     QString fullDoc = toPlainText();
 
-    for (const auto& strategy : strategies) {
+    for (const auto &strategy : strategies)
+    {
         auto res = strategy->getSuggestions(textUnder, fullDoc);
         allSuggestions.insert(allSuggestions.end(), res.begin(), res.end());
     }
 
     model->updateData(allSuggestions);
 
-    if (allSuggestions.empty()) {
+    if (allSuggestions.empty())
+    {
         c->popup()->hide();
         return;
     }
@@ -1022,23 +1182,28 @@ void TEditor::performCompletion() {
 
     // select first item in the popped up list
     QAbstractItemView *popup = c->popup();
-    if (popup and popup->model()->rowCount() > 0) {
+    if (popup and popup->model()->rowCount() > 0)
+    {
         popup->setCurrentIndex(popup->model()->index(0, 0));
     }
 }
 
-QTextCursor TEditor::textUnderCursor() const {
+QTextCursor TEditor::textUnderCursor() const
+{
     QTextCursor tc = textCursor();
     tc.movePosition(QTextCursor::PreviousWord, QTextCursor::KeepAnchor);
     return tc;
 }
 
-void TEditor::insertCompletion(const QString &completion, CompletionType type) {
-    if (c->widget() != this) return;
+void TEditor::insertCompletion(const QString &completion, CompletionType type)
+{
+    if (c->widget() != this)
+        return;
     // This ensures we replace the whole partial word with the completion.
     QTextCursor tc = textUnderCursor();
 
-    switch (type) {
+    switch (type)
+    {
     case CompletionType::Builtin:
         insertBuiltinFunction(completion, tc);
         break;
@@ -1054,11 +1219,13 @@ void TEditor::insertCompletion(const QString &completion, CompletionType type) {
         break;
     }
 }
-void TEditor::insertWord(const QString& completion, QTextCursor& tc) {
+void TEditor::insertWord(const QString &completion, QTextCursor &tc)
+{
     tc.insertText(completion);
     setTextCursor(tc);
 }
-void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc) {
+void TEditor::insertBuiltinFunction(const QString &functionName, QTextCursor &tc)
+{
     // Select everything from cursor to end of current word
     QTextCursor tempCursor = textCursor();
     tempCursor.movePosition(QTextCursor::EndOfWord, QTextCursor::KeepAnchor);
@@ -1071,7 +1238,8 @@ void TEditor::insertBuiltinFunction(const QString& functionName, QTextCursor& tc
     // Perform the insertion
     setTextCursor(tc);
 }
-void TEditor::insertSnippet(const QString& snippet, QTextCursor& tc) {
+void TEditor::insertSnippet(const QString &snippet, QTextCursor &tc)
+{
     QString textToInsert = snippet;
 
     // Calculate indentation
@@ -1079,18 +1247,23 @@ void TEditor::insertSnippet(const QString& snippet, QTextCursor& tc) {
     QTextBlock block = tc.block();
     QString lineText = block.text();
     QString baseIndentation{};
-    for (const QChar &ch : lineText) {
-        if (ch.isSpace()) baseIndentation.append(ch);
-        else break;
+    for (const QChar &ch : lineText)
+    {
+        if (ch.isSpace())
+            baseIndentation.append(ch);
+        else
+            break;
     }
 
     // Apply indentation to multi-line snippets
-    if (textToInsert.contains('\n')) {
+    if (textToInsert.contains('\n'))
+    {
         QStringList lines = textToInsert.split('\n');
         // Start from index 1 because index 0 is appended to the current line
         // (which already has indentation on the left).
         // Subsequent lines need the base indentation explicitly added.
-        for (int i = 1; i < lines.size(); ++i) {
+        for (int i = 1; i < lines.size(); ++i)
+        {
             lines[i] = baseIndentation + lines[i];
         }
         textToInsert = lines.join('\n');
@@ -1104,65 +1277,80 @@ void TEditor::insertSnippet(const QString& snippet, QTextCursor& tc) {
     snippetTargets.clear();
 
     // Setup snippet navigation based on snippet content
-    if (snippet.startsWith("دالة")) {
+    if (snippet.startsWith("دالة"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("اسم", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "معاملات" << "مرر";
     }
-    else if (snippet.startsWith("صنف")) {
+    else if (snippet.startsWith("صنف"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("اسم", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "مرر";
     }
-    else if (snippet.startsWith("اذا")) {
+    else if (snippet.startsWith("اذا"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("الشرط", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "مرر";
     }
-    else if (snippet.startsWith("لكل")) {
+    else if (snippet.startsWith("لكل"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("عنصر", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "العناصر" << "مرر";
     }
-    else if (snippet.startsWith("بينما")) {
+    else if (snippet.startsWith("بينما"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("الشرط", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "مرر";
     }
-    else if (snippet.startsWith("حاول")) {
+    else if (snippet.startsWith("حاول"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("مرر", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "مرر";
     }
-    else if (snippet.startsWith("خطية")) {
+    else if (snippet.startsWith("خطية"))
+    {
         QTextCursor finder = textCursor();
         finder.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, textToInsert.length());
         finder = document()->find("معاملات", finder);
-        if (!finder.isNull()) setTextCursor(finder);
+        if (!finder.isNull())
+            setTextCursor(finder);
         snippetTargets << "مرر";
     }
-
 }
 
-
-bool TEditor::processSnippetNavigation() {
-    if (snippetTargets.isEmpty()) return false;
+bool TEditor::processSnippetNavigation()
+{
+    if (snippetTargets.isEmpty())
+        return false;
     QString nextTarget = snippetTargets.first();
     QTextCursor tc = textCursor();
     QTextCursor found = document()->find(nextTarget, tc);
-    if (!found.isNull()) {
+    if (!found.isNull())
+    {
         setTextCursor(found);
         snippetTargets.removeFirst();
         return true;
@@ -1171,28 +1359,36 @@ bool TEditor::processSnippetNavigation() {
     return false;
 }
 
-bool TEditor::handleAutoPairing(QKeyEvent* e) {
+bool TEditor::handleAutoPairing(QKeyEvent *e)
+{
     QString text = e->text();
 
-    if (!text.isEmpty()) {
+    if (!text.isEmpty())
+    {
         QChar typedChar = text.at(0);
 
         // Handle opening brackets
-        if (typedChar == '(' || typedChar == '[' || typedChar == '{') {
+        if (typedChar == '(' || typedChar == '[' || typedChar == '{')
+        {
             QChar closingBracket;
-            if (typedChar == '(') closingBracket = ')';
-            else if (typedChar == '[') closingBracket = ']';
-            else closingBracket = '}';
+            if (typedChar == '(')
+                closingBracket = ')';
+            else if (typedChar == '[')
+                closingBracket = ']';
+            else
+                closingBracket = '}';
 
             return handleBracketCompletion(typedChar, closingBracket);
         }
         // Handle quotes
-        else if (typedChar == '\'' || typedChar == '"' || typedChar == '`') {
-                return handleQuoteCompletion(typedChar);
+        else if (typedChar == '\'' || typedChar == '"' || typedChar == '`')
+        {
+            return handleQuoteCompletion(typedChar);
         }
         // Handle closing brackets (skip over existing ones)
         else if (typedChar == ')' || typedChar == ']' || typedChar == '}' ||
-                 typedChar == '\'' || typedChar == '"' || typedChar == '`') {
+                 typedChar == '\'' || typedChar == '"' || typedChar == '`')
+        {
             return handleBracketSkip(typedChar);
         }
     }
@@ -1200,11 +1396,13 @@ bool TEditor::handleAutoPairing(QKeyEvent* e) {
     return false;
 }
 
-bool TEditor::handleBracketCompletion(QChar openingBracket, QChar closingBracket) {
+bool TEditor::handleBracketCompletion(QChar openingBracket, QChar closingBracket)
+{
     QTextCursor cursor = textCursor();
 
     // Check if there's a selection
-    if (cursor.hasSelection()) {
+    if (cursor.hasSelection())
+    {
         // Wrap selection with brackets
         QString selectedText = cursor.selectedText();
         cursor.insertText(openingBracket + selectedText + closingBracket);
@@ -1213,7 +1411,9 @@ bool TEditor::handleBracketCompletion(QChar openingBracket, QChar closingBracket
         cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, selectedText.length() + 1);
         cursor.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor, selectedText.length());
         setTextCursor(cursor);
-    } else {
+    }
+    else
+    {
         // Insert both brackets and place cursor between them
         cursor.insertText(QString(openingBracket) + closingBracket);
         cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
@@ -1223,7 +1423,8 @@ bool TEditor::handleBracketCompletion(QChar openingBracket, QChar closingBracket
     return true;
 }
 
-bool TEditor::handleQuoteCompletion(QChar quoteChar) {
+bool TEditor::handleQuoteCompletion(QChar quoteChar)
+{
     QTextCursor cursor = textCursor();
     QTextDocument *doc = document();
 
@@ -1231,7 +1432,8 @@ bool TEditor::handleQuoteCompletion(QChar quoteChar) {
     int pos = cursor.position();
 
     // Check if there's a selection
-    if (cursor.hasSelection()) {
+    if (cursor.hasSelection())
+    {
         // Wrap selection with quotes
         QString selectedText = cursor.selectedText();
         cursor.insertText(quoteChar + selectedText + quoteChar);
@@ -1245,9 +1447,11 @@ bool TEditor::handleQuoteCompletion(QChar quoteChar) {
 
     // Check if next character is the same quote (should skip)
     QChar nextChar;
-    if (pos < doc->characterCount() - 1) {
+    if (pos < doc->characterCount() - 1)
+    {
         nextChar = doc->characterAt(pos);
-        if (nextChar == quoteChar) {
+        if (nextChar == quoteChar)
+        {
             // Just move cursor over the existing quote
             cursor.movePosition(QTextCursor::Left);
             setTextCursor(cursor);
@@ -1257,7 +1461,8 @@ bool TEditor::handleQuoteCompletion(QChar quoteChar) {
 
     // Check if we're inside a word (for smart quotes)
     bool insideWord = false;
-    if (pos > 0) {
+    if (pos > 0)
+    {
         QChar prevChar = doc->characterAt(pos - 1);
         insideWord = prevChar.isLetterOrNumber() || prevChar == '_';
     }
@@ -1270,15 +1475,18 @@ bool TEditor::handleQuoteCompletion(QChar quoteChar) {
     return true;
 }
 
-bool TEditor::handleBracketSkip(QChar typedChar) {
+bool TEditor::handleBracketSkip(QChar typedChar)
+{
     QTextCursor cursor = textCursor();
     QTextDocument *doc = document();
     int pos = cursor.position();
 
     // Check if the next character matches the typed closing bracket/quote
-    if (pos < doc->characterCount() - 1) {
+    if (pos < doc->characterCount() - 1)
+    {
         QChar nextChar = doc->characterAt(pos);
-        if (nextChar == typedChar) {
+        if (nextChar == typedChar)
+        {
             // Just move the cursor over the existing bracket/quote
             cursor.movePosition(QTextCursor::Left);
             setTextCursor(cursor);
@@ -1289,46 +1497,118 @@ bool TEditor::handleBracketSkip(QChar typedChar) {
     return false;
 }
 
+void TEditor::highlightSelectedWordMatches()
+{
+    if (highlightDebounceTimer)
+    {
+        highlightDebounceTimer->start();
+    }
+}
 
-
-void TEditor::highlightSelectedWordMatches() {
-    QList<QTextEdit::ExtraSelection> extraSelections;
-
-    // Get the current cursor and selected text
-    QTextCursor currentCursor = textCursor();
-    QString selectedText = currentCursor.selectedText();
-
-    // Avoid highlighting if nothing is selected or if it's just whitespaces/too
-    // short
-    if (selectedText.trimmed().isEmpty()) {
-        setExtraSelections(extraSelections);
+void TEditor::startAsyncWordHighlight()
+{
+    if (highlightSearchInProgress)
+    {
         return;
     }
+
+    QTextCursor currentCursor = textCursor();
+    QString selectedText = currentCursor.selectedText();
+    QString trimmedText = selectedText.trimmed();
+
+    // Cache check
+    if (trimmedText == lastHighlightedText &&
+        currentCursor.position() == lastHighlightedPosition)
+    {
+        return;
+    }
+
+    // Clean up highlights if nothing is selected
+    if (trimmedText.isEmpty())
+    {
+        highlightSearchInProgress = true;
+
+        // Safely clear selections on the main thread
+        QMetaObject::invokeMethod(this, [this]() {
+            setExtraSelections({});
+            highlightSearchInProgress = false;
+            lastHighlightedText.clear();
+            lastHighlightedPosition = -1;
+        }, Qt::QueuedConnection);
+        return;
+    }
+
+    highlightSearchInProgress = true;
+
+    // Capture ONLY thread-safe copies for the background task
+    QString docText = toPlainText();
+    QString searchText = trimmedText;
+    int startPos = currentCursor.position();
+
+    // Launch background search utilizing pure string scanning
+    // Correct way for fire-and-forget tasks in Qt 6:
+    QThreadPool::globalInstance()->start([this, searchText, docText, startPos]()
+                                         {
+                                             // 1. Run the search in the background thread
+                                             QList<MatchRange> matches = searchWordMatches(searchText, docText);
+
+                                             // 2. Dispatch the results back to the GUI thread
+                                             QMetaObject::invokeMethod(this, [this, matches, searchText, startPos]() {
+                                                 applyWordHighlights(matches, searchText, startPos);
+                                             }, Qt::QueuedConnection);
+                                         });
+}
+
+// RUNS ON BACKGROUND THREAD: Pure functional, uses absolutely NO GUI or QObject elements
+QList<TEditor::MatchRange> TEditor::searchWordMatches(
+    const QString &searchText,
+    const QString &documentText)
+{
+    QList<MatchRange> matches;
+    if (searchText.isEmpty() || documentText.isEmpty()) {
+        return matches;
+    }
+
+    int searchPos = 0;
+    // Qt::CaseInsensitive search mimicking your original setup
+    while ((searchPos = documentText.indexOf(searchText, searchPos, Qt::CaseInsensitive)) != -1)
+    {
+        matches.append(MatchRange{searchPos, static_cast<int>(searchText.length())});
+        searchPos += searchText.length();
+    }
+
+    return matches;
+}
+
+// RUNS ON MAIN GUI THREAD: Translates basic indexes back into Qt cursors
+void TEditor::applyWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos)
+{
+    QList<QTextEdit::ExtraSelection> extraSelections;
 
     // Configure the highlight format
     QTextCharFormat highlightFormat;
     highlightFormat.setBackground(QColor(200, 200, 230, 90));
 
-    // Setup document search
+    // Access to the text document and cursor layout is 100% safe here
     QTextDocument *doc = document();
-    QTextCursor searchCursor(doc);
 
-    // Options: Case-insensitive and partial matching (default behavior if
-    // FindFlags are omitted)
-    QTextDocument::FindFlags findFlags = {};
+    for (const auto &match : matches)
+    {
+        QTextEdit::ExtraSelection selection;
+        selection.format = highlightFormat;
 
-    // Loop through the document to find all matches
-    while (!searchCursor.isNull() && !searchCursor.atEnd()) {
-        searchCursor = doc->find(selectedText, searchCursor, findFlags);
+        // Correctly construct the cursor on the main thread
+        selection.cursor = QTextCursor(doc);
+        selection.cursor.setPosition(match.start);
+        selection.cursor.setPosition(match.start + match.length, QTextCursor::KeepAnchor);
 
-        if (!searchCursor.isNull()) {
-            QTextEdit::ExtraSelection selection;
-            selection.format = highlightFormat;
-            selection.cursor = searchCursor;
-            extraSelections.append(selection);
-        }
+        extraSelections.append(selection);
     }
 
-    // 5. Apply all the highlights to the editor
     setExtraSelections(extraSelections);
+    highlightSearchInProgress = false;
+
+    // Update Cache safely
+    lastHighlightedText = searchText;
+    lastHighlightedPosition = startPos;
 }
