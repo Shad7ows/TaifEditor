@@ -55,7 +55,7 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
     // Set up debounce timer for highlightSelectedWordMatches
     highlightDebounceTimer = new QTimer(this);
     highlightDebounceTimer->setSingleShot(true);
-    highlightDebounceTimer->setInterval(300);
+    highlightDebounceTimer->setInterval(50);
     connect(highlightDebounceTimer, &QTimer::timeout, this, [this]()
             {
         if (!highlightSearchInProgress) {
