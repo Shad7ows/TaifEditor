@@ -31,6 +31,11 @@ int main(int argc, char *argv[])
         QString alaqHalab = QFontDatabase::applicationFontFamilies(fontId4).at(0);
         QString hasubiMono = QFontDatabase::applicationFontFamilies(fontId5).at(0);
         QFont font{};
+
+        // smooth the font under 14px size - need review for low res screens
+        font.setHintingPreference(QFont::PreferNoHinting);
+        font.setStyleStrategy(QFont::PreferAntialias);
+
         QStringList fontFamilies{};
         fontFamilies << notoKufi << tajawal << kawkabMono << alaqHalab << hasubiMono;
         font.setFamilies(fontFamilies);
