@@ -1566,7 +1566,7 @@ void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const
 
     // Configure the highlight format
     QTextCharFormat highlightFormat;
-    highlightFormat.setBackground(QColor(200, 200, 255, 72));
+    highlightFormat.setBackground(QColor(100, 100, 130, 63));
 
     // Access to the text document and cursor layout is 100% safe here
     QTextDocument *doc = document();
