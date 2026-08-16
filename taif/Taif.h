@@ -8,6 +8,7 @@
 #include <QMainWindow>
 #include <QStatusBar>
 #include <QSplitter>
+#include <QFileSystemWatcher>
 
 
 QT_BEGIN_NAMESPACE
@@ -49,6 +50,7 @@ private slots:
     void updateCursorPosition();
     void onCurrentTabChanged();
 
+    void onFileChanged(const QString &path);
     void showFindBar();
     void hideFindBar();
     void performSearch(bool forward, bool next);
@@ -63,6 +65,10 @@ private:
     void setupStyle();
     int needSave();
     TEditor* currentEditor();
+    void addWatch(const QString &filePath);
+    void removeWatch(const QString &filePath);
+    void reloadEditor(TEditor *editor);
+    QString pathForEditor(TEditor *editor) const;
     // void setupTabWidget(QTabWidget* tw);
     // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
     // QTabWidget* getTargetTabWidget();
@@ -85,6 +91,8 @@ private:
     ProcessWorker* worker{};
     QThread* thread{};
 
+    QFileSystemWatcher* fileWatcher{};
+    bool savingFromApp{};
     QLabel *cursorPositionLabel{};
     // QLabel *encodingLabel{};
     // QProcess *alifProcess{};

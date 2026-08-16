@@ -498,6 +498,115 @@ void Taif::newFile() {
     updateWindowTitle();
 }
 
+void Taif::addWatch(const QString &filePath)
+{
+    if (filePath.isEmpty() || !QFile::exists(filePath)) return;
+
+    if (!fileWatcher) {
+        fileWatcher = new QFileSystemWatcher(this);
+        connect(fileWatcher, &QFileSystemWatcher::fileChanged, this, &Taif::onFileChanged);
+    }
+
+    const QString watchPath = QFileInfo(filePath).absoluteFilePath();
+    if (!fileWatcher->files().contains(watchPath)) {
+        fileWatcher->addPath(watchPath);
+    }
+}
+
+void Taif::removeWatch(const QString &filePath)
+{
+    if (filePath.isEmpty() || !fileWatcher) return;
+    const QString watchPath = QFileInfo(filePath).absoluteFilePath();
+    if (fileWatcher->files().contains(watchPath)) {
+        fileWatcher->removePath(watchPath);
+    }
+}
+
+QString Taif::pathForEditor(TEditor *editor) const
+{
+    if (!editor) return QString();
+    return QFileInfo(editor->property("filePath").toString()).absoluteFilePath();
+}
+
+void Taif::reloadEditor(TEditor *editor)
+{
+    const QString filePath = editor->property("filePath").toString();
+    if (filePath.isEmpty()) return;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        // قد يكون الملف قيد الكتابة أو تم حذفه مؤقتًا؛ سنعيد مراقبته
+        addWatch(filePath);
+        return;
+    }
+    QTextStream in(&file);
+    const QString content = in.readAll();
+    file.close();
+
+    const int index = tabWidget->indexOf(editor);
+    if (index == -1) return;
+
+    // حفظ موقع المؤشر النسبي قدر الإمكان
+    const int cursorPos = editor->textCursor().position();
+
+    editor->document()->setModified(false);
+    editor->setPlainText(content);
+
+    // استعادة أقرب موضع للمؤشر داخل النطاق الجديد
+    const int newPos = qBound(0, cursorPos, editor->document()->characterCount() - 1);
+    QTextCursor cursor = editor->textCursor();
+    cursor.setPosition(newPos);
+    editor->setTextCursor(cursor);
+
+    if (index == tabWidget->currentIndex()) {
+        updateCursorPosition();
+    }
+    updateWindowTitle();
+
+    // QFileSystemWatcher يُزيل المسار تلقائيًا بعد الحدث، لذا نعيده
+    addWatch(filePath);
+}
+
+void Taif::onFileChanged(const QString &path)
+{
+    // تجاهل التغيّرات الناتجة عن حفظنا نحن داخل البرنامج
+    if (savingFromApp) {
+        addWatch(path);
+        return;
+    }
+
+    const QString watchPath = QFileInfo(path).absoluteFilePath();
+
+    // QFileSystemWatcher يُزيل المسار بعد الحدث، نعيد إضافته للمتابعة
+    addWatch(watchPath);
+
+    for (int i = 0; i < tabWidget->count(); ++i) {
+        TEditor* editor = qobject_cast<TEditor*>(tabWidget->widget(i));
+        if (!editor) continue;
+        if (pathForEditor(editor) != watchPath) continue;
+
+        if (editor->document()->isModified()) {
+            if (i == tabWidget->currentIndex()) {
+                QMessageBox msgBox(this);
+                msgBox.setWindowTitle("طيف");
+                msgBox.setText(QString("<div align='right'>%1"
+                                       "<br><br>"
+                                       "تم تعديل هذا الملف في برنامح آخر."
+                                       "<br>"
+                                       "هل تريد إعادة تحميل النسخة المعدلة من القرص؟</div>").arg(watchPath));
+                QPushButton *reloadBtn = msgBox.addButton("إعادة تحميل", QMessageBox::AcceptRole);
+                QPushButton *keepBtn = msgBox.addButton("أبقي نسختي", QMessageBox::RejectRole);
+                msgBox.exec();
+                if (msgBox.clickedButton() == reloadBtn) {
+                    reloadEditor(editor);
+                }
+            }
+        } else {
+            reloadEditor(editor);
+        }
+    }
+}
+
 void Taif::openFile(QString filePath) {
     if (TEditor* current = currentEditor()) {
         int isNeedSave = needSave();
@@ -529,7 +638,7 @@ void Taif::openFile(QString filePath) {
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
             newEditor->setPlainText(content);
             newEditor->setProperty("filePath", filePath);
-
+            addWatch(filePath);
 
             QString backupPath = filePath + ".~";
             if (QFile::exists(backupPath)) {
@@ -641,6 +750,13 @@ void Taif::saveFile() {
             file.close();
             editor->document()->setModified(false);
 
+            // نتجاهل حدث التغيير الناتج عن حفظنا نحن (يصل بشكل غير متزامن)
+            if (fileWatcher) {
+                savingFromApp = true;
+                connect(fileWatcher, &QFileSystemWatcher::fileChanged, this,
+                        [this](const QString &){ savingFromApp = false; }, Qt::SingleShotConnection);
+            }
+
             int index = tabWidget->indexOf(editor);
             if (index != -1) {
                 QFileInfo fileInfo(filePath);
@@ -672,7 +788,16 @@ void Taif::saveFileAs() {
             out << content;
             file.close();
 
+            // نتجاهل حدث التغيير الناتج عن حفظنا نحن (يصل بشكل غير متزامن)
+            if (fileWatcher) {
+                savingFromApp = true;
+                connect(fileWatcher, &QFileSystemWatcher::fileChanged, this,
+                        [this](const QString &){ savingFromApp = false; }, Qt::SingleShotConnection);
+            }
+
             editor->setProperty("filePath", fileName);
+            removeWatch(currentPath);
+            addWatch(fileName);
             // ---------------------------------------------------
 
             editor->document()->setModified(false);
@@ -986,6 +1111,7 @@ void Taif::closeTab(int index)
         }
 
     }
+    removeWatch(editor->property("filePath").toString());
     tabWidget->removeTab(index);
 
 }
