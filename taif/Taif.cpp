@@ -659,6 +659,10 @@ void Taif::replaceAll() {
     auto matches = collectMatches(editor, search, cs, ww, rx);
     if (matches.isEmpty()) return;
 
+    // Group the complete Replace All operation into one undo action.
+    QTextCursor editCursor(editor->document());
+    editCursor.beginEditBlock();
+
     if (rx) {
         QRegularExpression re(search, cs ? QRegularExpression::NoPatternOption
                                         : QRegularExpression::CaseInsensitiveOption);
@@ -687,6 +691,8 @@ void Taif::replaceAll() {
             c.insertText(replace);
         }
     }
+
+    editCursor.endEditBlock();
 
     // Update highlights after replacement
     auto newMatches = collectMatches(editor, search, cs, ww, rx);
@@ -876,7 +882,7 @@ void Taif::onFileChanged(const QString &path)
                                        "<br>"
                                        "هل تريد إعادة تحميل النسخة المعدلة من القرص؟</div>").arg(watchPath));
                 QPushButton *reloadBtn = msgBox.addButton("إعادة تحميل", QMessageBox::AcceptRole);
-                QPushButton *keepBtn = msgBox.addButton("أبقي نسختي", QMessageBox::RejectRole);
+                /*QPushButton *keepBtn =*/ msgBox.addButton("أبقي نسختي", QMessageBox::RejectRole);
                 msgBox.exec();
                 if (msgBox.clickedButton() == reloadBtn) {
                     reloadEditor(editor);
