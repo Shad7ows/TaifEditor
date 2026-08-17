@@ -57,7 +57,10 @@ private slots:
     void findText();
     void findNextText();
     void findPrevText();
+    void replaceOne();
+    void replaceAll();
     void goToLine();
+    void clearSearchHighlights();
 
 private:
     void setupUI();

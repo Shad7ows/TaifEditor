@@ -24,6 +24,7 @@
 #include <QTimer>
 #include <QInputDialog>
 
+
 Taif::Taif(const QString& filePath, QWidget *parent)
     : QMainWindow(parent)
 {
@@ -163,10 +164,12 @@ void Taif::setupConnections() {
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
 
-    connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
     connect(searchBar, &SearchPanel::findText, this, &Taif::findText);
+    connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
     connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
     connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
+    connect(searchBar, &SearchPanel::replaceOne, this, &Taif::replaceOne);
+    connect(searchBar, &SearchPanel::replaceAll, this, &Taif::replaceAll);
 
     new QShortcut(QKeySequence::Find, this, SLOT(showFindBar()));
     new QShortcut(QKeySequence::Save, this, SLOT(saveFile()));
@@ -388,42 +391,303 @@ void Taif::goToLine()
     }
 }
 
-void Taif::showFindBar() {
-    searchBar->show();
-    searchBar->setFocusToInput();
+void Taif::showFindBar()
+{
+    if (TEditor *editor = currentEditor()) {
+        searchBar->showIn(editor);
+        searchBar->showReplaceRow(false);
+        searchBar->setFocusToInput();
+    }
 }
 
-void Taif::hideFindBar() {
+void Taif::hideFindBar()
+{
     searchBar->hide();
+    clearSearchHighlights();
+    if (TEditor *editor = currentEditor())
+        editor->setFocus(Qt::OtherFocusReason);
+}
+
+void Taif::clearSearchHighlights() {
     if (TEditor* editor = currentEditor()) {
-        editor->setFocus();
+        editor->setExtraSelections({});
     }
+}
+
+static bool isWordCharacter(const QChar ch)
+{
+    return ch.isLetterOrNumber() || ch == u'_';
+}
+
+static bool isWholeWordMatch(const QString &text, const int start, const int length)
+{
+    const int end = start + length;
+    const bool leftWord = start > 0 && isWordCharacter(text.at(start - 1));
+    const bool rightWord = end < text.size() && isWordCharacter(text.at(end));
+    return !leftWord && !rightWord;
+}
+
+static QList<QPair<int, int>> collectMatches(
+    TEditor *editor, const QString &pattern, const bool caseSensitive,
+    const bool wholeWord, const bool useRegex)
+{
+    QList<QPair<int, int>> matches;
+    if (!editor || pattern.isEmpty())
+        return matches;
+
+    const QString text = editor->document()->toPlainText();
+    if (useRegex) {
+        QRegularExpression expression(
+            pattern, caseSensitive ? QRegularExpression::NoPatternOption
+                          : QRegularExpression::CaseInsensitiveOption);
+        if (!expression.isValid())
+            return matches;
+
+        auto iterator = expression.globalMatch(text);
+        while (iterator.hasNext()) {
+            const QRegularExpressionMatch match = iterator.next();
+            const int start = match.capturedStart();
+            const int length = match.capturedLength();
+            if (length == 0)
+                continue;
+            if (!wholeWord || isWholeWordMatch(text, start, length))
+                matches.append({start, length});
+        }
+        return matches;
+    }
+
+    const Qt::CaseSensitivity sensitivity = caseSensitive
+                                                ? Qt::CaseSensitive : Qt::CaseInsensitive;
+    int position = 0;
+    while ((position = text.indexOf(pattern, position, sensitivity)) >= 0) {
+        if (!wholeWord || isWholeWordMatch(text, position, pattern.size()))
+            matches.append({position, pattern.size()});
+        position += qMax(1, pattern.size());
+    }
+    return matches;
+}
+
+// Highlight every match in the document and optionally select the current one.
+static void applyMatchHighlights(TEditor* editor, const QList<QPair<int, int>>& matches, int currentIdx)
+{
+    QList<QTextEdit::ExtraSelection> selections;
+    const QColor matchColor(245, 158, 11, 70);     // dim amber for all matches
+    const QColor currentColor(245, 158, 11, 160);   // bright amber for current
+
+    for (int i = 0; i < matches.size(); ++i) {
+        QTextEdit::ExtraSelection sel;
+        QTextCursor c = editor->textCursor();
+        c.setPosition(matches[i].first);
+        c.setPosition(matches[i].first + matches[i].second, QTextCursor::KeepAnchor);
+        sel.cursor = c;
+        sel.format.setBackground(i == currentIdx ? currentColor : matchColor);
+        selections.append(sel);
+    }
+    editor->setExtraSelections(selections);
 }
 
 
 void Taif::performSearch(bool forward, bool next) {
     TEditor* editor = currentEditor();
-    QString text = searchBar->getText();
-    if (!editor or text.isEmpty()) return;
+    QString text = searchBar->searchText();
+    if (!editor || text.isEmpty()) return;
 
-    QTextDocument::FindFlags flags{};
-    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
-    if (!forward) flags |= QTextDocument::FindBackward;
+    bool cs = searchBar->isCaseSensitive();
+    bool ww = searchBar->isWholeWord();
+    bool rx = searchBar->isRegex();
 
-    if (!next) editor->moveCursor(forward ? QTextCursor::Start : QTextCursor::End);
-
-    bool found = editor->find(text, flags);
-    if (!found and next) {
-        editor->moveCursor(forward ? QTextCursor::Start : QTextCursor::End);
-        found = editor->find(text, flags);
+    // Validate regex before searching
+    if (rx) {
+        QRegularExpression re(text, cs ? QRegularExpression::NoPatternOption
+                                      : QRegularExpression::CaseInsensitiveOption);
+        if (!re.isValid()) {
+            searchBar->setMatchInfo(0, 0);
+            searchBar->setNoMatchesFound(true);
+            return;
+        }
     }
 
-    if (!found) QApplication::beep();
+    auto matches = collectMatches(editor, text, cs, ww, rx);
+
+    if (matches.isEmpty()) {
+        clearSearchHighlights();
+        searchBar->setMatchInfo(0, 0);
+        searchBar->setNoMatchesFound(true);
+        QApplication::beep();
+        return;
+    }
+
+    const QTextCursor editorCursor = editor->textCursor();
+    const int cursorStart = editorCursor.selectionStart();
+    const int cursorEnd = editorCursor.selectionEnd();
+
+    int currentIdx = 0;
+    if (!next) {
+        // A new search or changed option must not advance an already selected match.
+        // QTextCursor::position() is the selection end, so using it directly would
+        // incorrectly move to the following match when Aa/كلمة is clicked.
+        const int selectionStart = editorCursor.selectionStart();
+        const int selectionEnd = editorCursor.selectionEnd();
+        bool selectedMatchFound = false;
+        for (int i = 0; i < matches.size(); ++i) {
+            if (matches.at(i).first == selectionStart &&
+                matches.at(i).first + matches.at(i).second == selectionEnd) {
+                currentIdx = i;
+                selectedMatchFound = true;
+                break;
+            }
+        }
+
+        if (!selectedMatchFound) {
+            // Initial search: select the first match at or after the caret.
+            const int anchor = selectionStart;
+            currentIdx = 0;
+            for (int i = 0; i < matches.size(); ++i) {
+                if (matches.at(i).first >= anchor) {
+                    currentIdx = i;
+                    break;
+                }
+                currentIdx = i;
+            }
+        }
+    } else if (forward) {
+        // Next: move strictly after the currently selected match.
+        currentIdx = 0;
+        bool foundNext = false;
+        for (int i = 0; i < matches.size(); ++i) {
+            if (matches.at(i).first >= cursorEnd) {
+                currentIdx = i;
+                foundNext = true;
+                break;
+            }
+        }
+        if (!foundNext)
+            currentIdx = 0; // wrap to the first match
+    } else {
+        // Previous: move strictly before the currently selected match.
+        currentIdx = matches.size() - 1;
+        for (int i = matches.size() - 1; i >= 0; --i) {
+            if (matches.at(i).first < cursorStart) {
+                currentIdx = i;
+                break;
+            }
+        }
+    }
+
+    applyMatchHighlights(editor, matches, currentIdx);
+    QTextCursor matchCursor = editor->textCursor();
+    matchCursor.setPosition(matches.at(currentIdx).first);
+    matchCursor.setPosition(matches.at(currentIdx).first + matches.at(currentIdx).second,
+                            QTextCursor::KeepAnchor);
+    editor->setTextCursor(matchCursor);
+    editor->ensureCursorVisible();
+    searchBar->setMatchInfo(currentIdx + 1, matches.size());
+    searchBar->setNoMatchesFound(false);
 }
 
-void Taif::findText() { performSearch(true, false); }
-void Taif::findNextText() { performSearch(true, true); }
-void Taif::findPrevText() { performSearch(false, true); }
+void Taif::findText()       { performSearch(true,  false); }
+void Taif::findNextText()   { performSearch(true,  true); }
+void Taif::findPrevText()   { performSearch(false, true); }
+
+void Taif::replaceOne() {
+    TEditor* editor = currentEditor();
+    QString search = searchBar->searchText();
+    QString replace = searchBar->replaceText();
+    if (!editor || search.isEmpty()) return;
+
+    bool cs = searchBar->isCaseSensitive();
+    bool ww = searchBar->isWholeWord();
+    bool rx = searchBar->isRegex();
+
+    if (rx) {
+        QRegularExpression re(search, cs ? QRegularExpression::NoPatternOption
+                                        : QRegularExpression::CaseInsensitiveOption);
+        if (!re.isValid()) return;
+    }
+
+    auto matches = collectMatches(editor, search, cs, ww, rx);
+    if (matches.isEmpty()) return;
+
+    // Find the match that the cursor is currently on (selected)
+    int cursorPos = editor->textCursor().selectionStart();
+    int targetIdx = -1;
+    for (int i = 0; i < matches.size(); ++i) {
+        if (matches[i].first == cursorPos) { targetIdx = i; break; }
+    }
+    if (targetIdx == -1) targetIdx = 0;
+
+    // Perform the replacement
+    QString replacement;
+    if (rx) {
+        QRegularExpression re(search, cs ? QRegularExpression::NoPatternOption
+                                        : QRegularExpression::CaseInsensitiveOption);
+        const QRegularExpressionMatch match = re.match(editor->document()->toPlainText().mid(matches[targetIdx].first, matches[targetIdx].second));
+        replacement = match.hasMatch() ? match.captured(0).replace(re, replace) : replace;
+    } else {
+        replacement = replace;
+    }
+
+    QTextCursor c = editor->textCursor();
+    c.setPosition(matches[targetIdx].first);
+    c.setPosition(matches[targetIdx].first + matches[targetIdx].second, QTextCursor::KeepAnchor);
+    c.insertText(replacement);
+
+    // Re-search to update highlights and move to next match
+    performSearch(true, true);
+}
+
+void Taif::replaceAll() {
+    TEditor* editor = currentEditor();
+    QString search = searchBar->searchText();
+    QString replace = searchBar->replaceText();
+    if (!editor || search.isEmpty()) return;
+
+    bool cs = searchBar->isCaseSensitive();
+    bool ww = searchBar->isWholeWord();
+    bool rx = searchBar->isRegex();
+
+    if (rx) {
+        QRegularExpression re(search, cs ? QRegularExpression::NoPatternOption
+                                        : QRegularExpression::CaseInsensitiveOption);
+        if (!re.isValid()) return;
+    }
+
+    auto matches = collectMatches(editor, search, cs, ww, rx);
+    if (matches.isEmpty()) return;
+
+    if (rx) {
+        QRegularExpression re(search, cs ? QRegularExpression::NoPatternOption
+                                        : QRegularExpression::CaseInsensitiveOption);
+        QString text = editor->toPlainText();
+        QString result = text.replace(re, replace);
+        editor->setPlainText(result);
+    } else {
+        // Replace from end to start to keep positions valid
+        for (int i = matches.size() - 1; i >= 0; --i) {
+            QTextCursor c = editor->textCursor();
+            c.setPosition(matches[i].first);
+            c.setPosition(matches[i].first + matches[i].second, QTextCursor::KeepAnchor);
+            c.insertText(replace);
+        }
+    }
+
+    // Update highlights after replacement
+    auto newMatches = collectMatches(editor, search, cs, ww, rx);
+    if (newMatches.isEmpty()) {
+        clearSearchHighlights();
+        searchBar->setMatchInfo(0, 0);
+        searchBar->setNoMatchesFound(true);
+    } else {
+        applyMatchHighlights(editor, newMatches, 0);
+        QTextCursor c = editor->textCursor();
+        c.setPosition(newMatches[0].first);
+        c.setPosition(newMatches[0].first + newMatches[0].second, QTextCursor::KeepAnchor);
+        editor->setTextCursor(c);
+        editor->ensureCursorVisible();
+        searchBar->setMatchInfo(1, newMatches.size());
+        searchBar->setNoMatchesFound(false);
+    }
+}
 
 
 void Taif::toggleConsole()
