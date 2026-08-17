@@ -25,11 +25,9 @@ public:
     bool isRegex() const;
 
     QString replaceText() const;
-    void setReplaceText(const QString &text);
 
     void setFocusToInput();
     void showReplaceRow(bool visible);
-    bool isReplaceRowVisible() const;
 
     void setMatchInfo(int current, int total);
     void setNoMatchesFound(bool noMatches);

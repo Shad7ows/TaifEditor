@@ -513,7 +513,6 @@ void Taif::performSearch(bool forward, bool next) {
         clearSearchHighlights();
         searchBar->setMatchInfo(0, 0);
         searchBar->setNoMatchesFound(true);
-        QApplication::beep();
         return;
     }
 
@@ -608,11 +607,16 @@ void Taif::replaceOne() {
     auto matches = collectMatches(editor, search, cs, ww, rx);
     if (matches.isEmpty()) return;
 
-    // Find the match that the cursor is currently on (selected)
+    // Find the match that contains the cursor or starts at the selection.
     int cursorPos = editor->textCursor().selectionStart();
     int targetIdx = -1;
     for (int i = 0; i < matches.size(); ++i) {
-        if (matches[i].first == cursorPos) { targetIdx = i; break; }
+        const int matchStart = matches[i].first;
+        const int matchEnd = matchStart + matches[i].second;
+        if (matchStart <= cursorPos && cursorPos < matchEnd) {
+            targetIdx = i;
+            break;
+        }
     }
     if (targetIdx == -1) targetIdx = 0;
 
@@ -658,9 +662,22 @@ void Taif::replaceAll() {
     if (rx) {
         QRegularExpression re(search, cs ? QRegularExpression::NoPatternOption
                                         : QRegularExpression::CaseInsensitiveOption);
-        QString text = editor->toPlainText();
-        QString result = text.replace(re, replace);
-        editor->setPlainText(result);
+        const QString text = editor->toPlainText();
+
+        // Replace only the matches collected above so whole-word filtering is respected.
+        // Process from end to start to keep document positions valid.
+        for (int i = matches.size() - 1; i >= 0; --i) {
+            const QString matchedText = text.mid(matches[i].first, matches[i].second);
+            const QRegularExpressionMatch match = re.match(matchedText);
+            const QString replacement = match.hasMatch()
+                                            ? match.captured(0).replace(re, replace)
+                                            : replace;
+
+            QTextCursor c = editor->textCursor();
+            c.setPosition(matches[i].first);
+            c.setPosition(matches[i].first + matches[i].second, QTextCursor::KeepAnchor);
+            c.insertText(replacement);
+        }
     } else {
         // Replace from end to start to keep positions valid
         for (int i = matches.size() - 1; i >= 0; --i) {
@@ -723,7 +740,7 @@ int Taif::needSave() {
             msgBox.setDefaultButton(cancelButton);
 
             QFont msgFont = this->font();
-            msgFont.setPointSize(10);
+            msgFont.setPixelSize(12);
             saveButton->setFont(msgFont);
             discardButton->setFont(msgFont);
             cancelButton->setFont(msgFont);
@@ -872,7 +889,7 @@ void Taif::onFileChanged(const QString &path)
 }
 
 void Taif::openFile(QString filePath) {
-    if (TEditor* current = currentEditor()) {
+    if (currentEditor()) {
         int isNeedSave = needSave();
         if (!isNeedSave) return;
         if (isNeedSave == 1) this->saveFile();
@@ -967,9 +984,6 @@ void Taif::handleOpenFolderMenu()
     QString folderPath = QFileDialog::getExistingDirectory(this, "اختر مجلد", QDir::homePath());
     if (folderPath.isEmpty()) return;
 
-    QFileSystemModel *model = new QFileSystemModel(this);
-    model->setFilter(QDir::NoDotAndDotDot | QDir::AllEntries);
-    model->setRootPath(folderPath);
     loadFolder(folderPath);
 
 }

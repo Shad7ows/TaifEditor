@@ -206,7 +206,8 @@ bool SearchPanel::isCaseSensitive() const { return btnCase->isChecked(); }
 bool SearchPanel::isWholeWord() const { return btnWord->isChecked(); }
 bool SearchPanel::isRegex() const { return btnRegex->isChecked(); }
 QString SearchPanel::replaceText() const { return replaceInput->text(); }
-void SearchPanel::setReplaceText(const QString &text) { replaceInput->setText(text); }
+
+
 
 void SearchPanel::setFocusToInput()
 {
@@ -228,11 +229,10 @@ void SearchPanel::showReplaceRow(bool visible)
     updateFloatingGeometry();
 }
 
-bool SearchPanel::isReplaceRowVisible() const { return replaceRowVisible; }
+
 
 void SearchPanel::setMatchInfo(int current, int total)
 {
-    lastNoMatches = total == 0;
     if (total <= 0) {
         matchLabel->setText(searchInput->text().isEmpty()
                             ? QString()
@@ -240,7 +240,7 @@ void SearchPanel::setMatchInfo(int current, int total)
     } else {
         matchLabel->setText(QStringLiteral("%1 من %2").arg(current).arg(total));
     }
-    updateMatchLabelStyle();
+    setNoMatchesFound(total == 0);
 }
 
 void SearchPanel::setNoMatchesFound(bool noMatches)

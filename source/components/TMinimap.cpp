@@ -11,7 +11,8 @@ TPreviewTooltip::TPreviewTooltip(QWidget* parent)
     : QWidget(parent, Qt::ToolTip | Qt::FramelessWindowHint)
 {
     setAttribute(Qt::WA_TranslucentBackground); // to ensure fully rounded rectangle of preview tooltip
-    font = QFont(QFontDatabase::applicationFontFamilies(2));
+    font = QFont();
+    font.setFamilies(QFontDatabase::applicationFontFamilies(2));
     font.insertSubstitution("Arial", "Courier New");
     font.setPixelSize(10);
     setFont(font);
