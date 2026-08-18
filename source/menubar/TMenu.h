@@ -22,6 +22,19 @@ public:
     QAction* runAction;
     QAction* aboutAction;
 
+    QAction* undoAction;
+    QAction* redoAction;
+    QAction* cutAction;
+    QAction* copyAction;
+    QAction* pasteAction;
+    QAction* findAction;
+    QAction* replaceAction;
+    QAction* goToLineAction;
+    QAction* toggleCommentAction;
+    QAction* duplicateLineAction;
+    QAction* moveLineUpAction;
+    QAction* moveLineDownAction;
+
 signals:
     void newRequested();
     void openFileRequested();
@@ -33,4 +46,17 @@ signals:
     void runRequested();
     void aboutRequested();
     void updateRequested();
+
+    void undoRequested();
+    void redoRequested();
+    void cutRequested();
+    void copyRequested();
+    void pasteRequested();
+    void findRequested();
+    void replaceRequested();
+    void goToLineRequested();
+    void toggleCommentRequested();
+    void duplicateLineRequested();
+    void moveLineUpRequested();
+    void moveLineDownRequested();
 };

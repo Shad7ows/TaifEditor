@@ -9,6 +9,7 @@
 #include <QStatusBar>
 #include <QSplitter>
 #include <QFileSystemWatcher>
+#include <QTimer>
 
 
 QT_BEGIN_NAMESPACE
@@ -52,6 +53,7 @@ private slots:
 
     void onFileChanged(const QString &path);
     void showFindBar();
+    void showReplaceBar();
     void hideFindBar();
     void performSearch(bool forward, bool next);
     void findText();
@@ -66,6 +68,7 @@ private:
     void setupUI();
     void setupConnections();
     void setupStyle();
+    void setupTimers();
     int needSave();
     TEditor* currentEditor();
     void addWatch(const QString &filePath);
@@ -96,6 +99,7 @@ private:
 
     QFileSystemWatcher* fileWatcher{};
     bool savingFromApp{};
+    QTimer *saveSuppressTimer{};
     QLabel *cursorPositionLabel{};
     // QLabel *encodingLabel{};
     // QProcess *alifProcess{};

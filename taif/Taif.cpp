@@ -36,6 +36,7 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     setupUI();
     setupConnections();
     setupStyle();
+    setupTimers();
 
     installEventFilter(this);
 
@@ -160,6 +161,19 @@ void Taif::setupConnections() {
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
     connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
+
+    connect(menuBar, &TMenuBar::undoRequested, this, [this](){ if (auto e = currentEditor()) e->undo(); });
+    connect(menuBar, &TMenuBar::redoRequested, this, [this](){ if (auto e = currentEditor()) e->redo(); });
+    connect(menuBar, &TMenuBar::cutRequested, this, [this](){ if (auto e = currentEditor()) e->cut(); });
+    connect(menuBar, &TMenuBar::copyRequested, this, [this](){ if (auto e = currentEditor()) e->copy(); });
+    connect(menuBar, &TMenuBar::pasteRequested, this, [this](){ if (auto e = currentEditor()) e->paste(); });
+    connect(menuBar, &TMenuBar::findRequested, this, &Taif::showFindBar);
+    connect(menuBar, &TMenuBar::replaceRequested, this, &Taif::showReplaceBar);
+    connect(menuBar, &TMenuBar::goToLineRequested, this, &Taif::goToLine);
+    connect(menuBar, &TMenuBar::toggleCommentRequested, this, [this](){ if (auto e = currentEditor()) e->toggleComment(); });
+    connect(menuBar, &TMenuBar::duplicateLineRequested, this, [this](){ if (auto e = currentEditor()) e->duplicateLine(); });
+    connect(menuBar, &TMenuBar::moveLineUpRequested, this, [this](){ if (auto e = currentEditor()) e->moveLineUp(); });
+    connect(menuBar, &TMenuBar::moveLineDownRequested, this, [this](){ if (auto e = currentEditor()) e->moveLineDown(); });
 
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
@@ -336,6 +350,16 @@ void Taif::setupStyle() {
     setStyleSheet(styleSheet);
 }
 
+void Taif::setupTimers() {
+
+    // file watcher timer
+    saveSuppressTimer = new QTimer(this);
+    saveSuppressTimer->setSingleShot(true);
+    connect(saveSuppressTimer, &QTimer::timeout, this, [this]{ savingFromApp = false; });
+
+
+}
+
 void Taif::closeEvent(QCloseEvent *event) {
     int saveResult = needSave();
 
@@ -396,6 +420,15 @@ void Taif::showFindBar()
     if (TEditor *editor = currentEditor()) {
         searchBar->showIn(editor);
         searchBar->showReplaceRow(false);
+        searchBar->setFocusToInput();
+    }
+}
+
+void Taif::showReplaceBar()
+{
+    if (TEditor *editor = currentEditor()) {
+        searchBar->showIn(editor);
+        searchBar->showReplaceRow(true);
         searchBar->setFocusToInput();
     }
 }
@@ -1037,8 +1070,7 @@ void Taif::saveFile() {
             // نتجاهل حدث التغيير الناتج عن حفظنا نحن (يصل بشكل غير متزامن)
             if (fileWatcher) {
                 savingFromApp = true;
-                connect(fileWatcher, &QFileSystemWatcher::fileChanged, this,
-                        [this](const QString &){ savingFromApp = false; }, Qt::SingleShotConnection);
+                saveSuppressTimer->start(500);
             }
 
             int index = tabWidget->indexOf(editor);
@@ -1075,8 +1107,7 @@ void Taif::saveFileAs() {
             // نتجاهل حدث التغيير الناتج عن حفظنا نحن (يصل بشكل غير متزامن)
             if (fileWatcher) {
                 savingFromApp = true;
-                connect(fileWatcher, &QFileSystemWatcher::fileChanged, this,
-                        [this](const QString &){ savingFromApp = false; }, Qt::SingleShotConnection);
+                saveSuppressTimer->start(500);
             }
 
             editor->setProperty("filePath", fileName);
