@@ -10,6 +10,8 @@
 #include "TSyntaxHighlighter.h"
 #include "AutoComplete.h"
 #include "AutoCompleteUI.h"
+#include "EditorAnalysisController.h"
+#include "SemanticCompletionProvider.h"
 
 
 class LineNumberArea;
@@ -20,6 +22,7 @@ class TEditor : public QPlainTextEdit {
 
 public:
     TEditor(TSettings* setting = nullptr, QWidget* parent = nullptr);
+    ~TEditor() override;
 
     void lineNumberAreaPaintEvent(QPaintEvent* event);
     int lineNumberAreaWidth() const;
@@ -64,6 +67,8 @@ protected:
 
 private:
     TSyntaxHighlighter* highlighter{};
+    EditorAnalysisController* analysisController{};
+    std::unique_ptr<SemanticCompletionProvider> semanticCompletionProvider{};
 
     LineNumberArea* lineNumberArea{};
     TMinimap* minimap{};

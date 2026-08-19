@@ -37,6 +37,32 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
 
     highlighter = new TSyntaxHighlighter(editorDocument);
+    analysisController = new EditorAnalysisController(this);
+    semanticCompletionProvider = std::make_unique<SemanticCompletionProvider>();
+    connect(editorDocument, &QTextDocument::contentsChange,
+            analysisController, &EditorAnalysisController::documentChanged);
+    connect(analysisController, &EditorAnalysisController::fastPassRequested,
+            this, [this](const quint64 revision, const DirtyRange& dirty) {
+                if (highlighter && analysisController
+                    && revision == analysisController->currentRevision()) {
+                    highlighter->runFastPass(revision, dirty);
+                }
+            });
+    connect(analysisController, &EditorAnalysisController::semanticSnapshotRequested,
+            this, [this](const quint64 revision) {
+                if (analysisController && revision == analysisController->currentRevision()) {
+                    // Snapshotting QTextDocument occurs only in the GUI thread.
+                    analysisController->submitSourceSnapshot(revision, toPlainText());
+                }
+            });
+    connect(analysisController, &EditorAnalysisController::analysisApplied,
+            this, [this](LanguageAnalysisSnapshotPtr snapshot) {
+                if (highlighter) {
+                    highlighter->setSemanticSnapshot(std::move(snapshot));
+                }
+                // Completion is refreshed only from a current immutable model.
+                performCompletion();
+            });
     lineNumberArea = new LineNumberArea(this);
     minimap = new TMinimap(this, this);
 
@@ -82,7 +108,15 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
 
-    installEventFilter(this);
+        installEventFilter(this);
+    // Schedule analysis for an initially empty or just-loaded document.
+    analysisController->documentChanged(0, 0, 0);
+}
+
+TEditor::~TEditor() {
+    if (analysisController) {
+        analysisController->shutdown();
+    }
 }
 
 void TEditor::UpdateTabStopDistance(QFont font) {
@@ -989,8 +1023,23 @@ void TEditor::performCompletion() {
 
     std::vector<CompletionItem> allSuggestions;
     QString fullDoc = toPlainText();
+    bool hasCurrentSemanticModel = false;
+    if (analysisController && semanticCompletionProvider) {
+        const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
+        if (snapshot && snapshot->semantic
+            && snapshot->revision == analysisController->currentRevision()) {
+            const QVector<CompletionItem> semanticItems = semanticCompletionProvider->suggestions(
+                textUnder, textCursor().position(), snapshot->semantic);
+            allSuggestions.insert(allSuggestions.end(), semanticItems.begin(), semanticItems.end());
+            hasCurrentSemanticModel = true;
+        }
+    }
 
     for (const auto& strategy : strategies) {
+        // Scope-aware symbols supersede the document-wide regex fallback.
+        if (hasCurrentSemanticModel && dynamic_cast<DynamicWordStrategy*>(strategy.get()) != nullptr) {
+            continue;
+        }
         auto res = strategy->getSuggestions(textUnder, fullDoc);
         allSuggestions.insert(allSuggestions.end(), res.begin(), res.end());
     }
@@ -1048,6 +1097,7 @@ void TEditor::insertCompletion(const QString &completion, CompletionType type) {
         insertWord(completion, tc);
         break;
     case CompletionType::DynamicWord:
+    case CompletionType::SemanticSymbol:
     default:
         insertWord(completion, tc);
         break;

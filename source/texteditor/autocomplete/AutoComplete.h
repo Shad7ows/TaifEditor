@@ -8,7 +8,8 @@ enum CompletionType {
     Keyword,
     Snippet,
     Builtin,
-    DynamicWord
+    DynamicWord,
+    SemanticSymbol
 };
 
 struct CompletionItem {
