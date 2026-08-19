@@ -205,7 +205,7 @@ void TSettings::setupStyling() {
         /* QSpinBox Specifics */
         QSpinBox::up-button, QSpinBox::down-button {
             width: 20px;
-            border-radius: 6px;
+            border-radius: 3px;
             background-color: #1e293b;
         }
 

@@ -22,7 +22,9 @@
 #include <QStyleFactory>
 #include <QKeyEvent>
 #include <QTimer>
-#include <QInputDialog>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QSpinBox>
 
 
 Taif::Taif(const QString& filePath, QWidget *parent)
@@ -390,15 +392,111 @@ void Taif::goToLine()
     TEditor *editor = currentEditor();
     if (!editor) return;
 
-    bool ok;
     // أقصى رقم هو عدد أسطر الملف الحالي
-    int maxLine = editor->blockCount();
+    const int maxLine = editor->blockCount();
 
-    int lineNumber = QInputDialog::getInt(this, "الذهاب إلى سطر",
-                                          QString("أدخل رقم السطر (1 - %1):").arg(maxLine),
-                                          1, 1, maxLine, 1, &ok);
+    QDialog dlg(this);
+    dlg.setWindowTitle("الذهاب إلى سطر");
+    dlg.setFixedWidth(300);
+    dlg.setModal(true);
 
-    if (ok) {
+    QVBoxLayout *layout = new QVBoxLayout(&dlg);
+    layout->setContentsMargins(20, 20, 20, 20);
+    layout->setSpacing(12);
+
+    QLabel *label = new QLabel(QString("أدخل رقم السطر (1 - %1):").arg(maxLine), &dlg);
+
+    QSpinBox *spin = new QSpinBox(&dlg);
+    spin->setRange(1, maxLine);
+    spin->setValue(editor->textCursor().blockNumber() + 1);
+    spin->setKeyboardTracking(true);
+    spin->setButtonSymbols(QAbstractSpinBox::UpDownArrows);
+    spin->setFocus();
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(&dlg);
+    QPushButton *okButton = buttonBox->addButton("إذهب", QDialogButtonBox::AcceptRole);
+    QPushButton *cancelButton = buttonBox->addButton("إلغاء", QDialogButtonBox::RejectRole);
+    okButton->setDefault(true);
+
+    connect(buttonBox, &QDialogButtonBox::accepted,
+            &dlg, &QDialog::accept);
+
+    connect(buttonBox, &QDialogButtonBox::rejected,
+            &dlg, &QDialog::reject);
+
+    layout->addWidget(label);
+    layout->addWidget(spin);
+    layout->addWidget(buttonBox);
+
+    // نمط مطابق لنمط المحرر (داكن + خط عربي)
+    dlg.setStyleSheet(R"(
+        QDialog {
+            background-color: #0f172a;
+            font-family: "Tajawal", "Noto Kufi Arabic";
+        }
+        QLabel {
+            color: #f1f5f9;
+            font-size: 13px;
+        }
+        QSpinBox {
+            background-color: #1e293b;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 13px;
+            selection-background-color: #3b82f6;
+        }
+        QSpinBox:focus {
+            border: 1px solid #3b82f6;
+        }
+        QSpinBox::up-button, QSpinBox::down-button {
+            width: 20px;
+            border-radius: 3px;
+            background-color: #1e293b;
+        }
+        QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+            background-color: #1c7ed6;
+        }
+        QSpinBox::up-arrow {
+            image: url(:/icons/resources/chevron-up.svg);
+            width: 16px;
+        }
+        QSpinBox::down-arrow {
+            image: url(:/icons/resources/chevron-down.svg);
+            width: 16px;
+        }
+        QDialogButtonBox {
+            spacing: 10px;
+        }
+        QDialogButtonBox QPushButton {
+            background-color: #1e293b;
+            color: #f1f5f9;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 6px 20px;
+            font-family: "Tajawal", "Noto Kufi Arabic";
+            font-size: 13px;
+        }
+        QDialogButtonBox QPushButton:hover {
+            background-color: #334155;
+        }
+        QDialogButtonBox QPushButton:pressed {
+            background-color: #0f172a;
+        }
+        QDialogButtonBox QPushButton:focus {
+            border: 1px solid #3b82f6;
+        }
+    )");
+
+    // زر الموافق بلون مميز (الأزرق)
+    okButton->setStyleSheet(
+        "QPushButton{background-color:#3b82f6; border:none; color:#ffffff;}"
+        "QPushButton:hover{background-color:#2563eb;}"
+        "QPushButton:pressed{background-color:#1d4ed8;}");
+
+    if (dlg.exec() == QDialog::Accepted) {
+        const int lineNumber = spin->value();
         QTextBlock block = editor->document()->findBlockByNumber(lineNumber - 1);
 
         if (block.isValid()) {
