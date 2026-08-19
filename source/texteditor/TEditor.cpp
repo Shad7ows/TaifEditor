@@ -11,6 +11,11 @@
 #include <QMenu>
 #include <QAction>
 #include <QFile>
+#include <QGuiApplication>
+#include <QMouseEvent>
+#include <QScreen>
+
+#include "HoverPopup.h"
 
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
@@ -39,10 +44,19 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     highlighter = new TSyntaxHighlighter(editorDocument);
     analysisController = new EditorAnalysisController(this);
     semanticCompletionProvider = std::make_unique<SemanticCompletionProvider>();
+    hoverPopup = new THoverPopup(this);
+    hoverTimer.setSingleShot(true);
+    hoverTimer.setInterval(350);
+    connect(&hoverTimer, &QTimer::timeout, this, &TEditor::showPendingHover);
+    setMouseTracking(true);
+    viewport()->setMouseTracking(true);
     connect(editorDocument, &QTextDocument::contentsChange,
             analysisController, &EditorAnalysisController::documentChanged);
     connect(editorDocument, &QTextDocument::contentsChange,
-            this, [this](int, int, int) { clearActiveCompletionContext(); });
+            this, [this](int, int, int) {
+                clearActiveCompletionContext();
+                dismissHover();
+            });
     connect(analysisController, &EditorAnalysisController::fastPassRequested,
             this, [this](const quint64 revision, const DirtyRange& dirty) {
                 if (highlighter && analysisController
@@ -131,6 +145,7 @@ void TEditor::UpdateTabStopDistance(QFont font) {
 }
 
 void TEditor::wheelEvent(QWheelEvent *event) {
+    dismissHover();
     if (event->modifiers() & Qt::ControlModifier) {
         const int delta = event->angleDelta().y();
         if (delta == 0) return;
@@ -399,6 +414,105 @@ void TEditor::showEvent(QShowEvent* event) {
         // تم تنقيص 3 من الاسفل لكي لا يقوم بالتغطية على حواف المحرر
         minimap->setGeometry(cr.left(), cr.top(), 100, cr.height() - 3);
         updateMinimapPosition();
+    }
+}
+
+void TEditor::mouseMoveEvent(QMouseEvent* event) {
+    scheduleHover(event->position().toPoint());
+    QPlainTextEdit::mouseMoveEvent(event);
+}
+
+void TEditor::leaveEvent(QEvent* event) {
+    dismissHover();
+    QPlainTextEdit::leaveEvent(event);
+}
+
+void TEditor::scheduleHover(const QPoint& viewportPosition) {
+    if (!analysisController || !hasFocus() || (c && c->popup()->isVisible())) {
+        dismissHover();
+        return;
+    }
+    const QTextCursor cursor = cursorForPosition(viewportPosition);
+    const qsizetype offset = cursor.position();
+    const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
+    const quint64 revision = analysisController->currentRevision();
+    if (!snapshot || snapshot->revision != revision || offset < 0
+        || offset >= document()->characterCount() - 1) {
+        dismissHover();
+        return;
+    }
+    if (hoverPopup && hoverPopup->isVisible()
+        && pendingHoverOffset == offset && pendingHoverRevision == revision) {
+        return;
+    }
+    pendingHoverViewportPosition = viewportPosition;
+    pendingHoverOffset = offset;
+    pendingHoverRevision = revision;
+    hoverTimer.start();
+}
+
+void TEditor::showPendingHover() {
+    if (!analysisController || !hoverPopup || !hasFocus()
+        || (c && c->popup()->isVisible())) {
+        dismissHover();
+        return;
+    }
+    const quint64 revision = analysisController->currentRevision();
+    const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
+    if (!snapshot || pendingHoverOffset < 0 || pendingHoverRevision != revision
+        || snapshot->revision != revision) {
+        dismissHover();
+        return;
+    }
+    const QTextCursor currentCursor = cursorForPosition(pendingHoverViewportPosition);
+    if (currentCursor.position() != pendingHoverOffset) {
+        dismissHover();
+        return;
+    }
+    const std::optional<HoverInfo> info = semanticHoverProvider.infoAt(
+        pendingHoverOffset, toPlainText(), snapshot);
+    if (!info.has_value()) {
+        dismissHover();
+        return;
+    }
+
+    hoverPopup->setHoverInfo(*info);
+    hoverPopup->adjustSize();
+    const QSize popupSize = hoverPopup->size();
+    constexpr int pointerGap = 12;
+    const QPoint pointerPosition = viewport()->mapToGlobal(pendingHoverViewportPosition);
+    QScreen* screen = QGuiApplication::screenAt(pointerPosition);
+    if (screen == nullptr) {
+        screen = QGuiApplication::primaryScreen();
+    }
+    const QRect available = screen ? screen->availableGeometry() : QRect();
+    // Prefer the left side of the pointer so the tooltip does not cover the
+    // token being inspected. If the left edge cannot accommodate it, use the
+    // right side rather than overlapping the pointer.
+    QPoint popupPosition(pointerPosition.x() - popupSize.width() - pointerGap,
+                         pointerPosition.y() + pointerGap);
+    if (available.isValid()) {
+        if (popupPosition.x() < available.left()) {
+            popupPosition.setX(pointerPosition.x() + pointerGap);
+        }
+        popupPosition.setX(qBound(available.left(), popupPosition.x(),
+                                  available.right() - popupSize.width() + 1));
+        if (popupPosition.y() + popupSize.height() > available.bottom() + 1) {
+            popupPosition.setY(pointerPosition.y() - popupSize.height() - pointerGap);
+        }
+        popupPosition.setY(qBound(available.top(), popupPosition.y(),
+                                  available.bottom() - popupSize.height() + 1));
+    }
+    hoverPopup->move(popupPosition);
+    hoverPopup->show();
+}
+
+void TEditor::dismissHover() {
+    hoverTimer.stop();
+    pendingHoverOffset = -1;
+    pendingHoverRevision = 0;
+    if (hoverPopup) {
+        hoverPopup->hide();
     }
 }
 
@@ -959,10 +1073,12 @@ void TEditor::setCompleter(QCompleter *completer) {
 
 void TEditor::focusOutEvent(QFocusEvent *e) {
     dismissCompletionPopup();
+    dismissHover();
     QPlainTextEdit::focusOutEvent(e);
 }
 
 void TEditor::keyPressEvent(QKeyEvent *e) {
+    dismissHover();
     // handleing Brackets and Quotes
     if (handleAutoPairing(e)) {
         e->accept();

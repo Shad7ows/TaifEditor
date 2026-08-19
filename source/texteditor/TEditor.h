@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QTimer>
+#include <QPoint>
 #include <QScrollBar>
 #include <QPlainTextEdit>
 #include <QCompleter>
@@ -12,11 +13,15 @@
 #include "AutoCompleteUI.h"
 #include "EditorAnalysisController.h"
 #include "SemanticCompletionProvider.h"
+#include "SemanticHoverProvider.h"
 #include "CompletionContext.h"
 
 
 class LineNumberArea;
 class TMinimap;
+class THoverPopup;
+class QEvent;
+class QMouseEvent;
 
 class TEditor : public QPlainTextEdit {
     Q_OBJECT
@@ -59,6 +64,8 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void showEvent(QShowEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
     void keyPressEvent(QKeyEvent *e) override;
     // We override focusOutEvent to close the popup if the user clicks away
@@ -70,6 +77,12 @@ private:
     TSyntaxHighlighter* highlighter{};
     EditorAnalysisController* analysisController{};
     std::unique_ptr<SemanticCompletionProvider> semanticCompletionProvider{};
+    SemanticHoverProvider semanticHoverProvider{};
+    THoverPopup* hoverPopup{};
+    QTimer hoverTimer{};
+    QPoint pendingHoverViewportPosition{};
+    qsizetype pendingHoverOffset = -1;
+    quint64 pendingHoverRevision = 0;
 
     LineNumberArea* lineNumberArea{};
     TMinimap* minimap{};
@@ -102,6 +115,9 @@ private:
     [[nodiscard]] bool canRefreshActiveCompletion() const;
     void clearActiveCompletionContext();
     void dismissCompletionPopup();
+    void scheduleHover(const QPoint& viewportPosition);
+    void showPendingHover();
+    void dismissHover();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();

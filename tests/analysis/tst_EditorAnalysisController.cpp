@@ -1,6 +1,7 @@
 #include "EditorAnalysisController.h"
 #include "SemanticPresentationAdapter.h"
 #include "SemanticCompletionProvider.h"
+#include "SemanticHoverProvider.h"
 #include "AutoCompleteUI.h"
 #include "CompletionContext.h"
 
@@ -20,6 +21,9 @@ private slots:
     void memberCompletionUsesClassesAndConstructorInstances();
     void completionContextNeverSelectsReceiverDot();
     void selfReceiverCompletionAndPresentation();
+    void semanticHoverResolvesDeclarationsAndDocumentation();
+    void semanticHoverDescribesImportedBindings();
+    void semanticHoverRejectsStaleAndUnresolvedTargets();
     void completionVisualsCoverLegacySemanticAndUnknownTypes();
     void semanticPresentationClassifiesDeclarationsAndDiagnostics();
 };
@@ -182,6 +186,95 @@ void EditorAnalysisControllerTest::selfReceiverCompletionAndPresentation() {
         }
     }
     QVERIFY(hasSelfReceiver);
+}
+
+void EditorAnalysisControllerTest::semanticHoverResolvesDeclarationsAndDocumentation() {
+    const QString source = QStringLiteral(
+        "# توثيق دالة الجمع\n"
+        "دالة جمع(س):\n"
+        "\t\"\"\"يجمع القيمة المدخلة\"\"\"\n"
+        "\tارجع س\n"
+        "# توثيق نتيجة\n"
+        "نتيجة = جمع(1)\n"
+        "اطبع(نتيجة)\n");
+    auto snapshot = std::make_shared<LanguageAnalysisSnapshot>();
+    snapshot->revision = 1;
+    snapshot->lex = TaifLexer().lex(source);
+    snapshot->parse = TaifParser().parse(source, snapshot->lex, snapshot->revision);
+    const SymbolTableInput input {*snapshot->parse.ast, snapshot->parse.parserDiagnostics,
+                                  snapshot->revision};
+    snapshot->semantic = SymbolTableBuilder().build(input);
+
+    const SemanticHoverProvider provider;
+    const qsizetype callOffset = source.lastIndexOf(QStringLiteral("جمع"));
+    const std::optional<HoverInfo> functionHover = provider.infoAt(callOffset, source, snapshot);
+    QVERIFY(functionHover.has_value());
+    QCOMPARE(functionHover->name, QStringLiteral("جمع"));
+    QCOMPARE(functionHover->typeLabel, QStringLiteral("دالة"));
+    QCOMPARE(functionHover->declarationLine, qsizetype(2));
+    QVERIFY(functionHover->signature.contains(QStringLiteral("جمع")));
+    QVERIFY(functionHover->documentation.contains(QStringLiteral("يجمع القيمة")));
+
+    const qsizetype localOffset = source.lastIndexOf(QStringLiteral("نتيجة"));
+    const std::optional<HoverInfo> localHover = provider.infoAt(localOffset, source, snapshot);
+    QVERIFY(localHover.has_value());
+    QCOMPARE(localHover->typeLabel, QStringLiteral("متغير محلي"));
+    QCOMPARE(localHover->declarationLine, qsizetype(6));
+    QVERIFY(localHover->documentation.contains(QStringLiteral("توثيق نتيجة")));
+}
+
+void EditorAnalysisControllerTest::semanticHoverDescribesImportedBindings() {
+    const QString source = QStringLiteral(
+        "استورد رياضيات\n"
+        "من أدوات استورد جمع\n"
+        "اطبع(رياضيات)\n"
+        "اطبع(جمع)\n");
+    auto snapshot = std::make_shared<LanguageAnalysisSnapshot>();
+    snapshot->revision = 1;
+    snapshot->lex = TaifLexer().lex(source);
+    snapshot->parse = TaifParser().parse(source, snapshot->lex, snapshot->revision);
+    const SymbolTableInput input {*snapshot->parse.ast, snapshot->parse.parserDiagnostics,
+                                  snapshot->revision};
+    snapshot->semantic = SymbolTableBuilder().build(input);
+
+    const SemanticHoverProvider provider;
+    const std::optional<HoverInfo> moduleHover = provider.infoAt(
+        source.lastIndexOf(QStringLiteral("رياضيات")), source, snapshot);
+    QVERIFY(moduleHover.has_value());
+    QCOMPARE(moduleHover->symbolKind, SymbolKind::ImportModule);
+    QCOMPARE(moduleHover->typeLabel, QStringLiteral("وحدة مستوردة"));
+    QCOMPARE(moduleHover->declarationLine, qsizetype(1));
+    QVERIFY(moduleHover->documentation.contains(QStringLiteral("استورد رياضيات")));
+
+    const std::optional<HoverInfo> memberHover = provider.infoAt(
+        source.lastIndexOf(QStringLiteral("جمع")), source, snapshot);
+    QVERIFY(memberHover.has_value());
+    QCOMPARE(memberHover->symbolKind, SymbolKind::ImportMember);
+    QCOMPARE(memberHover->typeLabel, QStringLiteral("اسم مستورد"));
+    QCOMPARE(memberHover->declarationLine, qsizetype(2));
+    QVERIFY(memberHover->documentation.contains(QStringLiteral("من أدوات استورد جمع")));
+}
+
+void EditorAnalysisControllerTest::semanticHoverRejectsStaleAndUnresolvedTargets() {
+    const QString source = QStringLiteral("قيمة = مجهول\n\n");
+    auto snapshot = std::make_shared<LanguageAnalysisSnapshot>();
+    snapshot->revision = 1;
+    snapshot->lex = TaifLexer().lex(source);
+    snapshot->parse = TaifParser().parse(source, snapshot->lex, snapshot->revision);
+    const SymbolTableInput input {*snapshot->parse.ast, snapshot->parse.parserDiagnostics,
+                                  snapshot->revision};
+    snapshot->semantic = SymbolTableBuilder().build(input);
+
+    const SemanticHoverProvider provider;
+    const qsizetype unresolvedOffset = source.indexOf(QStringLiteral("مجهول"));
+    QVERIFY(!provider.infoAt(unresolvedOffset, source, snapshot).has_value());
+
+    const qsizetype blankLineOffset = source.lastIndexOf(u'\n');
+    QVERIFY(!provider.infoAt(blankLineOffset, source, snapshot).has_value());
+
+    snapshot->revision = 2;
+    const qsizetype declarationOffset = source.indexOf(QStringLiteral("قيمة"));
+    QVERIFY(!provider.infoAt(declarationOffset, source, snapshot).has_value());
 }
 
 void EditorAnalysisControllerTest::completionVisualsCoverLegacySemanticAndUnknownTypes() {
