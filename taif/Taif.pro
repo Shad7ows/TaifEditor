@@ -52,6 +52,7 @@ SOURCES += \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
     ../source/console/TConsole.cpp \
+    ../source/console/DockableConsoleTool.cpp \
     ../source/console/ProcessWorker.cpp \
     ../source/menubar/TMenu.cpp \
     ../source/pages/TWelcomeWindow.cpp \
@@ -83,6 +84,7 @@ HEADERS += \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
     ../source/console/TConsole.h \
+    ../source/console/DockableConsoleTool.h \
     ../source/console/ProcessWorker.h \
     ../source/menubar/TMenu.h \
     ../source/pages/TWelcomeWindow.h \

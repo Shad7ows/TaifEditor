@@ -16,6 +16,7 @@ QT_END_NAMESPACE
 
 class QDockWidget;
 class DiagnosticsPanel;
+class TConsole;
 
 class Taif : public QMainWindow
 {
@@ -68,6 +69,7 @@ private:
         TEditor* currentEditor();
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
+    void showAndRaiseDock(QDockWidget* dock);
     // void setupTabWidget(QTabWidget* tw);
     // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
     // QTabWidget* getTargetTabWidget();
@@ -84,10 +86,14 @@ private:
     QTreeView *fileTreeView{};
     QFileSystemModel *fileSystemModel{};
 
-    QSplitter *editorSplitter{};
-    QTabWidget *consoleTabWidget{};
+        QSplitter *editorSplitter{};
+    QDockWidget* terminalDock{};
+    QDockWidget* alifOutputDock{};
+    TConsole* systemTerminal{};
+    TConsole* alifOutputConsole{};
 
     ProcessWorker* worker{};
+
     QThread* thread{};
 
     QLabel *cursorPositionLabel{};

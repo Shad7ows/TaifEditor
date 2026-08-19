@@ -1,7 +1,9 @@
 #include "Taif.h"
 #include "TWelcomeWindow.h"
 #include "TConsole.h"
+#include "DockableConsoleTool.h"
 #include "ProcessWorker.h"
+
 #include "TSearchPanel.h"
 #include "DiagnosticsPanel.h"
 
@@ -111,27 +113,9 @@ void Taif::setupUI() {
     fileTreeView->setRootIndex(fileSystemModel->index(QDir::homePath()));
     fileTreeView->setVisible(false);
 
-    consoleTabWidget = new QTabWidget(this);
-    consoleTabWidget->setObjectName("consoleTabWidget");
-    consoleTabWidget->setDocumentMode(true);
-    consoleTabWidget->hide();
-
-    TConsole *cmdConsole = new TConsole(this);
-#if defined(Q_OS_LINUX)
-    QString terminalName = "طرفية (Bash)";
-#elif defined(Q_OS_MACOS)
-    QString terminalName = "طرفية (Zsh)";
-#else
-    QString terminalName = "طرفية (CMD)";
-#endif
-    consoleTabWidget->addTab(cmdConsole, terminalName);
-    cmdConsole->setConsoleRTL();
-    cmdConsole->startCmd();
-
     editorSplitter->addWidget(tabWidget);
     editorSplitter->addWidget(searchBar);
-    editorSplitter->addWidget(consoleTabWidget);
-    editorSplitter->setSizes({1000, 200});
+    editorSplitter->setSizes({1000, 45});
 
     mainSplitter->addWidget(fileTreeView);
     mainSplitter->addWidget(editorSplitter);
@@ -154,6 +138,32 @@ void Taif::setupUI() {
                     editor->navigateToDiagnosticRange(diagnostic.range);
                 }
             });
+
+#if defined(Q_OS_LINUX)
+    const QString terminalTitle = QStringLiteral("طرفية النظام (Bash)");
+#elif defined(Q_OS_MACOS)
+    const QString terminalTitle = QStringLiteral("طرفية النظام (Zsh)");
+#else
+    const QString terminalTitle = QStringLiteral("طرفية النظام (CMD)");
+#endif
+    const DockableConsoleTool terminalTool = DockableConsoleToolFactory::create(
+        this, terminalTitle, QStringLiteral("TerminalDock"),
+        QStringLiteral("SystemTerminalConsole"), true);
+    terminalDock = terminalTool.dock;
+    systemTerminal = terminalTool.console;
+
+    const DockableConsoleTool outputTool = DockableConsoleToolFactory::create(
+        this, QStringLiteral("مخرجات ألف"), QStringLiteral("AlifOutputDock"),
+        QStringLiteral("AlifOutputConsole"), false);
+    alifOutputDock = outputTool.dock;
+    alifOutputConsole = outputTool.console;
+
+    if (terminalDock && alifOutputDock) {
+        DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, alifOutputDock);
+        DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, terminalDock);
+        terminalDock->hide();
+        alifOutputDock->hide();
+    }
 
     cursorPositionLabel = new QLabel(this);
     cursorPositionLabel->setStyleSheet("QLabel{ color: #f1f5f9;}");
@@ -202,13 +212,17 @@ void Taif::setupStyle() {
             font-size: 13px;
         }
 
-        QDockWidget#DiagnosticsDock {
+        QDockWidget#DiagnosticsDock,
+        QDockWidget#TerminalDock,
+        QDockWidget#AlifOutputDock {
             background-color: #0f172a;
             color: #e2e8f0;
             font-family: "Tajawal", "Noto Kufi Arabic";
             border-top: 1px solid #334155;
         }
-        QDockWidget#DiagnosticsDock::title {
+        QDockWidget#DiagnosticsDock::title,
+        QDockWidget#TerminalDock::title,
+        QDockWidget#AlifOutputDock::title {
             background-color: #1e293b;
             color: #e2e8f0;
             text-align: right;
@@ -216,7 +230,11 @@ void Taif::setupStyle() {
             border-bottom: 1px solid #334155;
         }
         QDockWidget#DiagnosticsDock::close-button,
-        QDockWidget#DiagnosticsDock::float-button {
+        QDockWidget#DiagnosticsDock::float-button,
+        QDockWidget#TerminalDock::close-button,
+        QDockWidget#TerminalDock::float-button,
+        QDockWidget#AlifOutputDock::close-button,
+        QDockWidget#AlifOutputDock::float-button {
             background: transparent;
             border: none;
         }
@@ -463,22 +481,31 @@ void Taif::findNextText() { performSearch(true, true); }
 void Taif::findPrevText() { performSearch(false, true); }
 
 
+void Taif::showAndRaiseDock(QDockWidget* const dock)
+{
+    if (dock == nullptr) {
+        return;
+    }
+
+    if (dock == terminalDock || dock == alifOutputDock) {
+        DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, dock);
+    }
+    DockableConsoleToolFactory::showAndActivate(dock);
+}
+
 void Taif::toggleConsole()
 {
-    bool isVisible = !consoleTabWidget->isVisible();
-    consoleTabWidget->setVisible(isVisible);
-
-    if (isVisible) {
-        int consoleHeight = 250;
-        int searchBarHeight = searchBar->isVisible() ? searchBar->height() : 0;
-
-        int editorHeight = editorSplitter->height() - consoleHeight - searchBarHeight;
-        editorSplitter->setSizes({editorHeight, 45, consoleHeight});
-
-        if (QWidget* w = consoleTabWidget->currentWidget()) w->setFocus();
-    } else {
-        if (TEditor* editor = currentEditor()) editor->setFocus();
+    if (terminalDock == nullptr) {
+        return;
     }
+    if (DockableConsoleToolFactory::isRenderedTab(terminalDock)) {
+        terminalDock->hide();
+        if (TEditor* editor = currentEditor()) {
+            editor->setFocus();
+        }
+        return;
+    }
+    showAndRaiseDock(terminalDock);
 }
 
 /* ----------------------------------- File Menu Button ----------------------------------- */
@@ -900,36 +927,11 @@ void Taif::runAlif() {
         if (filePath.isEmpty() || editor->document()->isModified()) return;
     }
 
-    TConsole *console = nullptr;
-    for (int i = 0; i < consoleTabWidget->count(); i++) {
-        auto *tab = consoleTabWidget->widget(i);
-        if (tab->objectName() == "interactiveConsole")
-            console = qobject_cast<TConsole*>(tab);
+    TConsole* console = alifOutputConsole;
+    if (console == nullptr || alifOutputDock == nullptr) {
+        return;
     }
-
-    if (!console) {
-        console = new TConsole(this);
-        console->setObjectName("interactiveConsole");
-        consoleTabWidget->addTab(console, "مخرجات ألف");
-        console->setConsoleRTL();
-    }
-
-    consoleTabWidget->setCurrentWidget(console);
-
-    if (!consoleTabWidget->isVisible() || consoleTabWidget->height() < 50) {
-        int totalHeight = editorSplitter->height();
-        int consoleHeight = 250;
-
-        int searchBarHeight = 0;
-        if (searchBar && searchBar->isVisible()) {
-            searchBarHeight = searchBar->height();
-        }
-        int editorHeight = totalHeight - consoleHeight - searchBarHeight;
-
-        editorSplitter->setSizes({editorHeight, 45, consoleHeight});
-    }
-
-    consoleTabWidget->setVisible(true);
+    showAndRaiseDock(alifOutputDock);
 
     QString program;
     QString appDir = QCoreApplication::applicationDirPath();
