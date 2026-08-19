@@ -62,8 +62,11 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                 if (highlighter) {
                     highlighter->setSemanticSnapshot(std::move(snapshot));
                 }
-                // Completion is refreshed only from a current immutable model.
-                performCompletion();
+                // A passive Tier 2 result may update an already active popup,
+                // but must never reopen one after the user accepted it.
+                if (canRefreshActiveCompletion()) {
+                    performCompletion();
+                }
             });
     lineNumberArea = new LineNumberArea(this);
     minimap = new TMinimap(this, this);
@@ -955,10 +958,7 @@ void TEditor::setCompleter(QCompleter *completer) {
 }
 
 void TEditor::focusOutEvent(QFocusEvent *e) {
-    if (c && c->popup()->isVisible()) {
-        c->popup()->hide();
-    }
-    clearActiveCompletionContext();
+    dismissCompletionPopup();
     QPlainTextEdit::focusOutEvent(e);
 }
 
@@ -987,8 +987,8 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
             e->ignore();
             return;
         case Qt::Key_Escape:
-            clearActiveCompletionContext();
-            e->ignore();
+            dismissCompletionPopup();
+            e->accept();
             return;
         default: break;
         }
@@ -1032,8 +1032,7 @@ void TEditor::performCompletion() {
     const QString textUnder = completionContext.prefix;
     // Empty prefixes are valid immediately after a receiver dot, e.g. `تويوتا.`.
     if (textUnder.isEmpty() && !completionContext.isMemberAccess) {
-        clearActiveCompletionContext();
-        c->popup()->hide();
+        dismissCompletionPopup();
         return;
     }
 
@@ -1055,9 +1054,13 @@ void TEditor::performCompletion() {
             allSuggestions.insert(allSuggestions.end(), semanticItems.begin(), semanticItems.end());
         }
         if (!hasCurrentSemanticModel) {
-            // User-initiated, asynchronous request. It never performs language
-            // analysis in the keystroke handler and never revives regex words.
+            // This pass originated from typing or an explicit completion shortcut.
+            // Preserve its context until the requested immutable snapshot arrives;
+            // that snapshot may be the first result able to open the popup.
+            completionRefreshPending = completionContext.hasReplacementRange();
             analysisController->requestCompletionAnalysis(revision, toPlainText());
+        } else {
+            completionRefreshPending = false;
         }
     }
 
@@ -1074,8 +1077,18 @@ void TEditor::performCompletion() {
     model->updateData(allSuggestions);
 
     if (allSuggestions.empty()) {
-        clearActiveCompletionContext();
-        c->popup()->hide();
+        if (completionRefreshPending && completionContext.hasReplacementRange()) {
+            // Semantic completion is still in flight. Keep the user-requested
+            // context, but do not leave stale suggestions visible meanwhile.
+            activeCompletionContext = completionContext;
+            activeCompletionRevision = revision;
+            hasActiveCompletionContext = true;
+            if (c && c->popup()) {
+                c->popup()->hide();
+            }
+        } else {
+            dismissCompletionPopup();
+        }
         return;
     }
 
@@ -1150,13 +1163,39 @@ void TEditor::insertCompletion(const QString &completion, CompletionType type) {
                 insertWord(completion, tc);
         break;
     }
-    clearActiveCompletionContext();
+    dismissCompletionPopup();
+}
+
+bool TEditor::canRefreshActiveCompletion() const {
+    if (!c || !c->popup() || !completionRefreshPending
+        || !hasActiveCompletionContext
+        || !activeCompletionContext.hasReplacementRange()) {
+        return false;
+    }
+    const quint64 currentRevision = analysisController ? analysisController->currentRevision() : 0;
+    if (activeCompletionRevision != currentRevision) {
+        return false;
+    }
+    const qsizetype documentLength = document()->characterCount() - 1;
+    const qsizetype cursorOffset = textCursor().position();
+    return activeCompletionContext.replacementBegin >= 0
+        && activeCompletionContext.replacementEnd <= documentLength
+        && cursorOffset >= activeCompletionContext.replacementBegin
+        && cursorOffset <= activeCompletionContext.replacementEnd;
 }
 
 void TEditor::clearActiveCompletionContext() {
     activeCompletionContext = {};
     activeCompletionRevision = 0;
     hasActiveCompletionContext = false;
+    completionRefreshPending = false;
+}
+
+void TEditor::dismissCompletionPopup() {
+    if (c && c->popup()) {
+        c->popup()->hide();
+    }
+    clearActiveCompletionContext();
 }
 
 void TEditor::insertWord(const QString& completion, QTextCursor& tc) {

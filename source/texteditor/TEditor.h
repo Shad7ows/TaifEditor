@@ -97,7 +97,11 @@ private:
     CompletionContext activeCompletionContext{};
     quint64 activeCompletionRevision = 0;
     bool hasActiveCompletionContext = false;
+    // Set only by a user-triggered completion pass while semantic analysis is pending.
+    bool completionRefreshPending = false;
+    [[nodiscard]] bool canRefreshActiveCompletion() const;
     void clearActiveCompletionContext();
+    void dismissCompletionPopup();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
