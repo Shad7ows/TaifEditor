@@ -49,6 +49,21 @@ struct PresentationSpan final {
     SemanticDiagnosticSeverity severity = SemanticDiagnosticSeverity::Information;
 };
 
+enum class DiagnosticOrigin : quint8 {
+    Lexer,
+    Parser,
+    Semantic
+};
+
+/** Immutable, UI-neutral diagnostic normalized from one analysis snapshot. */
+struct EditorDiagnostic final {
+    QString code;
+    QString message;
+    SourceRange range;
+    SemanticDiagnosticSeverity severity = SemanticDiagnosticSeverity::Information;
+    DiagnosticOrigin origin = DiagnosticOrigin::Semantic;
+};
+
 struct AnalysisMetrics final {
     qint64 lexMilliseconds = 0;
     qint64 parseMilliseconds = 0;
@@ -67,6 +82,7 @@ struct LanguageAnalysisSnapshot final {
     ParseResult parse;
     std::shared_ptr<const SemanticModel> semantic;
     QVector<PresentationSpan> spans;
+    QVector<EditorDiagnostic> diagnostics;
     AnalysisMetrics metrics;
 };
 
@@ -74,4 +90,6 @@ using LanguageAnalysisSnapshotPtr = std::shared_ptr<const LanguageAnalysisSnapsh
 
 Q_DECLARE_METATYPE(AnalysisRequest)
 Q_DECLARE_METATYPE(PresentationSpan)
+Q_DECLARE_METATYPE(EditorDiagnostic)
+Q_DECLARE_METATYPE(QVector<EditorDiagnostic>)
 Q_DECLARE_METATYPE(LanguageAnalysisSnapshotPtr)

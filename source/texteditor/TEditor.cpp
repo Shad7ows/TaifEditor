@@ -58,6 +58,10 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                 clearActiveCompletionContext();
                 definitionNavigationHistory.clear();
                 clearCtrlHoverDefinitionLink();
+                m_currentDiagnostics.clear();
+                m_diagnosticsRevision = analysisController
+                    ? analysisController->currentRevision() : 0;
+                emit diagnosticsChanged(m_currentDiagnostics, m_diagnosticsRevision);
                 dismissHover();
             });
     connect(analysisController, &EditorAnalysisController::fastPassRequested,
@@ -76,8 +80,14 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
             });
     connect(analysisController, &EditorAnalysisController::analysisApplied,
             this, [this](LanguageAnalysisSnapshotPtr snapshot) {
+                if (!snapshot) {
+                    return;
+                }
+                m_currentDiagnostics = snapshot->diagnostics;
+                m_diagnosticsRevision = snapshot->revision;
+                emit diagnosticsChanged(m_currentDiagnostics, m_diagnosticsRevision);
                 if (highlighter) {
-                    highlighter->setSemanticSnapshot(std::move(snapshot));
+                    highlighter->setSemanticSnapshot(snapshot);
                 }
                 // A passive Tier 2 result may update an already active popup,
                 // but must never reopen one after the user accepted it.
@@ -639,6 +649,23 @@ bool TEditor::navigateBackFromDefinition() {
     ensureCursorVisible();
     setFocus(Qt::OtherFocusReason);
     return true;
+}
+
+void TEditor::navigateToDiagnosticRange(const SourceRange range) {
+    const qsizetype documentLength = document()->characterCount() - 1;
+    if (range.begin.offset < 0 || range.end.offset <= range.begin.offset
+        || range.end.offset > documentLength) {
+        return;
+    }
+    QTextCursor destination(document());
+    destination.setPosition(range.begin.offset);
+    destination.setPosition(range.end.offset, QTextCursor::KeepAnchor);
+    dismissCompletionPopup();
+    clearCtrlHoverDefinitionLink();
+    dismissHover();
+    setTextCursor(destination);
+    ensureCursorVisible();
+    setFocus(Qt::OtherFocusReason);
 }
 
 void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {

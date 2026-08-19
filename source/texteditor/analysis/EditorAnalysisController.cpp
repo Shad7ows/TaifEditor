@@ -1,6 +1,7 @@
 #include "EditorAnalysisController.h"
 
 #include "SemanticPresentationAdapter.h"
+#include "DiagnosticPresentationAdapter.h"
 
 #include <QtCore/QElapsedTimer>
 #include <QtCore/QMetaObject>
@@ -51,8 +52,10 @@ void AnalysisWorker::process(AnalysisRequest request) {
     }
 
     stageTimer.restart();
-    snapshot->spans = SemanticPresentationAdapter().classify(
+    snapshot->diagnostics = DiagnosticPresentationAdapter().collect(
         snapshot->lex, snapshot->parse, snapshot->semantic);
+    snapshot->spans = SemanticPresentationAdapter().classify(
+        snapshot->lex, snapshot->parse, snapshot->semantic, snapshot->diagnostics);
     snapshot->metrics.presentationMilliseconds = stageTimer.elapsed();
     snapshot->metrics.spanCount = snapshot->spans.size();
     snapshot->metrics.totalMilliseconds = totalTimer.elapsed();

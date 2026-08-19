@@ -3,6 +3,7 @@
 #include "TConsole.h"
 #include "ProcessWorker.h"
 #include "TSearchPanel.h"
+#include "DiagnosticsPanel.h"
 
 #include <QThread>
 #include <QDockWidget>
@@ -137,6 +138,23 @@ void Taif::setupUI() {
     mainSplitter->setSizes({200, 700});
     this->setCentralWidget(mainSplitter);
 
+    diagnosticsDock = new QDockWidget(QStringLiteral("المشكلات"), this);
+    diagnosticsDock->setObjectName(QStringLiteral("DiagnosticsDock"));
+    diagnosticsDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
+    diagnosticsDock->setFeatures(QDockWidget::DockWidgetMovable
+                                 | QDockWidget::DockWidgetFloatable
+                                 | QDockWidget::DockWidgetClosable);
+    diagnosticsPanel = new DiagnosticsPanel(diagnosticsDock);
+    diagnosticsDock->setWidget(diagnosticsPanel);
+    addDockWidget(Qt::BottomDockWidgetArea, diagnosticsDock);
+    resizeDocks({diagnosticsDock}, {220}, Qt::Vertical);
+    connect(diagnosticsPanel, &DiagnosticsPanel::diagnosticActivated,
+            this, [this](const EditorDiagnostic& diagnostic) {
+                if (TEditor* editor = currentEditor()) {
+                    editor->navigateToDiagnosticRange(diagnostic.range);
+                }
+            });
+
     cursorPositionLabel = new QLabel(this);
     cursorPositionLabel->setStyleSheet("QLabel{ color: #f1f5f9;}");
     cursorPositionLabel->setText("UTF-8  السطر: 1  العمود: 1");
@@ -182,6 +200,25 @@ void Taif::setupStyle() {
         QMainWindow {
             background-color: #0f172a;
             font-size: 13px;
+        }
+
+        QDockWidget#DiagnosticsDock {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: "Tajawal", "Noto Kufi Arabic";
+            border-top: 1px solid #334155;
+        }
+        QDockWidget#DiagnosticsDock::title {
+            background-color: #1e293b;
+            color: #e2e8f0;
+            text-align: right;
+            padding: 7px 10px;
+            border-bottom: 1px solid #334155;
+        }
+        QDockWidget#DiagnosticsDock::close-button,
+        QDockWidget#DiagnosticsDock::float-button {
+            background: transparent;
+            border: none;
         }
 
         /* --- تصميم شريط القوائم --- */
@@ -494,6 +531,7 @@ void Taif::newFile() {
     tabWidget->setCurrentWidget(newEditor);
 
     connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
+    connectEditorDiagnostics(newEditor);
     connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
     updateWindowTitle();
 }
@@ -555,6 +593,7 @@ void Taif::openFile(QString filePath) {
 
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
             connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
+            connectEditorDiagnostics(newEditor);
 
             QFileInfo fileInfo(filePath);
             tabWidget->addTab(newEditor, fileInfo.fileName());
@@ -741,6 +780,30 @@ void Taif::onCurrentTabChanged()
     TEditor* editor = currentEditor();
     if (editor) {
         connect(editor, &QPlainTextEdit::cursorPositionChanged, this, &Taif::updateCursorPosition);
+    }
+    refreshDiagnosticsPanel();
+}
+
+void Taif::connectEditorDiagnostics(TEditor* editor) {
+    if (editor == nullptr) {
+        return;
+    }
+    connect(editor, &TEditor::diagnosticsChanged, this,
+            [this, editor](QVector<EditorDiagnostic> diagnostics, const quint64) {
+                if (editor == currentEditor() && diagnosticsPanel) {
+                    diagnosticsPanel->setDiagnostics(std::move(diagnostics));
+                }
+            });
+}
+
+void Taif::refreshDiagnosticsPanel() {
+    if (!diagnosticsPanel) {
+        return;
+    }
+    if (TEditor* editor = currentEditor()) {
+        diagnosticsPanel->setDiagnostics(editor->currentDiagnostics());
+    } else {
+        diagnosticsPanel->clearDiagnostics();
     }
 }
 

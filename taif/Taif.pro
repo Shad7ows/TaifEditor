@@ -16,6 +16,7 @@ INCLUDEPATH += \
     ../source/texteditor/highlighter \
     ../source/texteditor/autocomplete \
     ../source/texteditor/hover \
+    ../source/texteditor/diagnostics \
     ../source/language/lexer \
     ../source/language/parser \
     ../source/language/semantic \
@@ -35,11 +36,13 @@ SOURCES += \
     ../source/language/parser/TaifParser.cpp \
     ../source/language/semantic/SymbolTable.cpp \
     ../source/language/presentation/SemanticPresentationAdapter.cpp \
+    ../source/language/presentation/DiagnosticPresentationAdapter.cpp \
     ../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../source/texteditor/analysis/SemanticHoverProvider.cpp \
     ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../source/texteditor/hover/HoverPopup.cpp \
+    ../source/texteditor/diagnostics/DiagnosticsPanel.cpp \
     ../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
     Taif.cpp \
@@ -63,11 +66,13 @@ HEADERS += \
     ../source/language/semantic/SymbolTable.h \
     ../source/language/presentation/LanguageAnalysis.h \
     ../source/language/presentation/SemanticPresentationAdapter.h \
+    ../source/language/presentation/DiagnosticPresentationAdapter.h \
     ../source/texteditor/analysis/EditorAnalysisController.h \
     ../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../source/texteditor/analysis/SemanticHoverProvider.h \
     ../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../source/texteditor/hover/HoverPopup.h \
+    ../source/texteditor/diagnostics/DiagnosticsPanel.h \
     ../source/texteditor/highlighter/TSyntaxDefinition.h \
     ../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../source/texteditor/highlighter/TSyntaxThemes.h \

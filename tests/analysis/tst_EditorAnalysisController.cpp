@@ -1,5 +1,8 @@
 #include "EditorAnalysisController.h"
 #include "SemanticPresentationAdapter.h"
+#include "DiagnosticPresentationAdapter.h"
+#include "DiagnosticsPanel.h"
+
 #include "SemanticCompletionProvider.h"
 #include "SemanticHoverProvider.h"
 #include "SemanticDefinitionProvider.h"
@@ -27,6 +30,8 @@ private slots:
     void semanticHoverDescribesImportedBindings();
     void semanticHoverRejectsStaleAndUnresolvedTargets();
     void completionVisualsCoverLegacySemanticAndUnknownTypes();
+    void diagnosticsNormalizeDeduplicateAndPreserveSeveritySpans();
+    void diagnosticsModelFiltersActionableSeverities();
     void semanticPresentationClassifiesDeclarationsAndDiagnostics();
 };
 
@@ -353,6 +358,71 @@ void EditorAnalysisControllerTest::completionVisualsCoverLegacySemanticAndUnknow
              static_cast<int>(CompletionSemanticKind::Field));
 }
 
+void EditorAnalysisControllerTest::diagnosticsNormalizeDeduplicateAndPreserveSeveritySpans() {
+    const SourceRange lexerRange {{0, 1, 1}, {1, 1, 2}};
+    const SourceRange parserRange {{3, 1, 4}, {4, 1, 5}};
+    LexResult lexical;
+    lexical.diagnostics.append({QStringLiteral("LEX001"), QStringLiteral("invalid token"), lexerRange});
+
+    ParseResult parse;
+    // Parser forwards lexer diagnostics for recovery; the adapter must not add
+    // that second copy to the normalized result.
+    parse.lexicalDiagnostics = lexical.diagnostics;
+    parse.parserDiagnostics.append({QStringLiteral("PAR001"), QStringLiteral("recoverable parse issue"),
+                                    parserRange, ParseDiagnosticSeverity::Warning});
+
+    const QVector<EditorDiagnostic> diagnostics = DiagnosticPresentationAdapter().collect(
+        lexical, parse, {});
+    QCOMPARE(diagnostics.size(), qsizetype(2));
+    QCOMPARE(diagnostics.at(0).code, QStringLiteral("LEX001"));
+    QCOMPARE(diagnostics.at(0).severity, SemanticDiagnosticSeverity::Error);
+    QCOMPARE(diagnostics.at(1).code, QStringLiteral("PAR001"));
+    QCOMPARE(diagnostics.at(1).severity, SemanticDiagnosticSeverity::Warning);
+
+    const QVector<PresentationSpan> spans = SemanticPresentationAdapter().classify(
+        lexical, parse, {}, diagnostics);
+    const auto hasSeveritySpan = [&spans](const SourceRange& range,
+                                          const SemanticDiagnosticSeverity severity) {
+        return std::any_of(spans.cbegin(), spans.cend(), [&range, severity](const PresentationSpan& span) {
+            return span.range.begin.offset == range.begin.offset
+                && span.range.end.offset == range.end.offset
+                && span.severity == severity;
+        });
+    };
+    QVERIFY(hasSeveritySpan(lexerRange, SemanticDiagnosticSeverity::Error));
+    QVERIFY(hasSeveritySpan(parserRange, SemanticDiagnosticSeverity::Warning));
+}
+
+void EditorAnalysisControllerTest::diagnosticsModelFiltersActionableSeverities() {
+    const SourceRange errorRange {{0, 1, 1}, {1, 1, 2}};
+    const SourceRange warningRange {{2, 1, 3}, {3, 1, 4}};
+    const SourceRange informationRange {{4, 1, 5}, {5, 1, 6}};
+    DiagnosticsModel model;
+    model.setDiagnostics({
+        {QStringLiteral("LEX001"), QStringLiteral("lexer error"), errorRange,
+         SemanticDiagnosticSeverity::Error, DiagnosticOrigin::Lexer},
+        {QStringLiteral("SEM001"), QStringLiteral("semantic warning"), warningRange,
+         SemanticDiagnosticSeverity::Warning, DiagnosticOrigin::Semantic},
+        {QStringLiteral("SEM999"), QStringLiteral("suppression information"), informationRange,
+         SemanticDiagnosticSeverity::Information, DiagnosticOrigin::Semantic}
+    });
+
+    QCOMPARE(model.errorCount(), 1);
+    QCOMPARE(model.warningCount(), 1);
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.data(model.index(0, DiagnosticsModel::SeverityColumn), Qt::DisplayRole),
+             QVariant(QStringLiteral("● خطأ")));
+
+    model.setSeverityVisibility(false, true);
+    QCOMPARE(model.rowCount(), 1);
+    const EditorDiagnostic* warning = model.diagnosticAt(model.index(0, DiagnosticsModel::MessageColumn));
+    QVERIFY(warning != nullptr);
+    QCOMPARE(warning->severity, SemanticDiagnosticSeverity::Warning);
+
+    model.setSeverityVisibility(false, false);
+    QCOMPARE(model.rowCount(), 0);
+}
+
 void EditorAnalysisControllerTest::semanticPresentationClassifiesDeclarationsAndDiagnostics() {
     const QString source = QStringLiteral(
         "دالة جمع(س):\n"
@@ -361,8 +431,10 @@ void EditorAnalysisControllerTest::semanticPresentationClassifiesDeclarationsAnd
     const ParseResult parse = TaifParser().parse(source, lexical, 1);
     const SymbolTableInput input {*parse.ast, parse.parserDiagnostics, 1};
     const std::shared_ptr<const SemanticModel> semantic = SymbolTableBuilder().build(input);
-    const QVector<PresentationSpan> spans = SemanticPresentationAdapter().classify(
+    const QVector<EditorDiagnostic> diagnostics = DiagnosticPresentationAdapter().collect(
         lexical, parse, semantic);
+    const QVector<PresentationSpan> spans = SemanticPresentationAdapter().classify(
+        lexical, parse, semantic, diagnostics);
 
     bool foundFunction = false;
     bool foundParameter = false;

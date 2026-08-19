@@ -61,12 +61,13 @@ PresentationClass classForDiagnostic(const SemanticDiagnostic& diagnostic) {
 QVector<PresentationSpan> SemanticPresentationAdapter::classify(
     const LexResult& lexicalResult,
     const ParseResult& parseResult,
-    const std::shared_ptr<const SemanticModel>& semanticModel) const {
+    const std::shared_ptr<const SemanticModel>& semanticModel,
+    const QVector<EditorDiagnostic>& diagnostics) const {
     QVector<PresentationSpan> spans;
     spans.reserve(lexicalResult.tokens.size()
                   + (semanticModel ? semanticModel->symbols().size()
-                                    + semanticModel->references().size()
-                                    + semanticModel->diagnostics().size() : 0));
+                                    + semanticModel->references().size() : 0)
+                  + diagnostics.size());
 
     for (const Token& token : lexicalResult.tokens) {
         PresentationClass classification = PresentationClass::Error;
@@ -93,10 +94,7 @@ QVector<PresentationSpan> SemanticPresentationAdapter::classify(
         }
     }
 
-    if (!semanticModel) {
-        return spans;
-    }
-
+    if (semanticModel) {
     for (const Symbol& symbol : semanticModel->symbols()) {
         if (symbol.kind == SymbolKind::Builtin || symbol.declarationNode == InvalidAstNodeId) {
             continue;
@@ -112,11 +110,6 @@ QVector<PresentationSpan> SemanticPresentationAdapter::classify(
         if (reference.range.begin.offset >= reference.range.end.offset) {
             continue;
         }
-        if (reference.state == ResolutionState::Unresolved) {
-            spans.append({reference.range, PresentationClass::UnresolvedName,
-                          SemanticDiagnosticSeverity::Warning});
-            continue;
-        }
         if (reference.state == ResolutionState::Resolved && reference.resolvedSymbol != InvalidSymbolId) {
             const Symbol* symbol = semanticModel->symbol(reference.resolvedSymbol);
             if (symbol != nullptr) {
@@ -125,13 +118,21 @@ QVector<PresentationSpan> SemanticPresentationAdapter::classify(
             }
         }
     }
+    }
 
-    for (const SemanticDiagnostic& diagnostic : semanticModel->diagnostics()) {
-        if (diagnostic.code == QStringLiteral("SEM999")
-            || diagnostic.range.begin.offset >= diagnostic.range.end.offset) {
+    // Diagnostics are emitted after regular semantic spans so severity-specific
+    // wave underlines are the final presentation overlay for their ranges.
+    for (const EditorDiagnostic& diagnostic : diagnostics) {
+        if (diagnostic.range.begin.offset >= diagnostic.range.end.offset) {
             continue;
         }
-        spans.append({diagnostic.range, classForDiagnostic(diagnostic), diagnostic.severity});
+        SemanticDiagnostic semanticDiagnostic;
+        semanticDiagnostic.code = diagnostic.code;
+        semanticDiagnostic.message = diagnostic.message;
+        semanticDiagnostic.range = diagnostic.range;
+        semanticDiagnostic.severity = diagnostic.severity;
+        spans.append({diagnostic.range, classForDiagnostic(semanticDiagnostic),
+                      diagnostic.severity});
     }
 
     Q_UNUSED(parseResult)

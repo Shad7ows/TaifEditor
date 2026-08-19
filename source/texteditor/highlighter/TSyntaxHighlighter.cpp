@@ -148,20 +148,18 @@ QTextCharFormat TSyntaxHighlighter::formatForPresentation(const PresentationSpan
     case PresentationClass::Local:
         format.setFontItalic(false);
         break;
-    case PresentationClass::UnresolvedName:
-        format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
-        format.setUnderlineColor(QColor(240, 100, 100));
-        break;
-    case PresentationClass::DuplicateDeclaration:
-        format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
-        format.setUnderlineColor(QColor(255, 180, 70));
-        break;
-    case PresentationClass::Error:
-        format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
-        format.setUnderlineColor(QColor(240, 100, 100));
-        break;
     default:
         break;
+    }
+
+    // All diagnostic overlays carry their original normalized severity. This
+    // keeps the visual language stable across lexer, parser, and semantic stages.
+    if (span.severity == SemanticDiagnosticSeverity::Error) {
+        format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+        format.setUnderlineColor(QColor(240, 100, 100));
+    } else if (span.severity == SemanticDiagnosticSeverity::Warning) {
+        format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+        format.setUnderlineColor(QColor(255, 180, 70));
     }
     return format;
 }

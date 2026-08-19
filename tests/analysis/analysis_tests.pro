@@ -8,6 +8,7 @@ TARGET = TaifAnalysisTests
 
 INCLUDEPATH += \
     ../../source/language/lexer \
+    ../../source/texteditor/diagnostics \
     ../../source/language/parser \
     ../../source/language/semantic \
     ../../source/language/presentation \
@@ -20,6 +21,8 @@ SOURCES += \
     ../../source/language/parser/TaifParser.cpp \
     ../../source/language/semantic/SymbolTable.cpp \
     ../../source/language/presentation/SemanticPresentationAdapter.cpp \
+    ../../source/language/presentation/DiagnosticPresentationAdapter.cpp \
+    ../../source/texteditor/diagnostics/DiagnosticsPanel.cpp \
     ../../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../../source/texteditor/analysis/SemanticHoverProvider.cpp \
@@ -32,6 +35,8 @@ HEADERS += \
     ../../source/language/semantic/SymbolTable.h \
     ../../source/language/presentation/LanguageAnalysis.h \
     ../../source/language/presentation/SemanticPresentationAdapter.h \
+    ../../source/language/presentation/DiagnosticPresentationAdapter.h \
+    ../../source/texteditor/diagnostics/DiagnosticsPanel.h \
     ../../source/texteditor/analysis/EditorAnalysisController.h \
     ../../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../../source/texteditor/analysis/SemanticHoverProvider.h \

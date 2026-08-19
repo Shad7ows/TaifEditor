@@ -14,6 +14,9 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class Taif; }
 QT_END_NAMESPACE
 
+class QDockWidget;
+class DiagnosticsPanel;
+
 class Taif : public QMainWindow
 {
     Q_OBJECT
@@ -62,7 +65,9 @@ private:
     void setupConnections();
     void setupStyle();
     int needSave();
-    TEditor* currentEditor();
+        TEditor* currentEditor();
+    void connectEditorDiagnostics(TEditor* editor);
+    void refreshDiagnosticsPanel();
     // void setupTabWidget(QTabWidget* tw);
     // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
     // QTabWidget* getTargetTabWidget();
@@ -90,4 +95,6 @@ private:
     // QProcess *alifProcess{};
     // QProcess *currentAlifProcess{};
     SearchPanel *searchBar{};
+    QDockWidget* diagnosticsDock{};
+    DiagnosticsPanel* diagnosticsPanel{};
 };
