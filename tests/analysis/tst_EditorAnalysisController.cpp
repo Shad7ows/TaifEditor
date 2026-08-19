@@ -2,6 +2,7 @@
 #include "SemanticPresentationAdapter.h"
 #include "SemanticCompletionProvider.h"
 #include "SemanticHoverProvider.h"
+#include "SemanticDefinitionProvider.h"
 #include "AutoCompleteUI.h"
 #include "CompletionContext.h"
 
@@ -22,6 +23,7 @@ private slots:
     void completionContextNeverSelectsReceiverDot();
     void selfReceiverCompletionAndPresentation();
     void semanticHoverResolvesDeclarationsAndDocumentation();
+    void semanticDefinitionResolvesLocalMembersAndImports();
     void semanticHoverDescribesImportedBindings();
     void semanticHoverRejectsStaleAndUnresolvedTargets();
     void completionVisualsCoverLegacySemanticAndUnknownTypes();
@@ -221,6 +223,53 @@ void EditorAnalysisControllerTest::semanticHoverResolvesDeclarationsAndDocumenta
     QCOMPARE(localHover->typeLabel, QStringLiteral("متغير محلي"));
     QCOMPARE(localHover->declarationLine, qsizetype(6));
     QVERIFY(localHover->documentation.contains(QStringLiteral("توثيق نتيجة")));
+}
+
+void EditorAnalysisControllerTest::semanticDefinitionResolvesLocalMembersAndImports() {
+    const QString source = QStringLiteral(
+        "صنف سيارة:\n"
+        "\tدالة تهيئة(هذا):\n"
+        "\t\tهذا.لون = 0\n"
+        "\tدالة عرض(هذا):\n"
+        "\t\tارجع هذا.لون\n"
+        "تويوتا = سيارة()\n"
+        "استورد رياضيات\n"
+        "اطبع(تويوتا.لون)\n"
+        "اطبع(رياضيات)\n\n");
+    auto snapshot = std::make_shared<LanguageAnalysisSnapshot>();
+    snapshot->revision = 1;
+    snapshot->lex = TaifLexer().lex(source);
+    snapshot->parse = TaifParser().parse(source, snapshot->lex, snapshot->revision);
+    const SymbolTableInput input {*snapshot->parse.ast, snapshot->parse.parserDiagnostics,
+                                  snapshot->revision};
+    snapshot->semantic = SymbolTableBuilder().build(input);
+
+    const SemanticDefinitionProvider provider;
+    const qsizetype memberUseOffset = source.lastIndexOf(QStringLiteral("لون"));
+    const std::optional<DefinitionLocation> memberDefinition = provider.definitionAt(
+        memberUseOffset, source, snapshot);
+    QVERIFY(memberDefinition.has_value());
+    QCOMPARE(memberDefinition->name, QStringLiteral("لون"));
+    QCOMPARE(memberDefinition->declarationLine, qsizetype(3));
+    QCOMPARE(source.mid(memberDefinition->declarationRange.begin.offset,
+                        memberDefinition->declarationRange.end.offset
+                            - memberDefinition->declarationRange.begin.offset),
+             QStringLiteral("لون"));
+
+    const qsizetype importUseOffset = source.lastIndexOf(QStringLiteral("رياضيات"));
+    const std::optional<DefinitionLocation> importDefinition = provider.definitionAt(
+        importUseOffset, source, snapshot);
+    QVERIFY(importDefinition.has_value());
+    QCOMPARE(importDefinition->name, QStringLiteral("رياضيات"));
+    QCOMPARE(importDefinition->declarationLine, qsizetype(7));
+
+    const qsizetype declarationOffset = source.indexOf(QStringLiteral("سيارة"));
+    QVERIFY(provider.definitionAt(declarationOffset, source, snapshot).has_value());
+    const qsizetype blankOffset = source.lastIndexOf(u'\n');
+    QVERIFY(!provider.definitionAt(blankOffset, source, snapshot).has_value());
+
+    snapshot->revision = 2;
+    QVERIFY(!provider.definitionAt(memberUseOffset, source, snapshot).has_value());
 }
 
 void EditorAnalysisControllerTest::semanticHoverDescribesImportedBindings() {

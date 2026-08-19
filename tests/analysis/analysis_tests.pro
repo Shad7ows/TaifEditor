@@ -23,6 +23,7 @@ SOURCES += \
     ../../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../../source/texteditor/analysis/SemanticHoverProvider.cpp \
+    ../../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../../source/texteditor/autocomplete/AutoCompleteUI.cpp
 
 HEADERS += \
@@ -34,6 +35,7 @@ HEADERS += \
     ../../source/texteditor/analysis/EditorAnalysisController.h \
     ../../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../../source/texteditor/analysis/SemanticHoverProvider.h \
+    ../../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../../source/texteditor/analysis/CompletionContext.h \
     ../../source/texteditor/autocomplete/AutoComplete.h \
     ../../source/texteditor/autocomplete/AutoCompleteUI.h

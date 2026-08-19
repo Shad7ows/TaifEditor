@@ -38,6 +38,7 @@ SOURCES += \
     ../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../source/texteditor/analysis/SemanticHoverProvider.cpp \
+    ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../source/texteditor/hover/HoverPopup.cpp \
     ../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
@@ -65,6 +66,7 @@ HEADERS += \
     ../source/texteditor/analysis/EditorAnalysisController.h \
     ../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../source/texteditor/analysis/SemanticHoverProvider.h \
+    ../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../source/texteditor/hover/HoverPopup.h \
     ../source/texteditor/highlighter/TSyntaxDefinition.h \
     ../source/texteditor/highlighter/TSyntaxHighlighter.h \
