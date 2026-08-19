@@ -1,4 +1,4 @@
-QT += core testlib
+QT += core widgets testlib
 CONFIG += c++17 testcase console
 CONFIG -= app_bundle
 TEMPLATE = app
@@ -21,7 +21,8 @@ SOURCES += \
     ../../source/language/semantic/SymbolTable.cpp \
     ../../source/language/presentation/SemanticPresentationAdapter.cpp \
     ../../source/texteditor/analysis/EditorAnalysisController.cpp \
-    ../../source/texteditor/analysis/SemanticCompletionProvider.cpp
+    ../../source/texteditor/analysis/SemanticCompletionProvider.cpp \
+    ../../source/texteditor/autocomplete/AutoCompleteUI.cpp
 
 HEADERS += \
     ../../source/language/lexer/TaifLexer.h \
@@ -31,4 +32,6 @@ HEADERS += \
     ../../source/language/presentation/SemanticPresentationAdapter.h \
     ../../source/texteditor/analysis/EditorAnalysisController.h \
     ../../source/texteditor/analysis/SemanticCompletionProvider.h \
-    ../../source/texteditor/autocomplete/AutoComplete.h
+    ../../source/texteditor/analysis/CompletionContext.h \
+    ../../source/texteditor/autocomplete/AutoComplete.h \
+    ../../source/texteditor/autocomplete/AutoCompleteUI.h

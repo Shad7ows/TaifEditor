@@ -2,6 +2,22 @@
 
 namespace {
 
+CompletionSemanticKind completionKindForSymbol(const SymbolKind kind) {
+    switch (kind) {
+    case SymbolKind::Function: return CompletionSemanticKind::Function;
+    case SymbolKind::Class: return CompletionSemanticKind::Class;
+    case SymbolKind::Field: return CompletionSemanticKind::Field;
+    case SymbolKind::Parameter: return CompletionSemanticKind::Parameter;
+    case SymbolKind::LoopVariable:
+    case SymbolKind::ComprehensionVariable: return CompletionSemanticKind::LoopVariable;
+    case SymbolKind::ImportModule:
+    case SymbolKind::ImportMember: return CompletionSemanticKind::Import;
+    case SymbolKind::Builtin: return CompletionSemanticKind::Builtin;
+    case SymbolKind::Local: return CompletionSemanticKind::Local;
+    default: return CompletionSemanticKind::Unknown;
+    }
+}
+
 QString descriptionForSymbol(const SymbolKind kind) {
     switch (kind) {
     case SymbolKind::Function: return QStringLiteral("دالة");
@@ -45,6 +61,7 @@ QVector<CompletionItem> SemanticCompletionProvider::suggestions(
         item.completion = symbol->name;
         item.description = descriptionForSymbol(symbol->kind);
         item.type = CompletionType::SemanticSymbol;
+        item.semanticKind = completionKindForSymbol(symbol->kind);
         items.append(std::move(item));
     }
     return items;
@@ -53,6 +70,7 @@ QVector<CompletionItem> SemanticCompletionProvider::suggestions(
 QVector<CompletionItem> SemanticCompletionProvider::memberSuggestions(
     const QString& receiverName,
     const QString& prefix,
+    const qsizetype receiverOffset,
     const qsizetype cursorOffset,
     const std::shared_ptr<const SemanticModel>& semantic,
     const bool moduleAndPreludeOnly) const {
@@ -62,19 +80,26 @@ QVector<CompletionItem> SemanticCompletionProvider::memberSuggestions(
     }
 
     SymbolId receiver = InvalidSymbolId;
-    const QVector<SymbolId> visible = semantic->visibleSymbolsAt(cursorOffset);
+    // The receiver offset is inside the identifier itself, unlike cursorOffset
+    // which may be after a newly typed dot and outside an older snapshot range.
+    const QVector<SymbolId> visible = semantic->visibleSymbolsAt(receiverOffset);
     for (const SymbolId candidateId : visible) {
         const Symbol* candidate = semantic->symbol(candidateId);
         if (candidate == nullptr || candidate->name != receiverName) {
             continue;
         }
-        if (moduleAndPreludeOnly && candidate->declaringScope != semantic->moduleScope()
-            && candidate->declaringScope != semantic->preludeScope()) {
+        const bool isGlobal = candidate->declaringScope == semantic->moduleScope()
+            || candidate->declaringScope == semantic->preludeScope();
+        const bool isVerifiedSelf = candidate->kind == SymbolKind::Parameter
+            && candidate->name == QStringLiteral("هذا")
+            && candidate->instanceClass != InvalidSymbolId;
+        if (moduleAndPreludeOnly && !isGlobal && !isVerifiedSelf) {
             continue;
         }
         receiver = candidateId;
         break;
     }
+    Q_UNUSED(cursorOffset)
     if (receiver == InvalidSymbolId) {
         return items;
     }
@@ -91,6 +116,7 @@ QVector<CompletionItem> SemanticCompletionProvider::memberSuggestions(
         item.completion = member->name;
         item.description = descriptionForSymbol(member->kind);
         item.type = CompletionType::SemanticSymbol;
+        item.semanticKind = completionKindForSymbol(member->kind);
         items.append(std::move(item));
     }
     return items;

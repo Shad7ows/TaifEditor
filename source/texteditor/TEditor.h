@@ -12,6 +12,7 @@
 #include "AutoCompleteUI.h"
 #include "EditorAnalysisController.h"
 #include "SemanticCompletionProvider.h"
+#include "CompletionContext.h"
 
 
 class LineNumberArea;
@@ -93,6 +94,10 @@ private:
     CompletionModel *model{};
     std::vector<std::unique_ptr<ICompletionStrategy>> strategies{};
     QStringList snippetTargets{};
+    CompletionContext activeCompletionContext{};
+    quint64 activeCompletionRevision = 0;
+    bool hasActiveCompletionContext = false;
+    void clearActiveCompletionContext();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();

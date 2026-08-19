@@ -13,44 +13,6 @@
 #include <QFile>
 
 
-namespace {
-
-struct DotCompletionContext final {
-    bool isMemberAccess = false;
-    QString receiver;
-    QString prefix;
-};
-
-bool isCompletionIdentifierCharacter(const QChar character) {
-    return character.isLetterOrNumber() || character == QChar(u'_');
-}
-
-DotCompletionContext dotCompletionContextAt(const QTextCursor& cursor) {
-    const QString line = cursor.block().text();
-    const int cursorInBlock = cursor.positionInBlock();
-    int memberStart = cursorInBlock;
-    while (memberStart > 0 && isCompletionIdentifierCharacter(line.at(memberStart - 1))) {
-        --memberStart;
-    }
-    if (memberStart == 0 || line.at(memberStart - 1) != QChar(u'.')) {
-        return {};
-    }
-
-    const int receiverEnd = memberStart - 1;
-    int receiverStart = receiverEnd;
-    while (receiverStart > 0
-           && isCompletionIdentifierCharacter(line.at(receiverStart - 1))) {
-        --receiverStart;
-    }
-    if (receiverStart == receiverEnd) {
-        return {};
-    }
-    return {true, line.mid(receiverStart, receiverEnd - receiverStart),
-            line.mid(memberStart, cursorInBlock - memberStart)};
-}
-
-} // namespace
-
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setAcceptDrops(true);
     this->setStyleSheet(R"(
@@ -79,6 +41,8 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     semanticCompletionProvider = std::make_unique<SemanticCompletionProvider>();
     connect(editorDocument, &QTextDocument::contentsChange,
             analysisController, &EditorAnalysisController::documentChanged);
+    connect(editorDocument, &QTextDocument::contentsChange,
+            this, [this](int, int, int) { clearActiveCompletionContext(); });
     connect(analysisController, &EditorAnalysisController::fastPassRequested,
             this, [this](const quint64 revision, const DirtyRange& dirty) {
                 if (highlighter && analysisController
@@ -994,6 +958,7 @@ void TEditor::focusOutEvent(QFocusEvent *e) {
     if (c && c->popup()->isVisible()) {
         c->popup()->hide();
     }
+    clearActiveCompletionContext();
     QPlainTextEdit::focusOutEvent(e);
 }
 
@@ -1017,9 +982,12 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
         switch (e->key()) {
         case Qt::Key_Enter:
         case Qt::Key_Return:
-        case Qt::Key_Escape:
         case Qt::Key_Tab:
         case Qt::Key_Backtab:
+            e->ignore();
+            return;
+        case Qt::Key_Escape:
+            clearActiveCompletionContext();
             e->ignore();
             return;
         default: break;
@@ -1051,11 +1019,20 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
 }
 
 void TEditor::performCompletion() {
-    const DotCompletionContext dotContext = dotCompletionContextAt(textCursor());
-    QString textUnder = dotContext.isMemberAccess
-        ? dotContext.prefix : textUnderCursor().selectedText();
+    const QTextCursor editorCursor = textCursor();
+    CompletionContext completionContext = completionContextAt(
+        editorCursor.block().text(), editorCursor.positionInBlock(),
+        editorCursor.block().position());
+    if (!completionContext.isMemberAccess) {
+        const QTextCursor wordCursor = textUnderCursor();
+        completionContext.prefix = wordCursor.selectedText();
+        completionContext.replacementBegin = wordCursor.selectionStart();
+        completionContext.replacementEnd = wordCursor.selectionEnd();
+    }
+    const QString textUnder = completionContext.prefix;
     // Empty prefixes are valid immediately after a receiver dot, e.g. `تويوتا.`.
-    if (textUnder.isEmpty() && !dotContext.isMemberAccess) {
+    if (textUnder.isEmpty() && !completionContext.isMemberAccess) {
+        clearActiveCompletionContext();
         c->popup()->hide();
         return;
     }
@@ -1068,9 +1045,10 @@ void TEditor::performCompletion() {
         const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
         if (snapshot && snapshot->semantic) {
             hasCurrentSemanticModel = snapshot->revision == revision;
-            const QVector<CompletionItem> semanticItems = dotContext.isMemberAccess
+            const QVector<CompletionItem> semanticItems = completionContext.isMemberAccess
                 ? semanticCompletionProvider->memberSuggestions(
-                    dotContext.receiver, textUnder, cursorOffset, snapshot->semantic,
+                    completionContext.receiver, textUnder,
+                    completionContext.receiverBegin, cursorOffset, snapshot->semantic,
                     !hasCurrentSemanticModel)
                 : semanticCompletionProvider->suggestions(
                     textUnder, cursorOffset, snapshot->semantic, !hasCurrentSemanticModel);
@@ -1084,7 +1062,7 @@ void TEditor::performCompletion() {
     }
 
     for (const auto& strategy : strategies) {
-        if (dotContext.isMemberAccess
+        if (completionContext.isMemberAccess
             || dynamic_cast<DynamicWordStrategy*>(strategy.get()) != nullptr) {
             continue;
         }
@@ -1096,10 +1074,14 @@ void TEditor::performCompletion() {
     model->updateData(allSuggestions);
 
     if (allSuggestions.empty()) {
+        clearActiveCompletionContext();
         c->popup()->hide();
         return;
     }
 
+    activeCompletionContext = completionContext;
+    activeCompletionRevision = revision;
+    hasActiveCompletionContext = completionContext.hasReplacementRange();
     c->setCompletionPrefix(textUnder);
     QRect cr = cursorRect();
 
@@ -1132,8 +1114,25 @@ QTextCursor TEditor::textUnderCursor() const {
 
 void TEditor::insertCompletion(const QString &completion, CompletionType type) {
     if (c->widget() != this) return;
-    // This ensures we replace the whole partial word with the completion.
-    QTextCursor tc = textUnderCursor();
+
+    QTextCursor tc;
+    const bool contextIsCurrent = hasActiveCompletionContext
+        && activeCompletionRevision == (analysisController ? analysisController->currentRevision() : 0)
+        && activeCompletionContext.hasReplacementRange()
+        && activeCompletionContext.replacementEnd <= document()->characterCount() - 1;
+    if (contextIsCurrent) {
+        tc = textCursor();
+        tc.setPosition(activeCompletionContext.replacementBegin);
+        tc.setPosition(activeCompletionContext.replacementEnd, QTextCursor::KeepAnchor);
+    } else {
+        // Never fall back to word navigation for a stale member context: it can
+        // select the receiver and its dot. A fresh completion pass is required.
+        if (hasActiveCompletionContext && activeCompletionContext.isMemberAccess) {
+            clearActiveCompletionContext();
+            return;
+        }
+        tc = textUnderCursor();
+    }
 
     switch (type) {
     case CompletionType::Builtin:
@@ -1148,10 +1147,18 @@ void TEditor::insertCompletion(const QString &completion, CompletionType type) {
     case CompletionType::DynamicWord:
     case CompletionType::SemanticSymbol:
     default:
-        insertWord(completion, tc);
+                insertWord(completion, tc);
         break;
     }
+    clearActiveCompletionContext();
 }
+
+void TEditor::clearActiveCompletionContext() {
+    activeCompletionContext = {};
+    activeCompletionRevision = 0;
+    hasActiveCompletionContext = false;
+}
+
 void TEditor::insertWord(const QString& completion, QTextCursor& tc) {
     tc.insertText(completion);
     setTextCursor(tc);

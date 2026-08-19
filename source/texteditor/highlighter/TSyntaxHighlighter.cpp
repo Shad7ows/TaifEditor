@@ -15,6 +15,7 @@ TokenType baseTokenTypeForPresentation(const PresentationClass classification) {
     case PresentationClass::Punctuation: return TokenType::Operator;
     case PresentationClass::FunctionDeclaration: return TokenType::Function;
     case PresentationClass::ClassDeclaration: return TokenType::ClassDef;
+    case PresentationClass::SelfReceiver: return TokenType::Self;
     case PresentationClass::Builtin: return TokenType::BuiltinFunc;
     default: return TokenType::Identifier;
     }
