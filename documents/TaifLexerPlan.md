@@ -21,7 +21,8 @@ The current `TLexer` is useful as a highlighter scanner, but it is not yet a rel
 | Parser-facing token and lexer core | Implemented | `source/language/lexer/TaifLexer.h` and `.cpp`. |
 | Status corpus and focused tests | Implemented | `tests/lexer/tst_TaifLexer.cpp` and `tests/lexer/data/Status.alif`. |
 | C++17 project integration | Implemented | `taif/Taif.pro` compiles the core lexer with C++17. |
-| Parser, incremental checkpoint, and highlighter adapter | Not started | These remain the next architectural milestones. |
+| Parser baseline and AST handoff | Implemented | `source/language/parser/`, `documents/TaifParserPlan.md`, and `tests/parser/`. |
+| Localized incremental checkpoints and highlighter adapter | Not started | These remain the next editor-performance milestones. |
 
 The implemented baseline includes source ranges, main/trivia channels, layout tokens, recognized corpus keywords, exact operator tokens, quoted/triple strings, formatted-string interpolation, and a raw `FStringFormat` token after an interpolation colon. The parser must still define the format-spec mini-language.
 

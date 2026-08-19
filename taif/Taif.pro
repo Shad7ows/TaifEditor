@@ -16,6 +16,7 @@ INCLUDEPATH += \
     ../source/texteditor/highlighter \
     ../source/texteditor/autocomplete \
     ../source/language/lexer \
+    ../source/language/parser \
     ../source/components \
     ../source/console \
     ../source/menubar \
@@ -27,6 +28,7 @@ SOURCES += \
     ../source/texteditor/autocomplete/AutoCompleteUI.cpp \
     ../source/texteditor/highlighter/TLexer.cpp \
     ../source/language/lexer/TaifLexer.cpp \
+    ../source/language/parser/TaifParser.cpp \
     ../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
     Taif.cpp \
@@ -46,6 +48,7 @@ HEADERS += \
     ../source/texteditor/autocomplete/AutoCompleteUI.h \
     ../source/texteditor/highlighter/TLexer.h \
     ../source/language/lexer/TaifLexer.h \
+    ../source/language/parser/TaifParser.h \
     ../source/texteditor/highlighter/TSyntaxDefinition.h \
     ../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../source/texteditor/highlighter/TSyntaxThemes.h \
