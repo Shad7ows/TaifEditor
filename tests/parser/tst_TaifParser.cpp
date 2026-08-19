@@ -32,6 +32,7 @@ private slots:
     void emptySourceCreatesCompleteSnapshots();
     void parserNormalizesMissingEndOfFile();
     void declarationsAndSuitesCreateSemanticNodes();
+    void forHeaderTreatsInAsAStructuralDelimiter();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
     void formattedStringCreatesStructuredAst();
     void recoveryPreservesLaterDeclarations();
@@ -82,6 +83,17 @@ void TaifParserTest::declarationsAndSuitesCreateSemanticNodes() {
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::ClassDeclaration));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::Parameter));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::AssignmentStatement));
+}
+
+void TaifParserTest::forHeaderTreatsInAsAStructuralDelimiter() {
+    const QString source = QStringLiteral(
+        "لكل ب في مدى(5):\n"
+        "\tاطبع(ب)\n");
+    const ParseResult result = TaifParser().parse(source);
+
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QVERIFY(hasAstKind(*result.ast, AstNodeKind::ForStatement));
+    QVERIFY(hasAstKind(*result.ast, AstNodeKind::CallExpression));
 }
 
 void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {

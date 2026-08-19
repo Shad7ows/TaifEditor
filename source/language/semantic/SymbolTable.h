@@ -30,6 +30,7 @@ enum class SymbolKind : quint8 {
     Module,
     Function,
     Class,
+    Field,
     Parameter,
     Local,
     ImportModule,
@@ -82,6 +83,8 @@ struct Symbol final {
     SourceRange fullRange;
     AstNodeId declarationNode = InvalidAstNodeId;
     ScopeId declaringScope = InvalidScopeId;
+    // Set on variables assigned from a direct constructor call, e.g. `x = سيارة()`.
+    SymbolId instanceClass = InvalidSymbolId;
     bool isRecoverable = false;
 };
 
@@ -123,8 +126,11 @@ public:
     [[nodiscard]] const NameReference* reference(ReferenceId id) const;
     [[nodiscard]] const NameReference* referenceAt(qsizetype utf16Offset) const;
     [[nodiscard]] QVector<SymbolId> visibleSymbolsAt(qsizetype utf16Offset) const;
-    [[nodiscard]] QVector<ReferenceId> referencesOf(SymbolId symbol) const;
+    [[nodiscard]] QVector<SymbolId> referencesOf(SymbolId symbol) const;
     [[nodiscard]] QVector<SymbolId> documentSymbols() const;
+    [[nodiscard]] QVector<SymbolId> membersOfClass(SymbolId classSymbol) const;
+    [[nodiscard]] QVector<SymbolId> membersOfReceiver(SymbolId receiverSymbol) const;
+    [[nodiscard]] SymbolId classOfReceiver(SymbolId receiverSymbol) const;
 
 private:
     friend class SymbolTableBuilder;
@@ -135,6 +141,7 @@ private:
     QVector<NameReference> m_references;
     QVector<SemanticDiagnostic> m_diagnostics;
     QHash<SymbolId, QVector<ReferenceId>> m_referencesBySymbol;
+    QHash<SymbolId, ScopeId> m_classScopesBySymbol;
     ScopeId m_preludeScope = InvalidScopeId;
     ScopeId m_moduleScope = InvalidScopeId;
     quint64 m_documentRevision = 0;

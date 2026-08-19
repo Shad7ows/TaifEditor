@@ -11,7 +11,8 @@ INCLUDEPATH += \
     ../../source/language/parser \
     ../../source/language/semantic \
     ../../source/language/presentation \
-    ../../source/texteditor/analysis
+    ../../source/texteditor/analysis \
+    ../../source/texteditor/autocomplete
 
 SOURCES += \
     tst_EditorAnalysisController.cpp \
@@ -19,7 +20,8 @@ SOURCES += \
     ../../source/language/parser/TaifParser.cpp \
     ../../source/language/semantic/SymbolTable.cpp \
     ../../source/language/presentation/SemanticPresentationAdapter.cpp \
-    ../../source/texteditor/analysis/EditorAnalysisController.cpp
+    ../../source/texteditor/analysis/EditorAnalysisController.cpp \
+    ../../source/texteditor/analysis/SemanticCompletionProvider.cpp
 
 HEADERS += \
     ../../source/language/lexer/TaifLexer.h \
@@ -27,4 +29,6 @@ HEADERS += \
     ../../source/language/semantic/SymbolTable.h \
     ../../source/language/presentation/LanguageAnalysis.h \
     ../../source/language/presentation/SemanticPresentationAdapter.h \
-    ../../source/texteditor/analysis/EditorAnalysisController.h
+    ../../source/texteditor/analysis/EditorAnalysisController.h \
+    ../../source/texteditor/analysis/SemanticCompletionProvider.h \
+    ../../source/texteditor/autocomplete/AutoComplete.h

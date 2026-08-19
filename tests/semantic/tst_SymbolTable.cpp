@@ -55,6 +55,8 @@ private slots:
     void emptyModuleCreatesPreludeAndModuleScopes();
     void nestedScopesResolveShadowingClosuresAndRecursion();
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
+    void forTargetBindsAndResolvesInTheLoopBody();
+    void classesExposeMethodsAndFieldsThroughConstructorInstances();
     void duplicateAndUnresolvedNamesProduceRecoverableDiagnostics();
     void memberReferencesRemainExternalUntilTypeAnalysis();
     void editorQueriesReturnScopedDefinitionsAndReferences();
@@ -116,6 +118,50 @@ void SymbolTableTest::assignmentsImportsAndBuiltinsBecomeVisibleSymbols() {
     QVERIFY(builtin != nullptr);
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("شيء"), imported->id));
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("اطبع"), builtin->id));
+}
+
+void SymbolTableTest::forTargetBindsAndResolvesInTheLoopBody() {
+    const SemanticFixture fixture = analyze(QStringLiteral(
+        "لكل ب في مدى(5):\n"
+        "\tاطبع(ب)\n"));
+
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    const Symbol* loopVariable = findSymbol(*fixture.model, QStringLiteral("ب"),
+                                            SymbolKind::LoopVariable);
+    QVERIFY(loopVariable != nullptr);
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("ب"), loopVariable->id));
+}
+
+void SymbolTableTest::classesExposeMethodsAndFieldsThroughConstructorInstances() {
+    const SemanticFixture fixture = analyze(QStringLiteral(
+        "صنف سيارة:\n"
+        "\tلون = 0\n"
+        "\tدالة تهيئة(هذا, لون):\n"
+        "\t\tهذا.لون = لون\n"
+        "\tدالة تغيير_لون_السيارة(هذا, لون_جديد):\n"
+        "\t\tهذا.لون = لون_جديد\n"
+        "تويوتا = سيارة()\n"
+        "تويوتا.لون\n"));
+
+    const Symbol* car = findSymbol(*fixture.model, QStringLiteral("سيارة"), SymbolKind::Class);
+    const Symbol* toyota = findSymbol(*fixture.model, QStringLiteral("تويوتا"), SymbolKind::Local);
+    QVERIFY(car != nullptr);
+    QVERIFY(toyota != nullptr);
+    QCOMPARE(toyota->instanceClass, car->id);
+
+    const QVector<SymbolId> classMembers = fixture.model->membersOfClass(car->id);
+    const QVector<SymbolId> instanceMembers = fixture.model->membersOfReceiver(toyota->id);
+    QVERIFY(classMembers == instanceMembers);
+
+    QStringList names;
+    for (const SymbolId memberId : instanceMembers) {
+        const Symbol* member = fixture.model->symbol(memberId);
+        QVERIFY(member != nullptr);
+        names.append(member->name);
+    }
+    QVERIFY(names.contains(QStringLiteral("لون")));
+    QVERIFY(names.contains(QStringLiteral("تهيئة")));
+    QVERIFY(names.contains(QStringLiteral("تغيير_لون_السيارة")));
 }
 
 void SymbolTableTest::duplicateAndUnresolvedNamesProduceRecoverableDiagnostics() {

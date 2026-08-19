@@ -13,6 +13,44 @@
 #include <QFile>
 
 
+namespace {
+
+struct DotCompletionContext final {
+    bool isMemberAccess = false;
+    QString receiver;
+    QString prefix;
+};
+
+bool isCompletionIdentifierCharacter(const QChar character) {
+    return character.isLetterOrNumber() || character == QChar(u'_');
+}
+
+DotCompletionContext dotCompletionContextAt(const QTextCursor& cursor) {
+    const QString line = cursor.block().text();
+    const int cursorInBlock = cursor.positionInBlock();
+    int memberStart = cursorInBlock;
+    while (memberStart > 0 && isCompletionIdentifierCharacter(line.at(memberStart - 1))) {
+        --memberStart;
+    }
+    if (memberStart == 0 || line.at(memberStart - 1) != QChar(u'.')) {
+        return {};
+    }
+
+    const int receiverEnd = memberStart - 1;
+    int receiverStart = receiverEnd;
+    while (receiverStart > 0
+           && isCompletionIdentifierCharacter(line.at(receiverStart - 1))) {
+        --receiverStart;
+    }
+    if (receiverStart == receiverEnd) {
+        return {};
+    }
+    return {true, line.mid(receiverStart, receiverEnd - receiverStart),
+            line.mid(memberStart, cursorInBlock - memberStart)};
+}
+
+} // namespace
+
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setAcceptDrops(true);
     this->setStyleSheet(R"(
@@ -906,7 +944,8 @@ void TEditor::setupAutoComplete() {
     strategies.push_back(std::make_unique<SnippetStrategy>());
     strategies.push_back(std::make_unique<KeywordStrategy>());
     strategies.push_back(std::make_unique<BuiltinStrategy>());
-    strategies.push_back(std::make_unique<DynamicWordStrategy>());
+    // DynamicWordStrategy remains available for legacy experiments but is not
+    // registered in the live popup: semantic analysis owns document symbols.
 
     QCompleter *completer = new QCompleter(this);
     setCompleter(completer);
@@ -1012,35 +1051,45 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
 }
 
 void TEditor::performCompletion() {
-    QString textUnder = textUnderCursor().selectedText();
-    // Allow empty text for shortcut (Ctrl+Space) to show all
-    if (textUnder.length() < 1) {
-        // Optional: Trigger immediately on Ctrl+Space even if empty?
-        // For now, keep logic to hide if empty, unless you want "all suggestion" behavior.
+    const DotCompletionContext dotContext = dotCompletionContextAt(textCursor());
+    QString textUnder = dotContext.isMemberAccess
+        ? dotContext.prefix : textUnderCursor().selectedText();
+    // Empty prefixes are valid immediately after a receiver dot, e.g. `تويوتا.`.
+    if (textUnder.isEmpty() && !dotContext.isMemberAccess) {
         c->popup()->hide();
         return;
     }
 
     std::vector<CompletionItem> allSuggestions;
-    QString fullDoc = toPlainText();
+    const quint64 revision = analysisController ? analysisController->currentRevision() : 0;
+    const qsizetype cursorOffset = textCursor().position();
     bool hasCurrentSemanticModel = false;
     if (analysisController && semanticCompletionProvider) {
         const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
-        if (snapshot && snapshot->semantic
-            && snapshot->revision == analysisController->currentRevision()) {
-            const QVector<CompletionItem> semanticItems = semanticCompletionProvider->suggestions(
-                textUnder, textCursor().position(), snapshot->semantic);
+        if (snapshot && snapshot->semantic) {
+            hasCurrentSemanticModel = snapshot->revision == revision;
+            const QVector<CompletionItem> semanticItems = dotContext.isMemberAccess
+                ? semanticCompletionProvider->memberSuggestions(
+                    dotContext.receiver, textUnder, cursorOffset, snapshot->semantic,
+                    !hasCurrentSemanticModel)
+                : semanticCompletionProvider->suggestions(
+                    textUnder, cursorOffset, snapshot->semantic, !hasCurrentSemanticModel);
             allSuggestions.insert(allSuggestions.end(), semanticItems.begin(), semanticItems.end());
-            hasCurrentSemanticModel = true;
+        }
+        if (!hasCurrentSemanticModel) {
+            // User-initiated, asynchronous request. It never performs language
+            // analysis in the keystroke handler and never revives regex words.
+            analysisController->requestCompletionAnalysis(revision, toPlainText());
         }
     }
 
     for (const auto& strategy : strategies) {
-        // Scope-aware symbols supersede the document-wide regex fallback.
-        if (hasCurrentSemanticModel && dynamic_cast<DynamicWordStrategy*>(strategy.get()) != nullptr) {
+        if (dotContext.isMemberAccess
+            || dynamic_cast<DynamicWordStrategy*>(strategy.get()) != nullptr) {
             continue;
         }
-        auto res = strategy->getSuggestions(textUnder, fullDoc);
+        const QString unusedDocumentText;
+        auto res = strategy->getSuggestions(textUnder, unusedDocumentText);
         allSuggestions.insert(allSuggestions.end(), res.begin(), res.end());
     }
 

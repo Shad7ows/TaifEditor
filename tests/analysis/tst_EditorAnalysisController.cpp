@@ -1,5 +1,6 @@
 #include "EditorAnalysisController.h"
 #include "SemanticPresentationAdapter.h"
+#include "SemanticCompletionProvider.h"
 
 #include <QtTest/QSignalSpy>
 #include <QtTest/QTest>
@@ -11,6 +12,8 @@ private slots:
     void tierZeroImmediatelyUpdatesRevisionAndDefersWork();
     void rapidEditsCoalesceBothDeferredTiers();
     void latestWorkerSnapshotWinsAfterRevisionChange();
+    void completionAnalysisRunsBeforeTheTierTwoTimer();
+    void memberCompletionUsesClassesAndConstructorInstances();
     void semanticPresentationClassifiesDeclarationsAndDiagnostics();
 };
 
@@ -58,6 +61,56 @@ void EditorAnalysisControllerTest::latestWorkerSnapshotWinsAfterRevisionChange()
     const LanguageAnalysisSnapshotPtr snapshot = controller.currentSnapshot();
     QVERIFY(snapshot != nullptr);
     QCOMPARE(snapshot->revision, quint64(2));
+}
+
+void EditorAnalysisControllerTest::completionAnalysisRunsBeforeTheTierTwoTimer() {
+    EditorAnalysisController controller;
+    QSignalSpy appliedSpy(&controller, &EditorAnalysisController::analysisApplied);
+    QSignalSpy tierTwoSpy(&controller, &EditorAnalysisController::semanticSnapshotRequested);
+
+    controller.documentChanged(0, 0, 1);
+    controller.requestCompletionAnalysis(1, QStringLiteral("س = 1\n"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(appliedSpy.count() >= 1, 250);
+    QCOMPARE(tierTwoSpy.count(), 0);
+    const LanguageAnalysisSnapshotPtr snapshot = controller.currentSnapshot();
+    QVERIFY(snapshot != nullptr);
+    QCOMPARE(snapshot->revision, quint64(1));
+}
+
+void EditorAnalysisControllerTest::memberCompletionUsesClassesAndConstructorInstances() {
+    const QString source = QStringLiteral(
+        "صنف سيارة:\n"
+        "\tلون = 0\n"
+        "\tدالة تهيئة(هذا, لون):\n"
+        "\t\tهذا.لون = لون\n"
+        "\tدالة تغيير_لون_السيارة(هذا, لون_جديد):\n"
+        "\t\tهذا.لون = لون_جديد\n"
+        "تويوتا = سيارة()\n");
+    const LexResult lexical = TaifLexer().lex(source);
+    const ParseResult parse = TaifParser().parse(source, lexical, 1);
+    const SymbolTableInput input {*parse.ast, parse.parserDiagnostics, 1};
+    const std::shared_ptr<const SemanticModel> semantic = SymbolTableBuilder().build(input);
+    const qsizetype offset = source.size();
+
+    const SemanticCompletionProvider provider;
+    const QVector<CompletionItem> classItems = provider.memberSuggestions(
+        QStringLiteral("سيارة"), QString(), offset, semantic);
+    const QVector<CompletionItem> instanceItems = provider.memberSuggestions(
+        QStringLiteral("تويوتا"), QString(), offset, semantic);
+
+    QStringList classNames;
+    for (const CompletionItem& item : classItems) {
+        classNames.append(item.completion);
+    }
+    QStringList instanceNames;
+    for (const CompletionItem& item : instanceItems) {
+        instanceNames.append(item.completion);
+    }
+    QVERIFY(classNames.contains(QStringLiteral("لون")));
+    QVERIFY(classNames.contains(QStringLiteral("تهيئة")));
+    QVERIFY(classNames.contains(QStringLiteral("تغيير_لون_السيارة")));
+    QCOMPARE(instanceNames, classNames);
 }
 
 void EditorAnalysisControllerTest::semanticPresentationClassifiesDeclarationsAndDiagnostics() {

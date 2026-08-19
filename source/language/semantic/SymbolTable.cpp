@@ -212,6 +212,26 @@ private:
         return m_scopeByOwner.value(ownerNode, InvalidScopeId);
     }
 
+    [[nodiscard]] ScopeId nearestClassScope(ScopeId scope) const {
+        while (scope != InvalidScopeId && scope >= 0 && scope < m_model->m_scopes.size()) {
+            if (m_model->m_scopes.at(scope).kind == ScopeKind::Class) {
+                return scope;
+            }
+            scope = m_model->m_scopes.at(scope).parent;
+        }
+        return InvalidScopeId;
+    }
+
+    [[nodiscard]] SymbolId classSymbolForScope(const ScopeId classScope) const {
+        for (auto it = m_model->m_classScopesBySymbol.cbegin();
+             it != m_model->m_classScopesBySymbol.cend(); ++it) {
+            if (it.value() == classScope) {
+                return it.key();
+            }
+        }
+        return InvalidSymbolId;
+    }
+
     [[nodiscard]] ScopeId createOwnedScope(const ScopeKind kind, const ScopeId parent,
                                            const AstNode& owner) {
         const ScopeId existing = scopeForOwner(owner.id);
@@ -294,9 +314,16 @@ private:
                                                                     AstChildRole::ParameterName);
                 if (isValidNode(parameterName)) {
                     const AstNode& nameNode = node(parameterName);
-                    declare(functionScope, SymbolKind::Parameter, parameter.text.isEmpty()
+                    const SymbolId parameterSymbol = declare(
+                        functionScope, SymbolKind::Parameter, parameter.text.isEmpty()
                             ? nameNode.text : parameter.text, nameNode.range, parameter.range,
                             parameter.id);
+                    const ScopeId classScope = nearestClassScope(enclosingScope);
+                    if (parameterSymbol != InvalidSymbolId && nameNode.text == QStringLiteral("هذا")
+                        && classScope != InvalidScopeId) {
+                        m_model->m_symbols[parameterSymbol].instanceClass =
+                            classSymbolForScope(classScope);
+                    }
                 } else {
                     addDiagnostic(QStringLiteral("SEM004"),
                                   QStringLiteral("Parameter is missing a name role"), parameter.range,
@@ -317,9 +344,13 @@ private:
             return;
         }
         const AstNode& name = node(nameId);
-        declare(enclosingScope, SymbolKind::Class, ast.text.isEmpty() ? name.text : ast.text,
-                name.range, ast.range, ast.id);
+        const SymbolId classSymbol = declare(
+            enclosingScope, SymbolKind::Class, ast.text.isEmpty() ? name.text : ast.text,
+            name.range, ast.range, ast.id);
         const ScopeId classScope = createOwnedScope(ScopeKind::Class, enclosingScope, ast);
+        if (classSymbol != InvalidSymbolId) {
+            m_model->m_classScopesBySymbol.insert(classSymbol, classScope);
+        }
         if (!m_indexedScopes.contains(ast.id)) {
             m_indexedScopes.insert(ast.id);
             indexNode(body, classScope);
@@ -356,6 +387,7 @@ private:
                           ast.range, SemanticDiagnosticSeverity::Warning);
             return;
         }
+        QVector<SymbolId> declaredTargets;
         for (qsizetype index = 0; index < ast.assignmentTargetCount; ++index) {
             if (roleAt(ast, index) != AstChildRole::Target || !isValidNode(ast.children.at(index))) {
                 addDiagnostic(QStringLiteral("SEM004"),
@@ -363,7 +395,20 @@ private:
                               ast.range, SemanticDiagnosticSeverity::Warning);
                 continue;
             }
-            declareTarget(ast.children.at(index), scope, SymbolKind::Local);
+            const SymbolKind targetKind = m_model->m_scopes.at(scope).kind == ScopeKind::Class
+                ? SymbolKind::Field : SymbolKind::Local;
+            declaredTargets += declareTarget(ast.children.at(index), scope, targetKind);
+        }
+
+        const AstNodeId value = firstChildWithRole(ast, AstChildRole::Value);
+        const SymbolId instanceClass = isValidNode(value)
+            ? directConstructorClass(node(value), scope) : InvalidSymbolId;
+        if (instanceClass != InvalidSymbolId) {
+            for (const SymbolId target : declaredTargets) {
+                if (target >= 0 && target < m_model->m_symbols.size()) {
+                    m_model->m_symbols[target].instanceClass = instanceClass;
+                }
+            }
         }
     }
 
@@ -412,25 +457,64 @@ private:
         }
     }
 
-    void declareTarget(const AstNodeId id, const ScopeId scope, const SymbolKind kind) {
+    [[nodiscard]] SymbolId directConstructorClass(const AstNode& value,
+                                                   const ScopeId scope) const {
+        if (value.kind != AstNodeKind::CallExpression) {
+            return InvalidSymbolId;
+        }
+        const AstNodeId calleeId = firstChildWithRole(value, AstChildRole::Callee);
+        if (!isValidNode(calleeId) || node(calleeId).kind != AstNodeKind::NameExpression) {
+            return InvalidSymbolId;
+        }
+        const QVector<SymbolId> candidates = lookup(scope, node(calleeId).text);
+        if (candidates.size() != 1) {
+            return InvalidSymbolId;
+        }
+        const SymbolId candidate = candidates.constFirst();
+        return m_model->m_symbols.at(candidate).kind == SymbolKind::Class
+            ? candidate : InvalidSymbolId;
+    }
+
+    [[nodiscard]] QVector<SymbolId> declareTarget(const AstNodeId id, const ScopeId scope,
+                                                   const SymbolKind kind) {
         if (!isValidNode(id)) {
-            return;
+            return {};
         }
         const AstNode& target = node(id);
         if (target.kind == AstNodeKind::NameExpression) {
-            declare(scope, kind, target.text, target.range, target.range, target.id);
-            return;
+            return {declare(scope, kind, target.text, target.range, target.range, target.id)};
         }
         if (target.kind == AstNodeKind::TupleExpression
             || target.kind == AstNodeKind::ListExpression) {
+            QVector<SymbolId> targets;
             for (const AstNodeId child : target.children) {
-                declareTarget(child, scope, kind);
+                targets += declareTarget(child, scope, kind);
             }
-            return;
+            return targets;
+        }
+        if (target.kind == AstNodeKind::MemberExpression) {
+            const AstNodeId base = firstChildWithRole(target, AstChildRole::MemberBase);
+            const AstNodeId member = firstChildWithRole(target, AstChildRole::MemberName);
+            const ScopeId classScope = nearestClassScope(scope);
+            if (isValidNode(base) && isValidNode(member) && classScope != InvalidScopeId
+                && node(base).kind == AstNodeKind::NameExpression
+                && node(base).text == QStringLiteral("هذا")) {
+                const AstNode& memberName = node(member);
+                const QVector<SymbolId> existing =
+                    m_model->m_scopes.at(classScope).declarations.value(memberName.text);
+                for (const SymbolId existingId : existing) {
+                    if (m_model->m_symbols.at(existingId).kind == SymbolKind::Field) {
+                        return {existingId};
+                    }
+                }
+                return {declare(classScope, SymbolKind::Field, memberName.text,
+                                memberName.range, target.range, target.id)};
+            }
         }
         addDiagnostic(QStringLiteral("SEM003"),
                       QStringLiteral("Invalid assignment or binding target"),
                       target.range, SemanticDiagnosticSeverity::Warning);
+        return {};
     }
 
     void resolveNode(const AstNodeId id, const ScopeId scope, const ReferenceKind context) {
@@ -622,9 +706,24 @@ private:
         if (isValidNode(base)) {
             resolveNode(base, scope, ReferenceKind::Read);
         }
-        if (isValidNode(member)) {
-            addMemberReference(node(member), scope);
+        if (!isValidNode(member)) {
+            return;
         }
+
+        QVector<SymbolId> candidates;
+        if (isValidNode(base) && node(base).kind == AstNodeKind::NameExpression) {
+            const QVector<SymbolId> receivers = lookup(scope, node(base).text);
+            if (receivers.size() == 1) {
+                const QVector<SymbolId> members =
+                    m_model->membersOfReceiver(receivers.constFirst());
+                for (const SymbolId memberId : members) {
+                    if (m_model->m_symbols.at(memberId).name == node(member).text) {
+                        candidates.append(memberId);
+                    }
+                }
+            }
+        }
+        addMemberReference(node(member), scope, candidates);
     }
 
     void resolveCall(const AstNode& ast, const ScopeId scope) {
@@ -669,7 +768,8 @@ private:
         appendReference(std::move(reference));
     }
 
-    void addMemberReference(const AstNode& ast, const ScopeId scope) {
+    void addMemberReference(const AstNode& ast, const ScopeId scope,
+                            QVector<SymbolId> candidates = {}) {
         NameReference reference;
         reference.id = m_model->m_references.size();
         reference.node = ast.id;
@@ -677,7 +777,16 @@ private:
         reference.range = ast.range;
         reference.containingScope = scope;
         reference.kind = ReferenceKind::Member;
-        reference.state = ResolutionState::External;
+        reference.candidates = std::move(candidates);
+        if (reference.candidates.size() == 1) {
+            reference.state = ResolutionState::Resolved;
+            reference.resolvedSymbol = reference.candidates.constFirst();
+        } else if (reference.candidates.size() > 1) {
+            reference.state = ResolutionState::Ambiguous;
+        } else {
+            // Unknown receivers/members remain external until type/module analysis.
+            reference.state = ResolutionState::External;
+        }
         appendReference(std::move(reference));
     }
 
@@ -780,6 +889,42 @@ QVector<SymbolId> SemanticModel::documentSymbols() const {
             < m_symbols.at(right).declarationRange.begin.offset;
     });
     return result;
+}
+
+SymbolId SemanticModel::classOfReceiver(const SymbolId receiverSymbol) const {
+    const Symbol* receiver = symbol(receiverSymbol);
+    if (receiver == nullptr) {
+        return InvalidSymbolId;
+    }
+    if (receiver->kind == SymbolKind::Class) {
+        return receiver->id;
+    }
+    return receiver->instanceClass;
+}
+
+QVector<SymbolId> SemanticModel::membersOfClass(const SymbolId classSymbol) const {
+    const ScopeId classScope = m_classScopesBySymbol.value(classSymbol, InvalidScopeId);
+    if (classScope == InvalidScopeId || classScope < 0 || classScope >= m_scopes.size()) {
+        return {};
+    }
+    QVector<SymbolId> members;
+    QStringList names = m_scopes.at(classScope).declarations.keys();
+    std::sort(names.begin(), names.end());
+    for (const QString& name : names) {
+        for (const SymbolId id : m_scopes.at(classScope).declarations.value(name)) {
+            const Symbol* candidate = symbol(id);
+            if (candidate != nullptr && (candidate->kind == SymbolKind::Function
+                || candidate->kind == SymbolKind::Field || candidate->kind == SymbolKind::Class)) {
+                members.append(id);
+            }
+        }
+    }
+    return members;
+}
+
+QVector<SymbolId> SemanticModel::membersOfReceiver(const SymbolId receiverSymbol) const {
+    const SymbolId classSymbol = classOfReceiver(receiverSymbol);
+    return classSymbol == InvalidSymbolId ? QVector<SymbolId>{} : membersOfClass(classSymbol);
 }
 
 std::shared_ptr<const SemanticModel> SymbolTableBuilder::build(

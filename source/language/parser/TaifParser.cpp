@@ -612,10 +612,24 @@ private:
                           start, m_mainPosition, {}, children, syntaxChildren);
     }
 
+    [[nodiscard]] ParsedNode parseBindingTarget() {
+        if (at(TokenKind::Identifier)) {
+            return parseNameExpression();
+        }
+        const qsizetype start = m_mainPosition;
+        report(QStringLiteral("PAR005"),
+               QStringLiteral("Expected a binding target before 'في'"), current().range);
+        if (!at(TokenKind::KwIn) && !isExpressionBoundary(current().kind)) {
+            consume();
+        }
+        return makeParsed(AstNodeKind::ErrorExpression, SyntaxKind::ErrorNode,
+                          start, m_mainPosition);
+    }
+
     [[nodiscard]] ParsedNode parseForStatement() {
         const qsizetype start = m_mainPosition;
         consume();
-        const ParsedNode target = parseExpression();
+        const ParsedNode target = parseBindingTarget();
         expect(TokenKind::KwIn, QStringLiteral("in a for statement"));
         const ParsedNode iterable = parseExpression();
         const ParsedNode suite = parseSuite();
@@ -1047,7 +1061,7 @@ private:
             if (at(TokenKind::KwFor)) {
                 const qsizetype comprehensionStart = startFor(item);
                 consume();
-                const ParsedNode target = parseExpression();
+                const ParsedNode target = parseBindingTarget();
                 expect(TokenKind::KwIn, QStringLiteral("in a comprehension"), &syntaxChildren);
                 const ParsedNode iterable = parseExpression();
                 const ParsedNode comprehension = makeParsed(
