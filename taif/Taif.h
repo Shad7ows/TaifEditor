@@ -70,6 +70,7 @@ private:
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
     void showAndRaiseDock(QDockWidget* dock);
+    void syncBottomToolActionState();
     // void setupTabWidget(QTabWidget* tw);
     // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
     // QTabWidget* getTargetTabWidget();

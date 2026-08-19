@@ -52,6 +52,18 @@ A dock that the user deliberately floats or moves to a different dock area is no
 
 The splitter now contains only the editor tabs and the pre-existing search surface.
 
+## View-menu commands
+
+`TMenuBar` now provides the Arabic **`عرض`** menu, which is a command-only surface: it emits semantic requests to `Taif` and never owns or manipulates dock widgets directly.
+
+| Menu item | Action object name | Target | Command behavior |
+|---|---|---|---|
+| `مخرجات ألف` | `ShowAlifOutputAction` | `AlifOutputDock` | Shows and selects the Alif output tab. |
+| `الطرفية` | `ShowTerminalAction` | `TerminalDock` | Shows and selects the persistent system-terminal tab without recreating the shell. |
+| `الأخطاء` | `ShowProblemsAction` | `DiagnosticsDock` | Shows and selects the Problems tab without modifying its diagnostics or filters. |
+
+The three actions are independently checkable. `Taif::syncBottomToolActionState()` maps every dock’s open state to its matching action after menu activation, F6 terminal handling, Alif execution activation, and dock visibility changes. A dock being open is sufficient to earn a check mark, so multiple tools can be checked simultaneously even when Qt renders only one member of their tab group. Hiding or closing a dock clears only that dock’s check mark.
+
 ## Visual and RTL policy
 
 Terminal and Alif output docks reuse the Problems dock’s dark-blue visual contract:
@@ -66,11 +78,11 @@ Future docks should reuse these selectors or a later shared dock-theme service r
 
 ## Validation
 
-A dedicated UI regression target, `tests/ui/ui_tests.pro`, validates the reusable dock factory without starting a real system shell. It confirms bottom-area registration, standard dock features, widget ownership, stable object names, tabification with Problems, widget persistence after hide/show, and rendered-tab selection after activating Alif output and the system terminal.
+A dedicated UI regression target, `tests/ui/ui_tests.pro`, validates the reusable dock factory without starting a real system shell. It confirms bottom-area registration, standard dock features, widget ownership, stable object names, tabification with Problems, widget persistence after hide/show, rendered-tab selection after activating Alif output and the system terminal, plus the `عرض` menu’s ordered actions and semantic request signals.
 
 | Validation target | Result |
 |---|---|
-| `TaifDockableToolsTests` widget regression | Passed: 4 tests, including selected-tab activation for output and terminal. |
+| `TaifDockableToolsTests` widget regression | Passed: 5 tests, including selected-tab activation plus `عرض` menu contents, request signals, and multiple-open-tool check-state behavior. |
 | Full TaifEditor Qt 6.11.1 / MSVC 2022 application build | Passed. |
 | Existing lexer, parser, semantic, and analysis suites | Previously green and unaffected; this change does not modify language/editor-analysis code. |
 

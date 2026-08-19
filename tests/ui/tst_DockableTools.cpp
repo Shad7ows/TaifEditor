@@ -1,9 +1,11 @@
 #include <QtTest/QTest>
+#include <QtTest/QSignalSpy>
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QMainWindow>
 
 #include "DockableConsoleTool.h"
 #include "TConsole.h"
+#include "TMenu.h"
 
 class DockableToolsTest final : public QObject {
     Q_OBJECT
@@ -11,6 +13,7 @@ class DockableToolsTest final : public QObject {
 private slots:
     void bottomToolsArePersistentAndTabified();
     void activationSelectsRequestedBottomToolTab();
+    void viewMenuExposesOrderedDockActions();
 };
 
 void DockableToolsTest::bottomToolsArePersistentAndTabified()
@@ -103,6 +106,61 @@ void DockableToolsTest::activationSelectsRequestedBottomToolTab()
     QTRY_VERIFY(DockableConsoleToolFactory::isRenderedTab(terminal.dock));
     QTRY_VERIFY(!DockableConsoleToolFactory::isRenderedTab(output.dock));
     QVERIFY(window.tabifiedDockWidgets(diagnostics).contains(terminal.dock));
+}
+
+void DockableToolsTest::viewMenuExposesOrderedDockActions()
+{
+    TMenuBar menuBar;
+
+    QMenu* viewMenu = nullptr;
+    for (QAction* const menuAction : menuBar.actions()) {
+        if (menuAction->text() == QStringLiteral("عرض")) {
+            viewMenu = menuAction->menu();
+            break;
+        }
+    }
+
+    QVERIFY(viewMenu != nullptr);
+    QCOMPARE(viewMenu->layoutDirection(), Qt::RightToLeft);
+    const QList<QAction*> viewActions = viewMenu->actions();
+    QCOMPARE(viewActions.size(), 3);
+    QCOMPARE(viewActions.at(0), menuBar.alifOutputAction);
+    QCOMPARE(viewActions.at(1), menuBar.terminalAction);
+    QCOMPARE(viewActions.at(2), menuBar.problemsAction);
+    QCOMPARE(menuBar.alifOutputAction->text(), QStringLiteral("مخرجات ألف"));
+    QCOMPARE(menuBar.terminalAction->text(), QStringLiteral("الطرفية"));
+    QCOMPARE(menuBar.problemsAction->text(), QStringLiteral("الأخطاء"));
+    QVERIFY(menuBar.alifOutputAction->isCheckable());
+    QVERIFY(menuBar.terminalAction->isCheckable());
+    QVERIFY(menuBar.problemsAction->isCheckable());
+
+    QSignalSpy alifOutputSpy(&menuBar, &TMenuBar::showAlifOutputRequested);
+    QSignalSpy terminalSpy(&menuBar, &TMenuBar::showTerminalRequested);
+    QSignalSpy problemsSpy(&menuBar, &TMenuBar::showProblemsRequested);
+
+    menuBar.alifOutputAction->trigger();
+    QVERIFY(menuBar.alifOutputAction->isChecked());
+    QVERIFY(!menuBar.terminalAction->isChecked());
+    QVERIFY(!menuBar.problemsAction->isChecked());
+
+    menuBar.terminalAction->trigger();
+    QVERIFY(menuBar.alifOutputAction->isChecked());
+    QVERIFY(menuBar.terminalAction->isChecked());
+    QVERIFY(!menuBar.problemsAction->isChecked());
+
+    menuBar.problemsAction->trigger();
+    QVERIFY(menuBar.alifOutputAction->isChecked());
+    QVERIFY(menuBar.terminalAction->isChecked());
+    QVERIFY(menuBar.problemsAction->isChecked());
+
+    menuBar.setOpenViewToolActions(false, true, true);
+    QVERIFY(!menuBar.alifOutputAction->isChecked());
+    QVERIFY(menuBar.terminalAction->isChecked());
+    QVERIFY(menuBar.problemsAction->isChecked());
+
+    QCOMPARE(alifOutputSpy.count(), 1);
+    QCOMPARE(terminalSpy.count(), 1);
+    QCOMPARE(problemsSpy.count(), 1);
 }
 
 QTEST_MAIN(DockableToolsTest)

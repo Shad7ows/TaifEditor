@@ -186,9 +186,27 @@ void Taif::setupConnections() {
     connect(menuBar, &TMenuBar::runRequested, this, &Taif::runAlif);
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
     connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
-    connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
+        connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
+    connect(menuBar, &TMenuBar::showAlifOutputRequested, this,
+            [this]() { showAndRaiseDock(alifOutputDock); });
+    connect(menuBar, &TMenuBar::showTerminalRequested, this,
+            [this]() { showAndRaiseDock(terminalDock); });
+    connect(menuBar, &TMenuBar::showProblemsRequested, this,
+            [this]() { showAndRaiseDock(diagnosticsDock); });
+
+    const auto scheduleBottomToolActionStateSync = [this](const bool) {
+        QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
+    };
+    connect(diagnosticsDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    connect(alifOutputDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    connect(terminalDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    syncBottomToolActionState();
 
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
+
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
 
     connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
@@ -481,6 +499,18 @@ void Taif::findNextText() { performSearch(true, true); }
 void Taif::findPrevText() { performSearch(false, true); }
 
 
+void Taif::syncBottomToolActionState()
+{
+    if (menuBar == nullptr) {
+        return;
+    }
+
+    menuBar->setOpenViewToolActions(
+        alifOutputDock != nullptr && alifOutputDock->isVisible(),
+        terminalDock != nullptr && terminalDock->isVisible(),
+        diagnosticsDock != nullptr && diagnosticsDock->isVisible());
+}
+
 void Taif::showAndRaiseDock(QDockWidget* const dock)
 {
     if (dock == nullptr) {
@@ -491,6 +521,7 @@ void Taif::showAndRaiseDock(QDockWidget* const dock)
         DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, dock);
     }
     DockableConsoleToolFactory::showAndActivate(dock);
+    QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
 }
 
 void Taif::toggleConsole()
@@ -500,6 +531,7 @@ void Taif::toggleConsole()
     }
     if (DockableConsoleToolFactory::isRenderedTab(terminalDock)) {
         terminalDock->hide();
+        syncBottomToolActionState();
         if (TEditor* editor = currentEditor()) {
             editor->setFocus();
         }
