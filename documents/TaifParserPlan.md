@@ -94,7 +94,7 @@ The next incremental milestone adds a lexer checkpoint/token-diff API, selects t
 | P1 | Define the f-string format-spec mini-language. | `FStringFormat` lowers from raw text to specified semantic format nodes. |
 | P1 | Add a real green/red immutable tree representation. | Syntax children are structurally shared across incremental parses. |
 | P1 | Add lexer checkpoints and token-diff relexing. | Reparse window is localized and equivalent to a fresh parse. |
-| P2 | Implement `SymbolTable`. | Functions, classes, parameters, imports, locals, and references resolve from AST without token access. |
+| P2 | Symbol-table baseline | Implemented in `source/language/semantic/`; functions, classes, parameters, imports, locals, and lexical references resolve from AST without token access. |
 | P2 | Integrate document revision scheduling with the editor/highlighter. | No stale parse or semantic snapshot can be applied to a newer revision. |
 
 ## Validation requirements

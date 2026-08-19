@@ -160,9 +160,39 @@ enum class AstNodeKind : quint16 {
 };
 
 /**
- * Compact semantic node used by the future symbol-table tier. `text` holds an
- * identifier, literal spelling, operator spelling, or declared name according
- * to `kind`; child interpretation is defined by the parser grammar document.
+ * Explicit semantic roles for AST child slots. The parser records these roles
+ * so later semantic phases never infer declaration or assignment structure from
+ * positional child layouts alone.
+ */
+enum class AstChildRole : quint8 {
+    Unknown,
+    DeclarationName,
+    ParameterList,
+    ParameterName,
+    DefaultValue,
+    Body,
+    Base,
+    Condition,
+    Target,
+    Value,
+    Iterable,
+    Element,
+    Callee,
+    Argument,
+    MemberBase,
+    MemberName,
+    ImportPath,
+    ImportName,
+    ReturnValue,
+    DeletedValue,
+    FormattedPart,
+    FormatExpression,
+    FormatSpecifier
+};
+
+/**
+ * Compact semantic node used by the semantic layer. `text` holds an identifier,
+ * literal spelling, operator spelling, or declared name according to `kind`.
  */
 struct AstNode final {
     AstNodeId id = InvalidAstNodeId;
@@ -170,6 +200,8 @@ struct AstNode final {
     SourceRange range;
     QString text;
     QVector<AstNodeId> children;
+    QVector<AstChildRole> childRoles;
+    qsizetype assignmentTargetCount = -1;
     SyntaxNodeId syntaxNode = InvalidSyntaxNodeId;
 };
 
@@ -245,3 +277,4 @@ public:
 Q_DECLARE_METATYPE(ParseDiagnostic)
 Q_DECLARE_METATYPE(SyntaxKind)
 Q_DECLARE_METATYPE(AstNodeKind)
+Q_DECLARE_METATYPE(AstChildRole)

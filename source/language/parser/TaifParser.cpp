@@ -283,13 +283,20 @@ private:
     [[nodiscard]] AstNodeId makeAst(const AstNodeKind kind, const SourceRange& range,
                                     const QString& text,
                                     const QVector<AstNodeId>& children,
-                                    const SyntaxNodeId syntaxNode) {
+                                    const SyntaxNodeId syntaxNode,
+                                    QVector<AstChildRole> childRoles = {},
+                                    const qsizetype assignmentTargetCount = -1) {
         AstNode node;
         node.id = m_ast->m_nodes.size();
         node.kind = kind;
         node.range = range;
         node.text = text;
         node.children = children;
+        if (childRoles.size() != children.size()) {
+            childRoles.fill(AstChildRole::Unknown, children.size());
+        }
+        node.childRoles = std::move(childRoles);
+        node.assignmentTargetCount = assignmentTargetCount;
         node.syntaxNode = syntaxNode;
         m_ast->m_nodes.append(std::move(node));
         return m_ast->m_nodes.size() - 1;
@@ -301,10 +308,13 @@ private:
                                         const qsizetype end,
                                         const QString& text = {},
                                         const QVector<AstNodeId>& astChildren = {},
-                                        const QVector<SyntaxNodeId>& syntaxChildren = {}) {
+                                        const QVector<SyntaxNodeId>& syntaxChildren = {},
+                                        QVector<AstChildRole> childRoles = {},
+                                        const qsizetype assignmentTargetCount = -1) {
         const SyntaxNodeId syntax = makeSyntax(syntaxKind, start, end, syntaxChildren);
         const AstNodeId ast = makeAst(astKind, rangeFrom(start, end), text,
-                                      astChildren, syntax);
+                                      astChildren, syntax, std::move(childRoles),
+                                      assignmentTargetCount);
         return {ast, syntax};
     }
 
@@ -385,8 +395,12 @@ private:
             children.append(expression.ast);
             syntaxChildren.append(expression.syntax);
         }
+        QVector<AstChildRole> roles;
+        if (!children.isEmpty()) {
+            roles.append(AstChildRole::ReturnValue);
+        }
         return makeParsed(AstNodeKind::ReturnStatement, SyntaxKind::ReturnStatement,
-                          start, m_mainPosition, {}, children, syntaxChildren);
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseDeleteStatement() {
@@ -394,7 +408,8 @@ private:
         consume();
         const ParsedNode expression = parseExpression();
         return makeParsed(AstNodeKind::DeleteStatement, SyntaxKind::DeleteStatement,
-                          start, m_mainPosition, {}, {expression.ast}, {expression.syntax});
+                          start, m_mainPosition, {}, {expression.ast}, {expression.syntax},
+                          {AstChildRole::DeletedValue});
     }
 
     [[nodiscard]] ParsedNode parseImportStatement() {
@@ -402,7 +417,8 @@ private:
         consume();
         const ParsedNode path = parseDottedName();
         return makeParsed(AstNodeKind::ImportStatement, SyntaxKind::ImportStatement,
-                          start, m_mainPosition, {}, {path.ast}, {path.syntax});
+                          start, m_mainPosition, {}, {path.ast}, {path.syntax},
+                          {AstChildRole::ImportPath});
     }
 
     [[nodiscard]] ParsedNode parseFromImportStatement() {
@@ -422,8 +438,12 @@ private:
             syntaxChildren.append(imported.syntax);
         } while (consumeIf(TokenKind::Comma) || consumeIf(TokenKind::ArabicComma));
 
+        QVector<AstChildRole> roles;
+        roles.append(AstChildRole::ImportPath);
+        roles.fill(AstChildRole::ImportName, children.size() - 1);
+        roles.prepend(AstChildRole::ImportPath);
         return makeParsed(AstNodeKind::FromImportStatement, SyntaxKind::FromImportStatement,
-                          start, m_mainPosition, {}, children, syntaxChildren);
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseDottedName() {
@@ -471,7 +491,9 @@ private:
         return makeParsed(AstNodeKind::FunctionDeclaration, SyntaxKind::FunctionDeclaration,
                           start, m_mainPosition, name.ast != InvalidAstNodeId
                               ? m_ast->node(name.ast).text : QString(),
-                          children, syntaxChildren);
+                          children, syntaxChildren,
+                          {AstChildRole::DeclarationName, AstChildRole::ParameterList,
+                           AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseClassDeclaration() {
@@ -496,9 +518,15 @@ private:
         const ParsedNode suite = parseSuite();
         children.append(suite.ast);
         syntaxChildren.append(suite.syntax);
+        QVector<AstChildRole> roles;
+        roles.append(AstChildRole::DeclarationName);
+        while (roles.size() + 1 < children.size()) {
+            roles.append(AstChildRole::Base);
+        }
+        roles.append(AstChildRole::Body);
         return makeParsed(AstNodeKind::ClassDeclaration, SyntaxKind::ClassDeclaration,
                           start, m_mainPosition, m_ast->node(name.ast).text,
-                          children, syntaxChildren);
+                          children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseParameterList() {
@@ -523,11 +551,16 @@ private:
                 children.append(defaultValue.ast);
                 parameterSyntax.append(defaultValue.syntax);
             }
+            QVector<AstChildRole> parameterRoles {AstChildRole::ParameterName};
+            if (children.size() > 1) {
+                parameterRoles.append(AstChildRole::DefaultValue);
+            }
             const ParsedNode parameter = makeParsed(AstNodeKind::Parameter,
                                                      SyntaxKind::NamePattern,
                                                      parameterStart, m_mainPosition,
                                                      prefix + m_ast->node(name.ast).text,
-                                                     children, parameterSyntax);
+                                                     children, parameterSyntax,
+                                                     parameterRoles);
             parameters.append(parameter.ast);
             syntaxChildren.append(parameter.syntax);
             if (!consumeIf(TokenKind::Comma) && !consumeIf(TokenKind::ArabicComma)) {
@@ -589,7 +622,8 @@ private:
         return makeParsed(AstNodeKind::ForStatement, SyntaxKind::ForStatement,
                           start, m_mainPosition, {},
                           {target.ast, iterable.ast, suite.ast},
-                          {target.syntax, iterable.syntax, suite.syntax});
+                          {target.syntax, iterable.syntax, suite.syntax},
+                          {AstChildRole::Target, AstChildRole::Iterable, AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseWhileStatement() {
@@ -599,7 +633,8 @@ private:
         const ParsedNode suite = parseSuite();
         return makeParsed(AstNodeKind::WhileStatement, SyntaxKind::WhileStatement,
                           start, m_mainPosition, {}, {condition.ast, suite.ast},
-                          {condition.syntax, suite.syntax});
+                          {condition.syntax, suite.syntax},
+                          {AstChildRole::Condition, AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseTryStatement() {
@@ -714,10 +749,13 @@ private:
             const ParsedNode right = parseExpression();
             targets.append(right.ast);
             targetSyntax.append(right.syntax);
+            QVector<AstChildRole> roles;
+            roles.fill(AstChildRole::Target, targets.size() - 1);
+            roles.append(AstChildRole::Value);
             return makeParsed(AstNodeKind::AssignmentStatement,
                               SyntaxKind::AssignmentStatement,
                               start, m_mainPosition, assignmentOperator,
-                              targets, targetSyntax);
+                              targets, targetSyntax, roles, targets.size() - 1);
         }
 
         if (hasTupleTargets) {
@@ -834,8 +872,12 @@ private:
             }
         }
         expect(TokenKind::RParen, QStringLiteral("after call arguments"), &syntaxChildren);
+        QVector<AstChildRole> roles;
+        roles.append(AstChildRole::Callee);
+        roles.fill(AstChildRole::Argument, children.size() - 1);
+        roles.prepend(AstChildRole::Callee);
         return makeParsed(AstNodeKind::CallExpression, SyntaxKind::CallExpression,
-                          start, m_mainPosition, {}, children, syntaxChildren);
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseMemberExpression(const ParsedNode& base) {
@@ -844,7 +886,8 @@ private:
         const ParsedNode member = parseNameExpression();
         return makeParsed(AstNodeKind::MemberExpression, SyntaxKind::MemberExpression,
                           start, m_mainPosition, m_ast->node(member.ast).text,
-                          {base.ast, member.ast}, {base.syntax, member.syntax});
+                          {base.ast, member.ast}, {base.syntax, member.syntax},
+                          {AstChildRole::MemberBase, AstChildRole::MemberName});
     }
 
     [[nodiscard]] ParsedNode parseIndexOrSliceExpression(const ParsedNode& base) {
@@ -1012,7 +1055,8 @@ private:
                     SyntaxKind::ComprehensionExpression,
                     comprehensionStart, m_mainPosition, {},
                     {item.ast, target.ast, iterable.ast},
-                    {item.syntax, target.syntax, iterable.syntax});
+                    {item.syntax, target.syntax, iterable.syntax},
+                    {AstChildRole::Element, AstChildRole::Target, AstChildRole::Iterable});
                 children = {comprehension.ast};
                 syntaxChildren.append(comprehension.syntax);
                 break;
