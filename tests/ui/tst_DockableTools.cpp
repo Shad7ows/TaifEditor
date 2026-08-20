@@ -9,9 +9,11 @@
 #include <QtGui/QTextDocument>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QSettings>
 #include <QtCore/QUuid>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QToolButton>
 
 #include "DockableConsoleTool.h"
 #include "TConsole.h"
@@ -20,6 +22,7 @@
 #include "SearchReplaceEngine.h"
 #include "SessionEditorDialog.h"
 #include "SessionStore.h"
+#include "TBreadcrumbBar.h"
 
 #include <utility>
 
@@ -35,6 +38,9 @@ private slots:
     void searchReplaceEnginePreservesMatchAndUndoSemantics();
     void sessionStorePersistsNormalizedSessions();
     void sessionEditorPreservesOrderedFilesInRtl();
+    void breadcrumbBarUsesRtlAndRepresentsUntitledFile();
+    void breadcrumbBarRendersOrderedFileAndSemanticSegments();
+    void breadcrumbBarClearsSemanticSegmentsAndEmitsNavigationSignals();
 };
 
 void DockableToolsTest::bottomToolsArePersistentAndTabified()
@@ -401,6 +407,101 @@ void DockableToolsTest::sessionStorePersistsNormalizedSessions()
     QVERIFY(store.remove(updated.id, &errorMessage));
     QVERIFY(store.loadAll().isEmpty());
     QFile::remove(settingsFile);
+}
+
+void DockableToolsTest::breadcrumbBarUsesRtlAndRepresentsUntitledFile()
+{
+    TBreadcrumbBar bar;
+    QCOMPARE(bar.layoutDirection(), Qt::RightToLeft);
+
+    bar.setFileContext({});
+    const QList<QToolButton*> buttons = bar.findChildren<QToolButton*>();
+    QCOMPARE(buttons.size(), 1);
+    QCOMPARE(buttons.first()->text(), QStringLiteral("بدون عنوان"));
+    QCOMPARE(buttons.first()->accessibleName(), QStringLiteral("ملف: بدون عنوان"));
+}
+
+void DockableToolsTest::breadcrumbBarRendersOrderedFileAndSemanticSegments()
+{
+    TBreadcrumbBar bar;
+    bar.setFileContext(QStringLiteral("C:/workspace/مشروع/سيارة.alif"));
+
+    EditorBreadcrumbContext context;
+    context.revision = 42;
+    context.cursorOffset = 91;
+    context.symbolPath = {
+        SemanticBreadcrumb{17, SymbolKind::Class, QStringLiteral("سيارة"),
+                           {{10, 1, 1}, {15, 1, 6}}, {{10, 1, 1}, {160, 12, 1}}},
+        SemanticBreadcrumb{18, SymbolKind::Function, QStringLiteral("تغيير_اللون"),
+                           {{35, 3, 1}, {47, 3, 13}}, {{35, 3, 1}, {100, 8, 1}}}};
+    bar.setSemanticContext(context);
+
+    const QList<QToolButton*> buttons = bar.findChildren<QToolButton*>();
+    QCOMPARE(buttons.size(), 4);
+    QCOMPARE(buttons.at(0)->text(), QStringLiteral("مشروع"));
+    QCOMPARE(buttons.at(1)->text(), QStringLiteral("سيارة.alif"));
+    QCOMPARE(buttons.at(2)->text(), QStringLiteral("صنف سيارة"));
+    QCOMPARE(buttons.at(3)->text(), QStringLiteral("دالة تغيير_اللون"));
+    QCOMPARE(buttons.at(0)->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(buttons.at(1)->layoutDirection(), Qt::RightToLeft);
+
+    bar.resize(900, 36);
+    bar.show();
+    QTest::qWait(10);
+    QVERIFY(buttons.at(0)->geometry().center().x() > buttons.at(1)->geometry().center().x());
+    QVERIFY(buttons.at(1)->geometry().center().x() > buttons.at(2)->geometry().center().x());
+    QVERIFY(buttons.at(2)->geometry().center().x() > buttons.at(3)->geometry().center().x());
+}
+
+void DockableToolsTest::breadcrumbBarClearsSemanticSegmentsAndEmitsNavigationSignals()
+{
+    const QString folderPath = QDir(QDir::tempPath()).filePath(
+        QStringLiteral("taif-breadcrumb-%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    QVERIFY(QDir().mkpath(folderPath));
+    const QString filePath = QDir(folderPath).filePath(QStringLiteral("سيارة.alif"));
+
+    TBreadcrumbBar bar;
+    bar.setFileContext(filePath);
+
+    SourceRange expectedRange{{22, 4, 1}, {34, 4, 13}};
+    EditorBreadcrumbContext context;
+    context.symbolPath = {
+        SemanticBreadcrumb{17, SymbolKind::Function, QStringLiteral("تغيير_اللون"),
+                           expectedRange, {{22, 4, 1}, {80, 7, 1}}}};
+    bar.setSemanticContext(context);
+
+    bool fileActivated = false;
+    bool symbolActivated = false;
+    QString emittedFilePath;
+    SourceRange emittedRange;
+    connect(&bar, &TBreadcrumbBar::fileSegmentActivated, this,
+            [&fileActivated, &emittedFilePath](const QString& path) {
+                fileActivated = true;
+                emittedFilePath = path;
+            });
+    connect(&bar, &TBreadcrumbBar::symbolSegmentActivated, this,
+            [&symbolActivated, &emittedRange](const SourceRange& range) {
+                symbolActivated = true;
+                emittedRange = range;
+            });
+
+    QList<QToolButton*> buttons = bar.findChildren<QToolButton*>();
+    QCOMPARE(buttons.size(), 3);
+    buttons.at(1)->click();
+    buttons.at(2)->click();
+
+    QVERIFY(fileActivated);
+    QCOMPARE(emittedFilePath, bar.currentFilePath());
+    QVERIFY(symbolActivated);
+    QCOMPARE(emittedRange.begin.offset, expectedRange.begin.offset);
+    QCOMPARE(emittedRange.end.offset, expectedRange.end.offset);
+
+    bar.clearSemanticContext();
+    buttons = bar.findChildren<QToolButton*>();
+    QCOMPARE(buttons.size(), 2);
+    QCOMPARE(buttons.at(0)->text(), QFileInfo(folderPath).fileName());
+    QCOMPARE(buttons.at(1)->text(), QStringLiteral("سيارة.alif"));
+    QVERIFY(QDir(folderPath).removeRecursively());
 }
 
 void DockableToolsTest::sessionEditorPreservesOrderedFilesInRtl()

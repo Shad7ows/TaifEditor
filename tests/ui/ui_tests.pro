@@ -8,7 +8,11 @@ INCLUDEPATH += \
     ../../source/console \
     ../../source/menubar \
     ../../source/components \
-    ../../source/session
+    ../../source/session \
+    ../../source/texteditor/navigation \
+    ../../source/language/semantic \
+    ../../source/language/parser \
+    ../../source/language/lexer
 
 SOURCES += \
     tst_DockableTools.cpp \
@@ -18,7 +22,8 @@ SOURCES += \
     ../../source/components/TSearchPanel.cpp \
     ../../source/components/SearchReplaceEngine.cpp \
     ../../source/session/SessionStore.cpp \
-    ../../source/session/SessionEditorDialog.cpp
+    ../../source/session/SessionEditorDialog.cpp \
+    ../../source/texteditor/navigation/TBreadcrumbBar.cpp
 
 HEADERS += \
     ../../source/console/TConsole.h \
@@ -27,4 +32,6 @@ HEADERS += \
     ../../source/components/TSearchPanel.h \
     ../../source/components/SearchReplaceEngine.h \
     ../../source/session/SessionStore.h \
-    ../../source/session/SessionEditorDialog.h
+    ../../source/session/SessionEditorDialog.h \
+    ../../source/texteditor/navigation/BreadcrumbTypes.h \
+    ../../source/texteditor/navigation/TBreadcrumbBar.h

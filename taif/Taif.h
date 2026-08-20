@@ -18,6 +18,7 @@ QT_END_NAMESPACE
 class QDockWidget;
 class DiagnosticsPanel;
 class TConsole;
+class TBreadcrumbBar;
 
 struct SessionRestoreResult final {
     QStringList openedFilePaths;
@@ -88,6 +89,9 @@ private:
     void clearSearchHighlights();
     void connectEditorActionState(TEditor* editor);
     void updateEditActionState();
+    void refreshBreadcrumbs();
+    void bindBreadcrumbsToEditor(TEditor* editor);
+    void revealBreadcrumbPath(const QString& path);
     bool openDocumentFile(const QString& filePath, bool promptForBackupRecovery,
                           bool activateTab, bool updateRecentFiles,
                           QString* failureMessage = nullptr);
@@ -107,7 +111,9 @@ private:
     QTreeView *fileTreeView{};
     QFileSystemModel *fileSystemModel{};
 
-        QSplitter *editorSplitter{};
+    QSplitter *editorSplitter{};
+    TBreadcrumbBar* breadcrumbBar{};
+    QMetaObject::Connection breadcrumbConnection{};
     QDockWidget* terminalDock{};
     QDockWidget* alifOutputDock{};
     TConsole* systemTerminal{};

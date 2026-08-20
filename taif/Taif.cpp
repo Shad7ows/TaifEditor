@@ -7,6 +7,7 @@
 #include "TSearchPanel.h"
 #include "SearchReplaceEngine.h"
 #include "DiagnosticsPanel.h"
+#include "TBreadcrumbBar.h"
 
 #include <QThread>
 #include <QDockWidget>
@@ -124,7 +125,14 @@ void Taif::setupUI() {
     fileTreeView->setRootIndex(fileSystemModel->index(QDir::homePath()));
     fileTreeView->setVisible(false);
 
-    editorSplitter->addWidget(tabWidget);
+    auto* const editorPane = new QWidget(editorSplitter);
+    auto* const editorPaneLayout = new QVBoxLayout(editorPane);
+    editorPaneLayout->setContentsMargins(0, 0, 0, 0);
+    editorPaneLayout->setSpacing(0);
+    breadcrumbBar = new TBreadcrumbBar(editorPane);
+    editorPaneLayout->addWidget(breadcrumbBar);
+    editorPaneLayout->addWidget(tabWidget, 1);
+    editorSplitter->addWidget(editorPane);
     editorSplitter->setSizes({1000});
 
     mainSplitter->addWidget(fileTreeView);
@@ -242,6 +250,14 @@ void Taif::setupConnections() {
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
 
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::onCurrentTabChanged);
+    connect(breadcrumbBar, &TBreadcrumbBar::fileSegmentActivated,
+            this, &Taif::revealBreadcrumbPath);
+    connect(breadcrumbBar, &TBreadcrumbBar::symbolSegmentActivated, this,
+            [this](const SourceRange range) {
+                if (TEditor* const editor = currentEditor()) {
+                    editor->navigateToDiagnosticRange(range);
+                }
+            });
 
     connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
     connect(searchBar, &SearchPanel::findText, this, &Taif::findText);
@@ -937,6 +953,9 @@ bool Taif::openDocumentFile(const QString& requestedPath,
     }
 
     updateWindowTitle();
+    if (activateTab) {
+        refreshBreadcrumbs();
+    }
     return true;
 }
 
@@ -982,19 +1001,22 @@ SessionRestoreResult Taif::restoreSession(const SavedSession& savedSession)
 
     refreshDiagnosticsPanel();
     updateEditActionState();
+    refreshBreadcrumbs();
     return result;
 }
 
-void Taif::loadFolder(const QString &folderPath)
+void Taif::loadFolder(const QString& requestedFolderPath)
 {
-
-    if (!folderPath.isEmpty() && QDir(folderPath).exists()) {
+    const QString normalizedFolderPath = SessionStore::normalizePath(requestedFolderPath);
+    if (!normalizedFolderPath.isEmpty() && QDir(normalizedFolderPath).exists()) {
+        folderPath = normalizedFolderPath;
         fileTreeView->setVisible(true);
-
         fileTreeView->setRootIndex(fileSystemModel->index(folderPath));
     } else {
+        folderPath.clear();
         fileTreeView->setVisible(false);
     }
+    refreshBreadcrumbs();
 }
 
 void Taif::handleOpenFolderMenu()
@@ -1002,9 +1024,6 @@ void Taif::handleOpenFolderMenu()
     QString folderPath = QFileDialog::getExistingDirectory(this, "اختر مجلد", QDir::homePath());
     if (folderPath.isEmpty()) return;
 
-    QFileSystemModel *model = new QFileSystemModel(this);
-    model->setFilter(QDir::NoDotAndDotDot | QDir::AllEntries);
-    model->setRootPath(folderPath);
     loadFolder(folderPath);
 
 }
@@ -1054,9 +1073,11 @@ void Taif::saveFile() {
                 QFileInfo fileInfo(filePath);
                 tabWidget->setTabText(index, fileInfo.fileName());
             }
-            editor->removeBackupFile();
+                        editor->removeBackupFile();
             updateWindowTitle();
+            refreshBreadcrumbs();
             return ;
+
         } else {
             QMessageBox::warning(this, "خطأ", "لا يمكن حفظ الملف");
             return;
@@ -1091,11 +1112,13 @@ void Taif::saveFileAs() {
                 tabWidget->setTabText(index, fileInfo.fileName());
             }
 
-            updateWindowTitle();
+                        updateWindowTitle();
+            refreshBreadcrumbs();
             return ;
         } else {
             QMessageBox::warning(this, "خطأ", "لا يمكن حفظ الملف");
             return ;
+
         }
     }
     return ;
@@ -1156,6 +1179,8 @@ void Taif::onCurrentTabChanged()
     }
     refreshDiagnosticsPanel();
     updateEditActionState();
+    bindBreadcrumbsToEditor(editor);
+    refreshBreadcrumbs();
 }
 
 void Taif::connectEditorActionState(TEditor* const editor)
@@ -1224,6 +1249,68 @@ void Taif::refreshDiagnosticsPanel() {
     } else {
         diagnosticsPanel->clearDiagnostics();
     }
+}
+
+void Taif::bindBreadcrumbsToEditor(TEditor* const editor)
+{
+    if (breadcrumbConnection) {
+        disconnect(breadcrumbConnection);
+    }
+    if (editor == nullptr || breadcrumbBar == nullptr) {
+        return;
+    }
+    breadcrumbConnection = connect(editor, &TEditor::breadcrumbContextChanged, this,
+                                   [this, editor](const EditorBreadcrumbContext& context) {
+        if (editor == currentEditor() && breadcrumbBar != nullptr) {
+            breadcrumbBar->setSemanticContext(context);
+        }
+    });
+}
+
+void Taif::refreshBreadcrumbs()
+{
+    if (breadcrumbBar == nullptr) {
+        return;
+    }
+    TEditor* const editor = currentEditor();
+    if (editor == nullptr) {
+        breadcrumbBar->setFileContext({});
+        breadcrumbBar->clearSemanticContext();
+        return;
+    }
+
+    breadcrumbBar->setFileContext(
+        SessionStore::normalizePath(editor->property("filePath").toString()));
+    breadcrumbBar->setSemanticContext(editor->breadcrumbContextAtCursor());
+}
+
+void Taif::revealBreadcrumbPath(const QString& path)
+{
+    const QFileInfo pathInfo(path);
+    if (!pathInfo.isDir()) {
+        if (TEditor* const editor = currentEditor()) {
+            editor->setFocus();
+        }
+        return;
+    }
+
+    if (folderPath.isEmpty()) {
+        return;
+    }
+    const QString relativePath = QDir(folderPath).relativeFilePath(pathInfo.absoluteFilePath());
+    if (relativePath == QStringLiteral("..")
+        || relativePath.startsWith(QStringLiteral("../"))
+        || relativePath.startsWith(QStringLiteral("..\\"))) {
+        return;
+    }
+    const QModelIndex index = fileSystemModel->index(pathInfo.absoluteFilePath());
+    if (!index.isValid()) {
+        return;
+    }
+    fileTreeView->setVisible(true);
+    fileTreeView->expand(index);
+    fileTreeView->scrollTo(index);
+    fileTreeView->setCurrentIndex(index);
 }
 
 void Taif::updateCursorPosition()

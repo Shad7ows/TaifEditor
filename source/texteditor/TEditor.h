@@ -16,6 +16,7 @@
 #include "SemanticHoverProvider.h"
 #include "SemanticDefinitionProvider.h"
 #include "CompletionContext.h"
+#include "BreadcrumbTypes.h"
 
 
 class LineNumberArea;
@@ -48,6 +49,7 @@ public:
     [[nodiscard]] const QVector<EditorDiagnostic>& currentDiagnostics() const {
         return m_currentDiagnostics;
     }
+    [[nodiscard]] EditorBreadcrumbContext breadcrumbContextAtCursor() const;
 
 public slots:
     void UpdateTabStopDistance(QFont);
@@ -142,6 +144,7 @@ private:
     [[nodiscard]] std::optional<DefinitionLocation> definitionAt(qsizetype offset) const;
     bool navigateToDefinition(qsizetype offset);
     bool navigateBackFromDefinition();
+    void notifyBreadcrumbContextChanged();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
@@ -164,6 +167,7 @@ private slots:
 signals:
     void openRequest(QString filePath);
     void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
+    void breadcrumbContextChanged(EditorBreadcrumbContext context);
 };
 
 

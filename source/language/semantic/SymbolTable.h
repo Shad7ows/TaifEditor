@@ -100,6 +100,15 @@ struct NameReference final {
     SymbolId resolvedSymbol = InvalidSymbolId;
 };
 
+/** Immutable declaration breadcrumb derived from a valid enclosing semantic scope. */
+struct SemanticBreadcrumb final {
+    SymbolId symbol = InvalidSymbolId;
+    SymbolKind kind = SymbolKind::Error;
+    QString name;
+    SourceRange declarationRange;
+    SourceRange fullRange;
+};
+
 struct SemanticDiagnostic final {
     QString code;
     QString message;
@@ -128,6 +137,8 @@ public:
     [[nodiscard]] QVector<SymbolId> visibleSymbolsAt(qsizetype utf16Offset) const;
     [[nodiscard]] QVector<SymbolId> referencesOf(SymbolId symbol) const;
     [[nodiscard]] QVector<SymbolId> documentSymbols() const;
+    /** Returns enclosing class/function declarations in outer-to-inner order. */
+    [[nodiscard]] QVector<SemanticBreadcrumb> enclosingSymbolPathAt(qsizetype utf16Offset) const;
     [[nodiscard]] QVector<SymbolId> membersOfClass(SymbolId classSymbol) const;
     [[nodiscard]] QVector<SymbolId> membersOfReceiver(SymbolId receiverSymbol) const;
     [[nodiscard]] SymbolId classOfReceiver(SymbolId receiverSymbol) const;
@@ -142,6 +153,7 @@ private:
     QVector<SemanticDiagnostic> m_diagnostics;
     QHash<SymbolId, QVector<ReferenceId>> m_referencesBySymbol;
     QHash<SymbolId, ScopeId> m_classScopesBySymbol;
+    QHash<ScopeId, SymbolId> m_scopeOwnerSymbols;
     ScopeId m_preludeScope = InvalidScopeId;
     ScopeId m_moduleScope = InvalidScopeId;
     quint64 m_documentRevision = 0;
@@ -162,4 +174,5 @@ Q_DECLARE_METATYPE(ScopeKind)
 Q_DECLARE_METATYPE(SymbolKind)
 Q_DECLARE_METATYPE(ReferenceKind)
 Q_DECLARE_METATYPE(ResolutionState)
+Q_DECLARE_METATYPE(SemanticBreadcrumb)
 Q_DECLARE_METATYPE(SemanticDiagnostic)

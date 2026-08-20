@@ -17,6 +17,7 @@ INCLUDEPATH += \
     ../source/texteditor/autocomplete \
     ../source/texteditor/hover \
     ../source/texteditor/diagnostics \
+    ../source/texteditor/navigation \
     ../source/language/lexer \
     ../source/language/parser \
     ../source/language/semantic \
@@ -44,6 +45,7 @@ SOURCES += \
     ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../source/texteditor/hover/HoverPopup.cpp \
     ../source/texteditor/diagnostics/DiagnosticsPanel.cpp \
+    ../source/texteditor/navigation/TBreadcrumbBar.cpp \
     ../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
     Taif.cpp \
@@ -78,6 +80,8 @@ HEADERS += \
     ../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../source/texteditor/hover/HoverPopup.h \
     ../source/texteditor/diagnostics/DiagnosticsPanel.h \
+    ../source/texteditor/navigation/BreadcrumbTypes.h \
+    ../source/texteditor/navigation/TBreadcrumbBar.h \
     ../source/texteditor/highlighter/TSyntaxDefinition.h \
     ../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../source/texteditor/highlighter/TSyntaxThemes.h \

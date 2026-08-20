@@ -292,11 +292,17 @@ private:
                           ast.range, SemanticDiagnosticSeverity::Warning);
             return;
         }
-        const AstNode& name = node(nameId);
-        declare(enclosingScope, SymbolKind::Function, ast.text.isEmpty() ? name.text : ast.text,
-                name.range, ast.range, ast.id);
+                const AstNode& name = node(nameId);
+        const SymbolId functionSymbol = declare(
+            enclosingScope, SymbolKind::Function, ast.text.isEmpty() ? name.text : ast.text,
+            name.range, ast.range, ast.id);
         const ScopeId functionScope = createOwnedScope(ScopeKind::Function, enclosingScope, ast);
+        if (functionSymbol != InvalidSymbolId) {
+            m_model->m_scopeOwnerSymbols.insert(functionScope, functionSymbol);
+        }
+
         if (m_indexedScopes.contains(ast.id)) {
+
             return;
         }
         m_indexedScopes.insert(ast.id);
@@ -347,10 +353,12 @@ private:
         const SymbolId classSymbol = declare(
             enclosingScope, SymbolKind::Class, ast.text.isEmpty() ? name.text : ast.text,
             name.range, ast.range, ast.id);
-        const ScopeId classScope = createOwnedScope(ScopeKind::Class, enclosingScope, ast);
+                const ScopeId classScope = createOwnedScope(ScopeKind::Class, enclosingScope, ast);
         if (classSymbol != InvalidSymbolId) {
             m_model->m_classScopesBySymbol.insert(classSymbol, classScope);
+            m_model->m_scopeOwnerSymbols.insert(classScope, classSymbol);
         }
+
         if (!m_indexedScopes.contains(ast.id)) {
             m_indexedScopes.insert(ast.id);
             indexNode(body, classScope);
@@ -877,7 +885,42 @@ QVector<ReferenceId> SemanticModel::referencesOf(const SymbolId symbol) const {
     return m_referencesBySymbol.value(symbol);
 }
 
+QVector<SemanticBreadcrumb> SemanticModel::enclosingSymbolPathAt(
+    const qsizetype utf16Offset) const {
+    ScopeId innermost = InvalidScopeId;
+    qsizetype narrowestWidth = std::numeric_limits<qsizetype>::max();
+    for (const Scope& candidate : m_scopes) {
+        if (candidate.kind == ScopeKind::Prelude || candidate.kind == ScopeKind::Module
+            || !containsOffset(candidate.range, utf16Offset)) {
+            continue;
+        }
+        const qsizetype width = rangeWidth(candidate.range);
+        if (width <= narrowestWidth) {
+            innermost = candidate.id;
+            narrowestWidth = width;
+        }
+    }
+
+    QVector<SemanticBreadcrumb> result;
+    ScopeId current = innermost;
+    while (current != InvalidScopeId && current >= 0 && current < m_scopes.size()) {
+        const Scope& enclosingScope = m_scopes.at(current);
+        const SymbolId ownerId = m_scopeOwnerSymbols.value(current, InvalidSymbolId);
+        const Symbol* const owner = symbol(ownerId);
+        if (owner != nullptr && (enclosingScope.kind == ScopeKind::Class
+            || enclosingScope.kind == ScopeKind::Function)
+            && containsOffset(owner->fullRange, utf16Offset)) {
+            result.append({owner->id, owner->kind, owner->name,
+                           owner->declarationRange, owner->fullRange});
+        }
+        current = enclosingScope.parent;
+    }
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
 QVector<SymbolId> SemanticModel::documentSymbols() const {
+
     QVector<SymbolId> result;
     for (const Symbol& candidate : m_symbols) {
         if (isDocumentSymbolKind(candidate.kind)) {

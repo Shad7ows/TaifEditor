@@ -20,7 +20,9 @@
 
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
+    qRegisterMetaType<EditorBreadcrumbContext>("EditorBreadcrumbContext");
     setAcceptDrops(true);
+
     this->setStyleSheet(R"(
     QPlainTextEdit {
         background-color: #091021;
@@ -63,6 +65,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                     ? analysisController->currentRevision() : 0;
                 emit diagnosticsChanged(m_currentDiagnostics, m_diagnosticsRevision);
                 dismissHover();
+                notifyBreadcrumbContextChanged();
             });
     connect(analysisController, &EditorAnalysisController::fastPassRequested,
             this, [this](const quint64 revision, const DirtyRange& dirty) {
@@ -91,10 +94,12 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                 }
                 // A passive Tier 2 result may update an already active popup,
                 // but must never reopen one after the user accepted it.
-                if (canRefreshActiveCompletion()) {
+                                if (canRefreshActiveCompletion()) {
                     performCompletion();
                 }
+                notifyBreadcrumbContextChanged();
             });
+
     lineNumberArea = new LineNumberArea(this);
     minimap = new TMinimap(this, this);
 
@@ -107,7 +112,10 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
     connect(this, &TEditor::blockCountChanged, this, &TEditor::updateLineNumberAreaWidth);
     connect(this, &TEditor::updateRequest, this, &TEditor::updateLineNumberArea);
-    connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightCurrentLine);
+        connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightCurrentLine);
+    connect(this, &TEditor::cursorPositionChanged,
+            this, &TEditor::notifyBreadcrumbContextChanged);
+
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
     updateLineNumberAreaWidth();
@@ -145,7 +153,30 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     analysisController->documentChanged(0, 0, 0);
 }
 
+EditorBreadcrumbContext TEditor::breadcrumbContextAtCursor() const
+{
+    EditorBreadcrumbContext context;
+    if (analysisController == nullptr) {
+        return context;
+    }
+
+    context.revision = analysisController->currentRevision();
+    context.cursorOffset = textCursor().position();
+    const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
+    if (snapshot != nullptr && snapshot->revision == context.revision
+        && snapshot->semantic != nullptr) {
+        context.symbolPath = snapshot->semantic->enclosingSymbolPathAt(context.cursorOffset);
+    }
+    return context;
+}
+
+void TEditor::notifyBreadcrumbContextChanged()
+{
+    emit breadcrumbContextChanged(breadcrumbContextAtCursor());
+}
+
 TEditor::~TEditor() {
+
     if (analysisController) {
         analysisController->shutdown();
     }

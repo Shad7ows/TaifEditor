@@ -60,6 +60,7 @@ private slots:
     void duplicateAndUnresolvedNamesProduceRecoverableDiagnostics();
     void memberReferencesRemainExternalUntilTypeAnalysis();
     void editorQueriesReturnScopedDefinitionsAndReferences();
+    void enclosingSymbolPathTracksNestedClassAndFunctionScopes();
     void malformedParserInputStillBuildsAFiniteSemanticModel();
     void statusCorpusBuildsAFiniteRevisionedModel();
 };
@@ -241,6 +242,27 @@ void SymbolTableTest::statusCorpusBuildsAFiniteRevisionedModel() {
     QVERIFY(fixture.model->symbols().size() > 20);
     QVERIFY(fixture.model->diagnostics().size() <= 97);
     QVERIFY(hasDiagnostic(*fixture.model, QStringLiteral("SEM999")));
+}
+
+void SymbolTableTest::enclosingSymbolPathTracksNestedClassAndFunctionScopes() {
+    const QString source = QStringLiteral(
+        "صنف سيارة:\n"
+        "\tدالة تغيير_اللون(هذا):\n"
+        "\t\tاطبع(هذا)\n"
+        "اطبع(\"خارج\")\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.model != nullptr);
+
+    const qsizetype insideMethod = source.indexOf(QStringLiteral("اطبع(هذا)"));
+    const QVector<SemanticBreadcrumb> path = fixture.model->enclosingSymbolPathAt(insideMethod);
+    QCOMPARE(path.size(), 2);
+    QCOMPARE(path.at(0).kind, SymbolKind::Class);
+    QCOMPARE(path.at(0).name, QStringLiteral("سيارة"));
+    QCOMPARE(path.at(1).kind, SymbolKind::Function);
+    QCOMPARE(path.at(1).name, QStringLiteral("تغيير_اللون"));
+
+    const qsizetype outsideDeclarations = source.lastIndexOf(QStringLiteral("اطبع(\"خارج\")"));
+    QVERIFY(fixture.model->enclosingSymbolPathAt(outsideDeclarations).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(SymbolTableTest)
