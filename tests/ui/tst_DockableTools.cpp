@@ -27,7 +27,12 @@
 #include "ApplicationBootstrap.h"
 #include "EditorPreferences.h"
 #include "TSettings.h"
+#include "RecoveryStore.h"
+#include "TRecoveryDialog.h"
 
+#include <QTemporaryDir>
+#include <QTreeWidget>
+#include <QPushButton>
 #include <utility>
 
 class DockableToolsTest final : public QObject {
@@ -48,7 +53,56 @@ private slots:
     void applicationBootstrapProvidesStableFontRolesAndLaunchValidation();
     void editorPreferencesNormalizeInvalidValues();
     void settingsWindowUsesRtlDraftApplyCancelWorkflow();
+    void recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots();
+    void recoveryDialogUsesRtlAndSelectsEntriesByDefault();
 };
+
+void DockableToolsTest::recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    RecoveryStore store(temporaryDirectory.filePath(QStringLiteral("recovery")));
+
+    RecoveryEntry entry;
+    entry.id = QStringLiteral("recovery-test-01");
+    entry.displayName = QStringLiteral("اختبار.alif");
+    entry.documentRevision = 7;
+    entry.untitled = true;
+    QVERIFY(store.writeSnapshot(entry, QStringLiteral("اطبع(\"استعادة\")")));
+
+    const QVector<RecoveryEntry> entries = store.entries();
+    QCOMPARE(entries.size(), 1);
+    QCOMPARE(entries.first().id, entry.id);
+    QCOMPARE(entries.first().documentRevision, quint64(7));
+
+    QString recoveredText;
+    QVERIFY(store.readSnapshot(entries.first(), &recoveredText));
+    QCOMPARE(recoveredText, QStringLiteral("اطبع(\"استعادة\")"));
+    QVERIFY(store.removeEntry(entry.id));
+    QVERIFY(store.entries().isEmpty());
+
+    RecoveryEntry unsafeEntry;
+    unsafeEntry.id = QStringLiteral("../outside-recovery-root");
+    unsafeEntry.untitled = true;
+    QVERIFY(!store.writeSnapshot(unsafeEntry, QStringLiteral("لا يجب حفظ هذه النسخة")));
+}
+
+void DockableToolsTest::recoveryDialogUsesRtlAndSelectsEntriesByDefault()
+{
+    RecoveryEntry entry;
+    entry.id = QStringLiteral("recovery-test-02");
+    entry.displayName = QStringLiteral("غير معنون");
+    entry.documentRevision = 1;
+    entry.untitled = true;
+    entry.capturedAtUtc = QDateTime::currentDateTimeUtc();
+
+    TRecoveryDialog dialog({entry});
+    QCOMPARE(dialog.layoutDirection(), Qt::RightToLeft);
+    QVERIFY(dialog.findChild<QTreeWidget*>(QStringLiteral("RecoveryEntryList")) != nullptr);
+    QVERIFY(dialog.findChild<QPushButton*>(QStringLiteral("RecoveryRestoreButton")) != nullptr);
+    QCOMPARE(dialog.selectedEntries().size(), 1);
+    QCOMPARE(dialog.selectedEntries().first().id, entry.id);
+}
 
 void DockableToolsTest::settingsWindowUsesRtlDraftApplyCancelWorkflow()
 {

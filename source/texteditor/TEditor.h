@@ -10,6 +10,9 @@
 #include "TSettings.h"
 #include "EditorPreferences.h"
 
+class RecoveryCoordinator;
+struct RecoveryEntry;
+
 #include "TSyntaxHighlighter.h"
 #include "AutoComplete.h"
 #include "AutoCompleteUI.h"
@@ -46,6 +49,10 @@ public:
     void startAutoSave();
     void stopAutoSave();
     void removeBackupFile();
+    void setRecoveryCoordinator(RecoveryCoordinator* coordinator);
+    [[nodiscard]] QString recoveryDocumentId() const;
+    void flushRecoverySnapshot();
+    void adoptRecoveryEntry(const RecoveryEntry& entry);
 
 public:
     [[nodiscard]] const QVector<EditorDiagnostic>& currentDiagnostics() const {
@@ -120,9 +127,16 @@ private:
 
     void updateFoldRegions();
     void toggleFold(int blockNum);
+    void scheduleRecoveryCapture();
+    void clearRecoverySnapshot();
 
 
     QTimer *autoSaveTimer{};
+    QTimer *recoveryMaximumTimer{};
+    RecoveryCoordinator* recoveryCoordinator{};
+    QString m_recoveryDocumentId;
+    quint64 m_recoveryRevision = 0;
+    bool m_recoveryDirty = false;
     EditorPreferences preferences{};
 
     friend class LineNumberArea;

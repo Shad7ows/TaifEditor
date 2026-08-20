@@ -29,7 +29,8 @@ INCLUDEPATH += \
     ../source/console \
     ../source/menubar \
     ../source/pages \
-    ../source/settings
+    ../source/settings \
+    ../source/recovery \
 
 SOURCES += \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -65,6 +66,9 @@ SOURCES += \
     ../source/menubar/TMenu.cpp \
     ../source/pages/TWelcomeWindow.cpp \
     ../source/settings/EditorPreferences.cpp \
+    ../source/recovery/RecoveryStore.cpp \
+    ../source/recovery/RecoveryCoordinator.cpp \
+    ../source/recovery/TRecoveryDialog.cpp \
     ../source/settings/TSettings.cpp
 
 HEADERS += \
@@ -104,6 +108,9 @@ HEADERS += \
     ../source/menubar/TMenu.h \
     ../source/pages/TWelcomeWindow.h \
     ../source/settings/EditorPreferences.h \
+    ../source/recovery/RecoveryStore.h \
+    ../source/recovery/RecoveryCoordinator.h \
+    ../source/recovery/TRecoveryDialog.h \
     ../source/settings/TSettings.h
 
 # Add the application icon (Windows)

@@ -8,6 +8,7 @@
 #include "SearchReplaceEngine.h"
 #include "DiagnosticsPanel.h"
 #include "TBreadcrumbBar.h"
+#include "TRecoveryDialog.h"
 
 #include <QThread>
 #include <QDockWidget>
@@ -44,17 +45,26 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
     setAttribute(Qt::WA_DeleteOnClose);
 
     setting = new TSettings(this);
+    recoveryCoordinator = new RecoveryCoordinator({}, this);
+    recoveryCoordinator->pruneExpiredEntries(30);
 
     setupUI();
     setupConnections();
     connectSettingsSignals();
     setupStyle();
 
-    installEventFilter(this);
+        installEventFilter(this);
+    importKnownLegacyRecoveryEntries(filePath);
+    presentRecoveryEntries();
 
-        if (!filePath.isEmpty()) {
-        openFile(filePath);
-    } else if (createInitialDocument) {
+    if (!filePath.isEmpty()) {
+        QString failureMessage;
+        if (!openDocumentFile(filePath, true, true, true, &failureMessage)) {
+            QMessageBox::warning(this, QStringLiteral("خطأ"),
+                                 failureMessage.isEmpty()
+                                     ? QStringLiteral("لا يمكن فتح الملف.") : failureMessage);
+        }
+    } else if (createInitialDocument && tabWidget->count() == 0) {
         newFile();
     }
 
@@ -501,6 +511,8 @@ void Taif::closeEvent(QCloseEvent* const event)
         }
     }
 
+    flushRecoverySnapshots();
+
     if (openWelcomeAfterClose) {
         auto* const welcomeWindow = new WelcomeWindow();
         welcomeWindow->show();
@@ -862,6 +874,7 @@ bool Taif::prepareEditorForClose(TEditor* const editor)
     case SaveDecision::Save:
         return saveEditor(editor);
     case SaveDecision::Discard:
+        editor->removeBackupFile();
         return true;
     case SaveDecision::Cancel:
         return false;
@@ -877,8 +890,10 @@ void Taif::newFile() {
         }
     }
 
-    TEditor *newEditor = new TEditor(setting, this);
+        TEditor *newEditor = new TEditor(setting, this);
+    registerEditorRecovery(newEditor);
     tabWidget->addTab(newEditor, "غير معنون");
+
     tabWidget->setCurrentWidget(newEditor);
 
     connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
@@ -954,8 +969,11 @@ bool Taif::openDocumentFile(const QString& requestedPath,
     file.close();
 
     auto* const newEditor = new TEditor(setting, this);
+    registerEditorRecovery(newEditor);
     newEditor->setPlainText(content);
     newEditor->setProperty("filePath", filePath);
+    newEditor->document()->setModified(false);
+    newEditor->removeBackupFile();
 
     const QString backupPath = filePath + QStringLiteral(".~");
     if (promptForBackupRecovery && QFile::exists(backupPath)) {
@@ -1172,6 +1190,130 @@ bool Taif::writeEditorContents(TEditor* const editor, const QString& requestedPa
 
     finalizeSavedEditor(editor, filePath);
     return true;
+}
+
+void Taif::registerEditorRecovery(TEditor* const editor)
+{
+    if (editor != nullptr && recoveryCoordinator != nullptr) {
+        editor->setRecoveryCoordinator(recoveryCoordinator);
+    }
+}
+
+void Taif::flushRecoverySnapshots()
+{
+    if (recoveryCoordinator == nullptr) {
+        return;
+    }
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+            editor->flushRecoverySnapshot();
+        }
+    }
+    [[maybe_unused]] const bool recoveryFlushed = recoveryCoordinator->waitForIdle(1200);
+}
+
+void Taif::importKnownLegacyRecoveryEntries(const QString& launchFilePath)
+{
+    if (recoveryCoordinator == nullptr) {
+        return;
+    }
+
+    QSet<QString> candidatePaths;
+    const auto addCandidate = [&candidatePaths](const QString& path) {
+        const QString normalizedPath = SessionStore::normalizePath(path);
+        if (!normalizedPath.isEmpty()) {
+            candidatePaths.insert(normalizedPath);
+        }
+    };
+    addCandidate(launchFilePath);
+
+    QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
+    for (const QString& path : settings.value(QStringLiteral("RecentFiles")).toStringList()) {
+        addCandidate(path);
+    }
+    const SessionStore sessionStore;
+    for (const SavedSession& session : sessionStore.loadAll()) {
+        for (const QString& path : session.filePaths) {
+            addCandidate(path);
+        }
+    }
+
+    for (const QString& path : candidatePaths) {
+        [[maybe_unused]] const bool imported = recoveryCoordinator->importLegacyAdjacentBackup(path);
+    }
+}
+
+void Taif::presentRecoveryEntries()
+{
+    if (recoveryCoordinator == nullptr) {
+        return;
+    }
+    const QVector<RecoveryEntry> availableEntries = recoveryCoordinator->entries();
+    if (availableEntries.isEmpty()) {
+        return;
+    }
+
+    TRecoveryDialog dialog(availableEntries, this);
+    dialog.exec();
+    const QVector<RecoveryEntry> selectedEntries = dialog.selectedEntries();
+    if (dialog.decision() == TRecoveryDialog::Decision::Discard) {
+        for (const RecoveryEntry& entry : selectedEntries) {
+            recoveryCoordinator->removeEntry(entry.id);
+        }
+        [[maybe_unused]] const bool removalsCompleted = recoveryCoordinator->waitForIdle(1000);
+        return;
+    }
+    if (dialog.decision() == TRecoveryDialog::Decision::Restore) {
+        for (const RecoveryEntry& entry : selectedEntries) {
+            restoreRecoveryEntry(entry);
+        }
+    }
+}
+
+void Taif::restoreRecoveryEntry(const RecoveryEntry& entry)
+{
+    if (recoveryCoordinator == nullptr) {
+        return;
+    }
+    QString recoveredText;
+    QString errorMessage;
+    if (!recoveryCoordinator->readSnapshot(entry, &recoveredText, &errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("خطأ"),
+                             errorMessage.isEmpty() ? QStringLiteral("تعذر استعادة النسخة.")
+                                                    : errorMessage);
+        return;
+    }
+
+    const RecoverySourceFingerprint currentFingerprint =
+        RecoveryStore::fingerprintForPath(entry.sourcePath);
+    const bool sourceUnchanged = !entry.sourcePath.isEmpty()
+        && currentFingerprint.exists == entry.sourceFingerprint.exists
+        && currentFingerprint.size == entry.sourceFingerprint.size
+        && currentFingerprint.lastModifiedUtc == entry.sourceFingerprint.lastModifiedUtc;
+
+    auto* const editor = new TEditor(setting, this);
+    registerEditorRecovery(editor);
+    editor->adoptRecoveryEntry(entry);
+    editor->setPlainText(recoveredText);
+    if (sourceUnchanged) {
+        editor->setProperty("filePath", entry.sourcePath);
+    }
+    editor->document()->setModified(true);
+
+    connect(editor, &TEditor::openRequest, this,
+            [this](const QString& path) { openFile(path); });
+    connect(editor->document(), &QTextDocument::modificationChanged, this,
+            [this, editor](const bool modified) { onEditorModificationChanged(editor, modified); });
+    connectEditorDiagnostics(editor);
+    connectEditorActionState(editor);
+
+    const QString displayName = entry.displayName.isEmpty() ? QStringLiteral("غير معنون")
+                                                             : entry.displayName;
+    const int tabIndex = tabWidget->addTab(editor, QStringLiteral("استعادة — %1").arg(displayName));
+    tabWidget->setTabToolTip(tabIndex, entry.sourcePath.isEmpty()
+        ? QStringLiteral("نسخة استعادة لمستند غير معنون") : entry.sourcePath);
+    tabWidget->setCurrentIndex(tabIndex);
+    onEditorModificationChanged(editor, true);
 }
 
 void Taif::finalizeSavedEditor(TEditor* const editor, const QString& filePath)

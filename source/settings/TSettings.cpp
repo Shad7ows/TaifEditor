@@ -167,13 +167,13 @@ void TSettings::createEditorBehaviorPage(QVBoxLayout* const layout)
     autoSaveSecondsSpin->setRange(5, 300);
     autoSaveSecondsSpin->setSuffix(QStringLiteral(" ث"));
     autoSaveSecondsSpin->setMinimumHeight(36);
-    formLayout->addRow(QStringLiteral("فترة الحفظ التلقائي:"), autoSaveSecondsSpin);
+    formLayout->addRow(QStringLiteral("الحد الأقصى لنسخة الاستعادة:"), autoSaveSecondsSpin);
 
     wordWrapCheck = new QCheckBox(QStringLiteral("التفاف الأسطر الطويلة"), behaviorGroup);
     lineNumbersCheck = new QCheckBox(QStringLiteral("إظهار أرقام الأسطر"), behaviorGroup);
     minimapCheck = new QCheckBox(QStringLiteral("إظهار الخريطة المصغرة"), behaviorGroup);
     highlightCurrentLineCheck = new QCheckBox(QStringLiteral("تمييز السطر الحالي"), behaviorGroup);
-    autoSaveCheck = new QCheckBox(QStringLiteral("تفعيل الحفظ التلقائي والنسخة الاحتياطية"), behaviorGroup);
+    autoSaveCheck = new QCheckBox(QStringLiteral("تفعيل نسخ الاستعادة التلقائية"), behaviorGroup);
 
     behaviorLayout->addLayout(formLayout);
     behaviorLayout->addWidget(wordWrapCheck);

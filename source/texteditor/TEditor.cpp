@@ -1,5 +1,6 @@
 #include "TEditor.h"
 #include "TMinimap.h"
+#include "RecoveryCoordinator.h"
 
 #include <QPainter>
 #include <QTextBlock>
@@ -12,6 +13,7 @@
 #include <QAction>
 #include <QCursor>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QScreen>
@@ -121,11 +123,15 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     updateLineNumberAreaWidth();
     highlightCurrentLine();
 
-        autoSaveTimer = new QTimer(this);
+    autoSaveTimer = new QTimer(this);
+    autoSaveTimer->setSingleShot(true);
+    autoSaveTimer->setInterval(750);
+    recoveryMaximumTimer = new QTimer(this);
+    recoveryMaximumTimer->setSingleShot(false);
 
     connect(autoSaveTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
-
-        connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
+    connect(recoveryMaximumTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
+    connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
 
     applyPreferences(PreferencesStore::load());
     if (setting != nullptr) {
@@ -1166,44 +1172,93 @@ QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const {
 
 
 
-void TEditor::startAutoSave() {
-    if (preferences.autoSaveEnabled && !autoSaveTimer->isActive()) {
-
-        autoSaveTimer->start();
+void TEditor::setRecoveryCoordinator(RecoveryCoordinator* const coordinator)
+{
+    recoveryCoordinator = coordinator;
+    if (recoveryCoordinator != nullptr && m_recoveryDocumentId.isEmpty()) {
+        m_recoveryDocumentId = recoveryCoordinator->createDocumentId();
     }
 }
 
-void TEditor::stopAutoSave() {
-    autoSaveTimer->stop();
+QString TEditor::recoveryDocumentId() const
+{
+    return m_recoveryDocumentId;
 }
 
-void TEditor::performAutoSave() {
-    if (!preferences.autoSaveEnabled) {
+void TEditor::adoptRecoveryEntry(const RecoveryEntry& entry)
+{
+    if (!entry.id.isEmpty()) {
+        m_recoveryDocumentId = entry.id;
+        m_recoveryRevision = entry.documentRevision;
+    }
+}
+
+void TEditor::startAutoSave()
+{
+    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr) {
         return;
     }
-    QString filePath = this->property("filePath").toString();
-
-    if (filePath.isEmpty() || !this->document()->isModified()) return;
-
-    QString backupPath = filePath + ".~";
-
-    QFile file(backupPath);
-    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QTextStream out(&file);
-        out << this->toPlainText();
-        file.close();
+    m_recoveryDirty = true;
+    autoSaveTimer->start();
+    if (!recoveryMaximumTimer->isActive()) {
+        recoveryMaximumTimer->start();
     }
 }
 
-void TEditor::removeBackupFile() {
-    QString filePath = this->property("filePath").toString();
-    if (filePath.isEmpty()) return;
-
-    QString backupPath = filePath + ".~";
-    if (QFile::exists(backupPath)) {
-        QFile::remove(backupPath);
+void TEditor::stopAutoSave()
+{
+    autoSaveTimer->stop();
+    if (recoveryMaximumTimer != nullptr) {
+        recoveryMaximumTimer->stop();
     }
+}
+
+void TEditor::scheduleRecoveryCapture()
+{
+    startAutoSave();
+}
+
+void TEditor::flushRecoverySnapshot()
+{
+    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr || !m_recoveryDirty) {
+        return;
+    }
+    if (m_recoveryDocumentId.isEmpty()) {
+        m_recoveryDocumentId = recoveryCoordinator->createDocumentId();
+    }
+
+    const QString sourcePath = property("filePath").toString();
+    RecoveryEntry entry;
+    entry.id = m_recoveryDocumentId;
+    entry.sourcePath = sourcePath;
+    entry.displayName = sourcePath.isEmpty() ? QStringLiteral("غير معنون")
+                                              : QFileInfo(sourcePath).fileName();
+    entry.documentRevision = ++m_recoveryRevision;
+    entry.sourceFingerprint = RecoveryStore::fingerprintForPath(sourcePath);
+    entry.untitled = sourcePath.isEmpty();
+    recoveryCoordinator->submitSnapshot({entry, toPlainText()});
+
+    m_recoveryDirty = false;
     stopAutoSave();
+}
+
+void TEditor::performAutoSave()
+{
+    flushRecoverySnapshot();
+}
+
+void TEditor::clearRecoverySnapshot()
+{
+    stopAutoSave();
+    m_recoveryDirty = false;
+    if (recoveryCoordinator != nullptr && !m_recoveryDocumentId.isEmpty()) {
+        recoveryCoordinator->removeEntry(m_recoveryDocumentId);
+    }
+}
+
+void TEditor::removeBackupFile()
+{
+    clearRecoverySnapshot();
 }
 
 
@@ -1234,11 +1289,11 @@ void TEditor::applyPreferences(const EditorPreferences& requestedPreferences)
     if (minimap != nullptr) {
         minimap->setVisible(preferences.minimapVisible);
     }
-    if (autoSaveTimer != nullptr) {
-        autoSaveTimer->setInterval(preferences.autoSaveIntervalMilliseconds);
-        if (!preferences.autoSaveEnabled) {
-            autoSaveTimer->stop();
-        }
+    if (recoveryMaximumTimer != nullptr) {
+        recoveryMaximumTimer->setInterval(preferences.autoSaveIntervalMilliseconds);
+    }
+    if (!preferences.autoSaveEnabled) {
+        stopAutoSave();
     }
     hoverTimer.setInterval(preferences.hoverDelayMilliseconds);
     if (!preferences.hoverInformationEnabled) {

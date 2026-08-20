@@ -16,6 +16,7 @@ INCLUDEPATH += \
     ../../source/language/parser \
     ../../source/language/lexer \
     ../../source/settings \
+    ../../source/recovery \
     ../../source/texteditor/highlighter \
     ../../taif
 
@@ -30,6 +31,8 @@ SOURCES += \
     ../../source/session/SessionEditorDialog.cpp \
     ../../source/settings/EditorPreferences.cpp \
     ../../source/settings/TSettings.cpp \
+    ../../source/recovery/RecoveryStore.cpp \
+    ../../source/recovery/TRecoveryDialog.cpp \
     ../../source/texteditor/navigation/TBreadcrumbBar.cpp \
     ../../taif/ApplicationBootstrap.cpp
 
@@ -43,6 +46,8 @@ HEADERS += \
     ../../source/session/SessionEditorDialog.h \
     ../../source/settings/EditorPreferences.h \
     ../../source/settings/TSettings.h \
+    ../../source/recovery/RecoveryStore.h \
+    ../../source/recovery/TRecoveryDialog.h \
     ../../source/texteditor/navigation/BreadcrumbTypes.h \
     ../../source/texteditor/navigation/TBreadcrumbBar.h \
     ../../taif/ApplicationBootstrap.h
