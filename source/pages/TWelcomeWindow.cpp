@@ -1,4 +1,5 @@
 #include "TWelcomeWindow.h"
+#include "ApplicationBootstrap.h"
 
 #include "SessionEditorDialog.h"
 #include "Taif.h"
@@ -8,7 +9,6 @@
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -79,9 +79,9 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     auto* const subtitleLabel = new QLabel(QStringLiteral("طيف — محرر لغة ألف"), centralWidget);
 
     QFont titleFont = titleLabel->font();
-    const QStringList arabicFontFamilies = QFontDatabase::applicationFontFamilies(2);
-    if (!arabicFontFamilies.isEmpty()) {
-        titleFont.setFamily(arabicFontFamilies.constFirst());
+    const QString displayArabicFamily = ApplicationBootstrap::displayArabicFamily();
+    if (!displayArabicFamily.isEmpty()) {
+        titleFont.setFamily(displayArabicFamily);
     }
     titleFont.setPixelSize(18);
     titleFont.setBold(true);

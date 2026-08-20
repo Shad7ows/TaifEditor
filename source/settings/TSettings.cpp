@@ -1,4 +1,5 @@
 #include "TSettings.h"
+#include "ApplicationBootstrap.h"
 
 #include <QStyledItemDelegate>
 
@@ -266,11 +267,7 @@ void TSettings::createAppearancePage(QVBoxLayout* layout) {
     fontCombo->setMinimumWidth(150);
     fontCombo->setMaximumWidth(250);
 
-    QStringList fontFamilies{};
-    for (int i = 0; i < 5; i++) {
-        QStringList font = QFontDatabase::applicationFontFamilies(i);
-        fontFamilies.append(font.at(0));
-    }
+    const QStringList fontFamilies = ApplicationBootstrap::availableEditorFontFamilies();
 
     // Add fonts to combobox
     foreach (const QString &family, fontFamilies) {

@@ -33,6 +33,7 @@
 #include <QTextEdit>
 #include <QMimeData>
 #include <QSet>
+#include <QSaveFile>
 
 Taif::Taif(const QString& filePath, QWidget* const parent,
            const bool createInitialDocument)
@@ -42,11 +43,11 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
 
     setAttribute(Qt::WA_DeleteOnClose);
 
-    setting = new TSettings();
+    setting = new TSettings(this);
 
     setupUI();
-
     setupConnections();
+    connectSettingsSignals();
     setupStyle();
 
     installEventFilter(this);
@@ -269,7 +270,42 @@ void Taif::setupConnections() {
 
 }
 
+void Taif::connectSettingsSignals()
+{
+    if (setting == nullptr) {
+        return;
+    }
+
+    connect(setting, &TSettings::fontSizeChanged, this, [this](const int size) {
+        for (int index = 0; index < tabWidget->count(); ++index) {
+            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+                editor->updateFontSize(size);
+            }
+        }
+    });
+    connect(setting, &TSettings::fontTypeChanged, this, [this](const QString& font) {
+        for (int index = 0; index < tabWidget->count(); ++index) {
+            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+                editor->updateFontType(font);
+            }
+        }
+    });
+    connect(setting, &TSettings::highlighterThemeChanged, this, [this](const int themeIndex) {
+        const QVector<std::shared_ptr<SyntaxTheme>> availableThemes = setting->getAvailableThemes();
+        if (themeIndex < 0 || themeIndex >= availableThemes.size()) {
+            return;
+        }
+        const std::shared_ptr<SyntaxTheme>& theme = availableThemes.at(themeIndex);
+        for (int index = 0; index < tabWidget->count(); ++index) {
+            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+                editor->updateHighlighterTheme(theme);
+            }
+        }
+    });
+}
+
 void Taif::setupStyle() {
+
     QString styleSheet = R"(
         QMainWindow {
             background-color: #0f172a;
@@ -452,16 +488,22 @@ void Taif::setupStyle() {
     setStyleSheet(styleSheet);
 }
 
-void Taif::closeEvent(QCloseEvent *event) {
-    int saveResult = needSave();
-
-    if (saveResult == 1) {
-        saveFile();
-    } else if (saveResult == 0) {
-        event->ignore();
-        return;
+void Taif::closeEvent(QCloseEvent* const event)
+{
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+            if (!prepareEditorForClose(editor)) {
+                openWelcomeAfterClose = false;
+                event->ignore();
+                return;
+            }
+        }
     }
 
+    if (openWelcomeAfterClose) {
+        auto* const welcomeWindow = new WelcomeWindow();
+        welcomeWindow->show();
+    }
     event->accept();
 }
 
@@ -783,47 +825,55 @@ void Taif::toggleConsole()
 
 /* ----------------------------------- File Menu Button ----------------------------------- */
 
-int Taif::needSave() {
-    if (TEditor* editor = currentEditor()) {
-        if (editor->document()->isModified()) {
-            QMessageBox msgBox;
-            msgBox.setWindowTitle("طيف");
-            msgBox.setText("تم التعديل على الملف.\n"    \
-                           "هل تريد حفظ التغييرات؟");
-            QPushButton *saveButton = msgBox.addButton("حفظ", QMessageBox::AcceptRole);
-            QPushButton *discardButton = msgBox.addButton("تجاهل", QMessageBox::DestructiveRole);
-            QPushButton *cancelButton = msgBox.addButton("إلغاء", QMessageBox::RejectRole);
-            msgBox.setDefaultButton(cancelButton);
-
-            QFont msgFont = this->font();
-            msgFont.setPointSize(10);
-            saveButton->setFont(msgFont);
-            discardButton->setFont(msgFont);
-            cancelButton->setFont(msgFont);
-
-            msgBox.exec();
-
-            QAbstractButton *clickedButton = msgBox.clickedButton();
-            if (clickedButton == saveButton) {
-                return 1;
-            } else if (clickedButton == discardButton) {
-                return 2;
-            } else if (clickedButton == cancelButton) {
-                return 0;
-            }
-        }
+Taif::SaveDecision Taif::requestSaveDecision(TEditor* const editor) const
+{
+    if (editor == nullptr || !editor->document()->isModified()) {
+        return SaveDecision::Discard;
     }
 
-    return 2;
+    QMessageBox messageBox;
+    messageBox.setWindowTitle(QStringLiteral("طيف"));
+    messageBox.setText(QStringLiteral("تم التعديل على الملف.\nهل تريد حفظ التغييرات؟"));
+    auto* const saveButton = messageBox.addButton(QStringLiteral("حفظ"), QMessageBox::AcceptRole);
+    auto* const discardButton = messageBox.addButton(QStringLiteral("تجاهل"), QMessageBox::DestructiveRole);
+    auto* const cancelButton = messageBox.addButton(QStringLiteral("إلغاء"), QMessageBox::RejectRole);
+    messageBox.setDefaultButton(cancelButton);
+
+    QFont messageFont = font();
+    messageFont.setPointSize(10);
+    saveButton->setFont(messageFont);
+    discardButton->setFont(messageFont);
+    cancelButton->setFont(messageFont);
+    messageBox.exec();
+
+    if (messageBox.clickedButton() == saveButton) {
+        return SaveDecision::Save;
+    }
+    if (messageBox.clickedButton() == discardButton) {
+        return SaveDecision::Discard;
+    }
+    return SaveDecision::Cancel;
+}
+
+bool Taif::prepareEditorForClose(TEditor* const editor)
+{
+    switch (requestSaveDecision(editor)) {
+    case SaveDecision::Save:
+        return saveEditor(editor);
+    case SaveDecision::Discard:
+        return true;
+    case SaveDecision::Cancel:
+        return false;
+    }
+    return false;
 }
 
 void Taif::newFile() {
 
-    TEditor* editor = currentEditor();
-    if (editor) {
-        int isNeedSave = needSave();
-        if (!isNeedSave) return;
-        if (isNeedSave == 1) this->saveFile();
+    if (TEditor* const editor = currentEditor()) {
+        if (!prepareEditorForClose(editor)) {
+            return;
+        }
     }
 
     TEditor *newEditor = new TEditor(setting, this);
@@ -833,19 +883,18 @@ void Taif::newFile() {
     connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
     connectEditorDiagnostics(newEditor);
     connectEditorActionState(newEditor);
-    connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
+    connect(newEditor->document(), &QTextDocument::modificationChanged, this,
+            [this, newEditor](const bool modified) {
+                onEditorModificationChanged(newEditor, modified);
+            });
     updateWindowTitle();
 }
 
 void Taif::openFile(QString filePath)
 {
     if (TEditor* const current = currentEditor()) {
-        const int saveDecision = needSave();
-        if (saveDecision == 0) {
+        if (!prepareEditorForClose(current)) {
             return;
-        }
-        if (saveDecision == 1) {
-            saveFile();
         }
     }
 
@@ -929,8 +978,10 @@ bool Taif::openDocumentFile(const QString& requestedPath,
 
     connect(newEditor, &TEditor::openRequest, this,
             [this](const QString& path) { openFile(path); });
-    connect(newEditor->document(), &QTextDocument::modificationChanged,
-            this, &Taif::onModificationChanged);
+    connect(newEditor->document(), &QTextDocument::modificationChanged, this,
+            [this, newEditor](const bool modified) {
+                onEditorModificationChanged(newEditor, modified);
+            });
     connectEditorDiagnostics(newEditor);
     connectEditorActionState(newEditor);
 
@@ -1048,120 +1099,105 @@ void Taif::onFileTreeDoubleClicked(const QModelIndex &index)
     }
 }
 
-void Taif::saveFile() {
-    TEditor *editor = currentEditor();
-    if (!editor) return;
+void Taif::saveFile()
+{
+    [[maybe_unused]] const bool saved = saveEditor(currentEditor());
+}
 
-    QString filePath = editor->property("filePath").toString();
-    // --------------------------------------------------------
+void Taif::saveFileAs()
+{
+    [[maybe_unused]] const bool saved = saveEditorAs(currentEditor());
+}
 
-    QString content = editor->toPlainText();
+bool Taif::saveEditor(TEditor* const editor)
+{
+    if (editor == nullptr) {
+        return false;
+    }
 
+    const QString filePath = SessionStore::normalizePath(editor->property("filePath").toString());
+    return filePath.isEmpty() ? saveEditorAs(editor) : writeEditorContents(editor, filePath);
+}
+
+bool Taif::saveEditorAs(TEditor* const editor)
+{
+    if (editor == nullptr) {
+        return false;
+    }
+
+    const QString currentPath = editor->property("filePath").toString();
+    const QString currentName = currentPath.isEmpty()
+        ? QStringLiteral("ملف جديد.alif")
+        : QFileInfo(currentPath).fileName();
+    const QString filePath = QFileDialog::getSaveFileName(
+        this, QStringLiteral("حفظ الملف"), currentName,
+        QStringLiteral("ملف ألف (*.alif);;مكتبة ألف (*.aliflib);;كل الملفات (*)"));
     if (filePath.isEmpty()) {
-        saveFileAs();
+        return false;
+    }
+    return writeEditorContents(editor, filePath);
+}
+
+bool Taif::writeEditorContents(TEditor* const editor, const QString& requestedPath)
+{
+    if (editor == nullptr) {
+        return false;
+    }
+
+    const QString filePath = SessionStore::normalizePath(requestedPath);
+    if (filePath.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("خطأ"), QStringLiteral("مسار الحفظ غير صالح."));
+        return false;
+    }
+
+    QSaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, QStringLiteral("خطأ"), QStringLiteral("لا يمكن حفظ الملف."));
+        return false;
+    }
+
+    QTextStream output(&file);
+    output << editor->toPlainText();
+    output.flush();
+    if (output.status() != QTextStream::Ok || !file.commit()) {
+        QMessageBox::warning(this, QStringLiteral("خطأ"), QStringLiteral("تعذر إتمام حفظ الملف بأمان."));
+        return false;
+    }
+
+    finalizeSavedEditor(editor, filePath);
+    return true;
+}
+
+void Taif::finalizeSavedEditor(TEditor* const editor, const QString& filePath)
+{
+    if (editor == nullptr) {
         return;
-    } else {
-        QFile file(filePath);
-        if (file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-            QTextStream out(&file);
-            out << content;
-            file.close();
-            editor->document()->setModified(false);
+    }
 
-            int index = tabWidget->indexOf(editor);
-            if (index != -1) {
-                QFileInfo fileInfo(filePath);
-                tabWidget->setTabText(index, fileInfo.fileName());
-            }
-                        editor->removeBackupFile();
-            updateWindowTitle();
-            refreshBreadcrumbs();
-            return ;
-
-        } else {
-            QMessageBox::warning(this, "خطأ", "لا يمكن حفظ الملف");
-            return;
-        }
+    editor->setProperty("filePath", filePath);
+    editor->document()->setModified(false);
+    editor->removeBackupFile();
+    onEditorModificationChanged(editor, false);
+    if (editor == currentEditor()) {
+        refreshBreadcrumbs();
     }
 }
 
-void Taif::saveFileAs() {
-    TEditor *editor = currentEditor();
-    if (!editor) return ;
-
-    QString content = editor->toPlainText();
-    QString currentPath = editor->property("filePath").toString();
-    QString currentName = currentPath.isEmpty() ? "ملف جديد.alif" : QFileInfo(currentPath).fileName();
-    QString fileName = QFileDialog::getSaveFileName(this, "حفظ الملف", currentName, "ملف ألف (*.alif);;مكتبة ألف(*.aliflib);;All Files (*)");
-
-    if (!fileName.isEmpty()) {
-        QFile file(fileName);
-        if (file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-            QTextStream out(&file);
-            out << content;
-            file.close();
-
-            editor->setProperty("filePath", fileName);
-            // ---------------------------------------------------
-
-            editor->document()->setModified(false);
-
-            int index = tabWidget->indexOf(editor);
-            if (index != -1) {
-                QFileInfo fileInfo(fileName);
-                tabWidget->setTabText(index, fileInfo.fileName());
-            }
-
-                        updateWindowTitle();
-            refreshBreadcrumbs();
-            return ;
-        } else {
-            QMessageBox::warning(this, "خطأ", "لا يمكن حفظ الملف");
-            return ;
-
-        }
+void Taif::openSettings()
+{
+    if (setting == nullptr) {
+        return;
     }
-    return ;
-}
-
-void Taif::openSettings() {
-    if (setting and setting->isVisible()) return;
-
-    connect(setting, &TSettings::fontSizeChanged, this, [this](int size){
-        for (int i = 0; i < tabWidget->count(); ++i) {
-            qobject_cast<TEditor*>(tabWidget->widget(i))->updateFontSize(size);
-        }
-    });
-    connect(setting, &TSettings::fontTypeChanged, this, [this](QString font){
-        for (int i = 0; i < tabWidget->count(); ++i) {
-            qobject_cast<TEditor*>(tabWidget->widget(i))->updateFontType(font);
-        }
-    });
-    connect(setting, &TSettings::highlighterThemeChanged, this, [this](int themeIdx){
-        QVector<std::shared_ptr<SyntaxTheme>> availableThemes = setting->getAvailableThemes();
-        std::shared_ptr<SyntaxTheme> theme = availableThemes.at(themeIdx);
-        for (int i = 0; i < tabWidget->count(); ++i) {
-            qobject_cast<TEditor*>(tabWidget->widget(i))->updateHighlighterTheme(theme);
-        }
-    });
-
     setting->show();
+    setting->raise();
+    setting->activateWindow();
 }
 
 
-void Taif::exitApp() {
-    int isNeedSave = needSave();
-    if (!isNeedSave) {
-        return;
-    }
-    else if (isNeedSave == 1) {
-        this->saveFile();
-        return;
-    }
-
-    WelcomeWindow *welcome = new WelcomeWindow();
-    welcome->show();
-    this->close();
+void Taif::exitApp()
+{
+    openWelcomeAfterClose = true;
+    close();
 }
 
 void Taif::onCurrentTabChanged()
@@ -1173,10 +1209,15 @@ void Taif::onCurrentTabChanged()
 
     updateCursorPosition();
 
-    TEditor* editor = currentEditor();
-    if (editor) {
-        connect(editor, &QPlainTextEdit::cursorPositionChanged, this, &Taif::updateCursorPosition);
+        if (cursorPositionConnection) {
+        disconnect(cursorPositionConnection);
     }
+    TEditor* const editor = currentEditor();
+    if (editor != nullptr) {
+        cursorPositionConnection = connect(editor, &QPlainTextEdit::cursorPositionChanged,
+                                           this, &Taif::updateCursorPosition);
+    }
+
     refreshDiagnosticsPanel();
     updateEditActionState();
     bindBreadcrumbsToEditor(editor);
@@ -1504,34 +1545,19 @@ TEditor* Taif::currentEditor() {
     return qobject_cast<TEditor*>(tabWidget->currentWidget());
 }
 
-void Taif::closeTab(int index)
+void Taif::closeTab(const int index)
 {
-
     if (tabWidget->count() <= 1) {
         return;
     }
 
-    QWidget *tab = tabWidget->widget(index);
-
-    if (!tab) return;
-
-    TEditor* editor = qobject_cast<TEditor*>(tabWidget->widget(index));
-    if (!editor) return;
-
-    if (editor && editor->document()->isModified()) {
-        int saveResult = needSave();
-
-        if (!saveResult) {
-            return;
-        }
-        else if (saveResult == 1) {
-            this->saveFile();
-            return;
-        }
-
+    auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+    if (editor == nullptr || !prepareEditorForClose(editor)) {
+        return;
     }
-    tabWidget->removeTab(index);
 
+    tabWidget->removeTab(index);
+    editor->deleteLater();
 }
 
 /* ----------------------------------- Help Menu Button ----------------------------------- */
@@ -1603,20 +1629,24 @@ void Taif::updateWindowTitle() {
     setWindowModified(editor && editor->document()->isModified()); // تحديث علامة التعديل للنافذة
 }
 
-void Taif::onModificationChanged(bool modified) {
-    updateWindowTitle(); // استدعِ الدالة لتحديث علامة [*]
-    // قد تحتاج أيضًا لتحديث اسم التبويب نفسه لإضافة [*]
-    TEditor* editor = currentEditor(); // الحصول على المحرر المرتبط بالإشارة
-    if (editor) {
-        int index = tabWidget->indexOf(editor);
-        if (index != -1) {
-            QString currentText = tabWidget->tabText(index);
-            if (modified && !currentText.endsWith("[*]")) {
-                tabWidget->setTabText(index, currentText + "[*]");
-            } else if (!modified && currentText.endsWith("[*]")) {
-                tabWidget->setTabText(index, currentText.left(currentText.length() - 3));
-            }
+void Taif::onEditorModificationChanged(TEditor* const editor, const bool modified)
+{
+    if (editor == nullptr) {
+        return;
+    }
+
+    const int index = tabWidget->indexOf(editor);
+    if (index >= 0) {
+        QString tabText = tabWidget->tabText(index);
+        if (modified && !tabText.endsWith(QStringLiteral("[*]"))) {
+            tabWidget->setTabText(index, tabText + QStringLiteral("[*]"));
+        } else if (!modified && tabText.endsWith(QStringLiteral("[*]"))) {
+            tabWidget->setTabText(index, tabText.left(tabText.length() - 3));
         }
+    }
+
+    if (editor == currentEditor()) {
+        updateWindowTitle();
     }
 }
 

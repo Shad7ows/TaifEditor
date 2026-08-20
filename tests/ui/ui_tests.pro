@@ -4,6 +4,8 @@ TEMPLATE = app
 TARGET = TaifDockableToolsTests
 win32:QMAKE_CXXFLAGS += /utf-8
 
+RESOURCES += ../../taif/resources.qrc
+
 INCLUDEPATH += \
     ../../source/console \
     ../../source/menubar \
@@ -12,7 +14,8 @@ INCLUDEPATH += \
     ../../source/texteditor/navigation \
     ../../source/language/semantic \
     ../../source/language/parser \
-    ../../source/language/lexer
+    ../../source/language/lexer \
+    ../../taif
 
 SOURCES += \
     tst_DockableTools.cpp \
@@ -23,7 +26,8 @@ SOURCES += \
     ../../source/components/SearchReplaceEngine.cpp \
     ../../source/session/SessionStore.cpp \
     ../../source/session/SessionEditorDialog.cpp \
-    ../../source/texteditor/navigation/TBreadcrumbBar.cpp
+    ../../source/texteditor/navigation/TBreadcrumbBar.cpp \
+    ../../taif/ApplicationBootstrap.cpp
 
 HEADERS += \
     ../../source/console/TConsole.h \
@@ -34,4 +38,5 @@ HEADERS += \
     ../../source/session/SessionStore.h \
     ../../source/session/SessionEditorDialog.h \
     ../../source/texteditor/navigation/BreadcrumbTypes.h \
-    ../../source/texteditor/navigation/TBreadcrumbBar.h
+    ../../source/texteditor/navigation/TBreadcrumbBar.h \
+    ../../taif/ApplicationBootstrap.h

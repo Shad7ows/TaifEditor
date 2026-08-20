@@ -14,6 +14,7 @@
 #include <QtCore/QUuid>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolButton>
+#include <QtWidgets/QApplication>
 
 #include "DockableConsoleTool.h"
 #include "TConsole.h"
@@ -23,6 +24,7 @@
 #include "SessionEditorDialog.h"
 #include "SessionStore.h"
 #include "TBreadcrumbBar.h"
+#include "ApplicationBootstrap.h"
 
 #include <utility>
 
@@ -41,7 +43,33 @@ private slots:
     void breadcrumbBarUsesRtlAndRepresentsUntitledFile();
     void breadcrumbBarRendersOrderedFileAndSemanticSegments();
     void breadcrumbBarClearsSemanticSegmentsAndEmitsNavigationSignals();
+    void applicationBootstrapProvidesStableFontRolesAndLaunchValidation();
 };
+
+void DockableToolsTest::applicationBootstrapProvidesStableFontRolesAndLaunchValidation()
+{
+    auto* const application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application != nullptr);
+
+    ApplicationBootstrap::initialize(*application);
+    QCOMPARE(QCoreApplication::organizationName(), QStringLiteral("Alif"));
+    QCOMPARE(QCoreApplication::applicationName(), QStringLiteral("Taif"));
+    QCOMPARE(application->layoutDirection(), Qt::RightToLeft);
+    QVERIFY(!ApplicationBootstrap::uiArabicFamily().isEmpty());
+    QVERIFY(!ApplicationBootstrap::displayArabicFamily().isEmpty());
+    QVERIFY(!ApplicationBootstrap::codeMonospaceFamily().isEmpty());
+    QVERIFY(!ApplicationBootstrap::availableEditorFontFamilies().isEmpty());
+
+    const ApplicationLaunchRequest validRequest =
+        ApplicationBootstrap::parseLaunchRequest({QStringLiteral("Taif"), QStringLiteral("example.alif")});
+    QVERIFY(validRequest.isValid());
+    QCOMPARE(validRequest.filePath, QStringLiteral("example.alif"));
+
+    const ApplicationLaunchRequest invalidRequest = ApplicationBootstrap::parseLaunchRequest(
+        {QStringLiteral("Taif"), QStringLiteral("first.alif"), QStringLiteral("second.alif")});
+    QVERIFY(!invalidRequest.isValid());
+    QVERIFY(!invalidRequest.errorMessage.isEmpty());
+}
 
 void DockableToolsTest::bottomToolsArePersistentAndTabified()
 {
