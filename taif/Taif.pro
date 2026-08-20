@@ -64,6 +64,7 @@ SOURCES += \
     ../source/console/ProcessWorker.cpp \
     ../source/menubar/TMenu.cpp \
     ../source/pages/TWelcomeWindow.cpp \
+    ../source/settings/EditorPreferences.cpp \
     ../source/settings/TSettings.cpp
 
 HEADERS += \
@@ -102,6 +103,7 @@ HEADERS += \
     ../source/console/ProcessWorker.h \
     ../source/menubar/TMenu.h \
     ../source/pages/TWelcomeWindow.h \
+    ../source/settings/EditorPreferences.h \
     ../source/settings/TSettings.h
 
 # Add the application icon (Windows)

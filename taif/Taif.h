@@ -82,6 +82,7 @@ private:
 
         void setupConnections();
     void connectSettingsSignals();
+    void applyEditorPreferences(const EditorPreferences& preferences);
         void setupStyle();
 
     enum class SaveDecision : quint8 {

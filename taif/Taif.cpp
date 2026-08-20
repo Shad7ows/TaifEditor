@@ -276,32 +276,33 @@ void Taif::connectSettingsSignals()
         return;
     }
 
-    connect(setting, &TSettings::fontSizeChanged, this, [this](const int size) {
-        for (int index = 0; index < tabWidget->count(); ++index) {
-            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
-                editor->updateFontSize(size);
-            }
-        }
-    });
-    connect(setting, &TSettings::fontTypeChanged, this, [this](const QString& font) {
-        for (int index = 0; index < tabWidget->count(); ++index) {
-            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
-                editor->updateFontType(font);
-            }
-        }
-    });
-    connect(setting, &TSettings::highlighterThemeChanged, this, [this](const int themeIndex) {
-        const QVector<std::shared_ptr<SyntaxTheme>> availableThemes = setting->getAvailableThemes();
-        if (themeIndex < 0 || themeIndex >= availableThemes.size()) {
-            return;
-        }
-        const std::shared_ptr<SyntaxTheme>& theme = availableThemes.at(themeIndex);
-        for (int index = 0; index < tabWidget->count(); ++index) {
-            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+    const auto applyPreferences = [this](const EditorPreferences& preferences) {
+        applyEditorPreferences(preferences);
+    };
+    connect(setting, &TSettings::preferencesPreviewed, this, applyPreferences);
+    connect(setting, &TSettings::preferencesApplied, this, applyPreferences);
+}
+
+void Taif::applyEditorPreferences(const EditorPreferences& requestedPreferences)
+{
+    if (setting == nullptr) {
+        return;
+    }
+
+    const EditorPreferences preferences = PreferencesStore::normalize(requestedPreferences);
+    const QVector<std::shared_ptr<SyntaxTheme>> themes = setting->getAvailableThemes();
+    const std::shared_ptr<SyntaxTheme> theme = themes.isEmpty()
+        ? std::shared_ptr<SyntaxTheme>()
+        : themes.at(qBound(0, preferences.syntaxThemeIndex, themes.size() - 1));
+
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+            editor->applyPreferences(preferences);
+            if (theme) {
                 editor->updateHighlighterTheme(theme);
             }
         }
-    });
+    }
 }
 
 void Taif::setupStyle() {
@@ -995,10 +996,15 @@ bool Taif::openDocumentFile(const QString& requestedPath,
     if (updateRecentFiles) {
         QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
         QStringList recentFiles = settings.value(QStringLiteral("RecentFiles")).toStringList();
+        const int recentFilesLimit = PreferencesStore::load().recentFilesLimit;
         recentFiles.removeAll(filePath);
-        recentFiles.prepend(filePath);
-        while (recentFiles.size() > 10) {
-            recentFiles.removeLast();
+        if (recentFilesLimit > 0) {
+            recentFiles.prepend(filePath);
+            while (recentFiles.size() > recentFilesLimit) {
+                recentFiles.removeLast();
+            }
+        } else {
+            recentFiles.clear();
         }
         settings.setValue(QStringLiteral("RecentFiles"), recentFiles);
     }
@@ -1187,6 +1193,9 @@ void Taif::openSettings()
 {
     if (setting == nullptr) {
         return;
+    }
+    if (!setting->isVisible()) {
+        setting->beginEditing();
     }
     setting->show();
     setting->raise();

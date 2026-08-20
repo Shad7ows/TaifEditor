@@ -15,6 +15,8 @@ INCLUDEPATH += \
     ../../source/language/semantic \
     ../../source/language/parser \
     ../../source/language/lexer \
+    ../../source/settings \
+    ../../source/texteditor/highlighter \
     ../../taif
 
 SOURCES += \
@@ -26,6 +28,8 @@ SOURCES += \
     ../../source/components/SearchReplaceEngine.cpp \
     ../../source/session/SessionStore.cpp \
     ../../source/session/SessionEditorDialog.cpp \
+    ../../source/settings/EditorPreferences.cpp \
+    ../../source/settings/TSettings.cpp \
     ../../source/texteditor/navigation/TBreadcrumbBar.cpp \
     ../../taif/ApplicationBootstrap.cpp
 
@@ -37,6 +41,8 @@ HEADERS += \
     ../../source/components/SearchReplaceEngine.h \
     ../../source/session/SessionStore.h \
     ../../source/session/SessionEditorDialog.h \
+    ../../source/settings/EditorPreferences.h \
+    ../../source/settings/TSettings.h \
     ../../source/texteditor/navigation/BreadcrumbTypes.h \
     ../../source/texteditor/navigation/TBreadcrumbBar.h \
     ../../taif/ApplicationBootstrap.h

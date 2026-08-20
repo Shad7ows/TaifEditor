@@ -25,6 +25,8 @@
 #include "SessionStore.h"
 #include "TBreadcrumbBar.h"
 #include "ApplicationBootstrap.h"
+#include "EditorPreferences.h"
+#include "TSettings.h"
 
 #include <utility>
 
@@ -44,7 +46,61 @@ private slots:
     void breadcrumbBarRendersOrderedFileAndSemanticSegments();
     void breadcrumbBarClearsSemanticSegmentsAndEmitsNavigationSignals();
     void applicationBootstrapProvidesStableFontRolesAndLaunchValidation();
+    void editorPreferencesNormalizeInvalidValues();
+    void settingsWindowUsesRtlDraftApplyCancelWorkflow();
 };
+
+void DockableToolsTest::settingsWindowUsesRtlDraftApplyCancelWorkflow()
+{
+    auto* const application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application != nullptr);
+    ApplicationBootstrap::initialize(*application);
+
+    TSettings settings;
+    QCOMPARE(settings.layoutDirection(), Qt::RightToLeft);
+
+    auto* const fontSizeSpin = settings.findChild<QSpinBox*>(QStringLiteral("SettingsFontSizeSpin"));
+    auto* const applyButton = settings.findChild<QPushButton*>(QStringLiteral("SettingsApplyButton"));
+    auto* const cancelButton = settings.findChild<QPushButton*>(QStringLiteral("SettingsCancelButton"));
+    auto* const resetButton = settings.findChild<QPushButton*>(QStringLiteral("SettingsResetButton"));
+    QVERIFY(fontSizeSpin != nullptr);
+    QVERIFY(applyButton != nullptr);
+    QVERIFY(cancelButton != nullptr);
+    QVERIFY(resetButton != nullptr);
+    QCOMPARE(applyButton->objectName(), QStringLiteral("SettingsApplyButton"));
+
+    const int baselineSize = settings.currentPreferences().fontSize;
+    QSignalSpy previewSpy(&settings, &TSettings::preferencesPreviewed);
+    const int previewSize = baselineSize == 12 ? 13 : 12;
+    fontSizeSpin->setValue(previewSize);
+    QVERIFY(previewSpy.count() >= 1);
+    QCOMPARE(settings.currentPreferences().fontSize, previewSize);
+
+    cancelButton->click();
+    QCOMPARE(settings.currentPreferences().fontSize, baselineSize);
+
+    resetButton->click();
+    QVERIFY(settings.currentPreferences() == PreferencesStore::defaults());
+}
+
+void DockableToolsTest::editorPreferencesNormalizeInvalidValues()
+{
+    EditorPreferences preferences = PreferencesStore::defaults();
+    preferences.fontFamily = QStringLiteral("   ");
+    preferences.fontSize = 1;
+    preferences.syntaxThemeIndex = 99;
+    preferences.tabWidth = 99;
+    preferences.autoSaveIntervalMilliseconds = 1;
+    preferences.hoverDelayMilliseconds = 9000;
+
+    const EditorPreferences normalized = PreferencesStore::normalize(preferences);
+    QCOMPARE(normalized.fontFamily, PreferencesStore::defaults().fontFamily);
+    QCOMPARE(normalized.fontSize, 12);
+    QCOMPARE(normalized.syntaxThemeIndex, 3);
+    QCOMPARE(normalized.tabWidth, 8);
+    QCOMPARE(normalized.autoSaveIntervalMilliseconds, 5000);
+    QCOMPARE(normalized.hoverDelayMilliseconds, 1500);
+}
 
 void DockableToolsTest::applicationBootstrapProvidesStableFontRolesAndLaunchValidation()
 {

@@ -121,34 +121,23 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     updateLineNumberAreaWidth();
     highlightCurrentLine();
 
-    // set saved setting font size to the editor
-    QSettings settingsVal("Alif", "Taif");
-    int savedSize = settingsVal.value("editorFontSize").toInt();
-    if (savedSize > 10) {
-        updateFontSize(savedSize);
-    } else {
-        updateFontSize(18);
-    }
-    // set saved setting font type to the editor
-    QString savedFont = settingsVal.value("editorFontType").toString();
-    if (savedFont.isEmpty()) {
-        updateFontType("Noto Kufi Arabic");
-    } else {
-        updateFontType(savedFont);
-    }
-    // set saved setting theme to the editor
-    int savedTheme = settingsVal.value("editorCodeTheme").toInt();
-    savedTheme >= 0 ? savedTheme : savedTheme = 0;
-    std::shared_ptr<SyntaxTheme> theme = setting->getAvailableThemes().at(savedTheme);
-    updateHighlighterTheme(theme);
+        autoSaveTimer = new QTimer(this);
 
-    autoSaveTimer = new QTimer(this);
-    autoSaveTimer->setInterval(60000);
     connect(autoSaveTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
 
-    connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
+        connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
 
-        installEventFilter(this);
+    applyPreferences(PreferencesStore::load());
+    if (setting != nullptr) {
+        const QVector<std::shared_ptr<SyntaxTheme>> themes = setting->getAvailableThemes();
+        if (!themes.isEmpty()) {
+            updateHighlighterTheme(themes.at(qBound(0, preferences.syntaxThemeIndex,
+                                                    themes.size() - 1)));
+        }
+    }
+
+    installEventFilter(this);
+
     // Schedule analysis for an initially empty or just-loaded document.
     analysisController->documentChanged(0, 0, 0);
 }
@@ -184,8 +173,8 @@ TEditor::~TEditor() {
 
 void TEditor::UpdateTabStopDistance(QFont font) {
     QFontMetricsF metrics(font);
-    qreal spaceWidth = metrics.horizontalAdvance(' ');
-    setTabStopDistance(8 * spaceWidth);
+    const qreal spaceWidth = metrics.horizontalAdvance(' ');
+    setTabStopDistance(preferences.tabWidth * spaceWidth);
 }
 
 void TEditor::wheelEvent(QWheelEvent *event) {
@@ -419,7 +408,11 @@ int TEditor::lineNumberAreaWidth() const {
 }
 
 void TEditor::updateMinimapPosition() {
+    if (minimap == nullptr || !preferences.minimapVisible) {
+        return;
+    }
     int mapX = 0;
+
     // بسبب الاتجاه من اليمين لليسار قد يكون شريط التمرير على يمين الخريطة المصغرة
     if (verticalScrollBar()->isVisible() && verticalScrollBar()->x() < width() / 2) {
         mapX = verticalScrollBar()->width();
@@ -429,8 +422,8 @@ void TEditor::updateMinimapPosition() {
 }
 
 void TEditor::updateLineNumberAreaWidth() {
-    int numsWidth = lineNumberAreaWidth();
-    int mapWidth = 100;
+    const int numsWidth = preferences.lineNumbersVisible ? lineNumberAreaWidth() : 0;
+    const int mapWidth = preferences.minimapVisible ? 100 : 0;
 
     setViewportMargins(mapWidth, 0, numsWidth, 0);
 }
@@ -501,7 +494,8 @@ void TEditor::leaveEvent(QEvent* event) {
 }
 
 void TEditor::scheduleHover(const QPoint& viewportPosition) {
-    if (!analysisController || !hasFocus() || (c && c->popup()->isVisible())) {
+    if (!preferences.hoverInformationEnabled || !analysisController || !hasFocus()
+        || (c && c->popup()->isVisible())) {
         dismissHover();
         return;
     }
@@ -761,7 +755,8 @@ void TEditor::lineNumberAreaPaintEvent(QPaintEvent* event) {
 void TEditor::highlightCurrentLine() {
     QList<QTextEdit::ExtraSelection> extraSelections;
 
-    if (!isReadOnly()) {
+    if (preferences.highlightCurrentLine && !isReadOnly()) {
+
         QTextEdit::ExtraSelection selection;
 
         QColor lineColor = QColor(16, 23, 48, 225);
@@ -1172,7 +1167,8 @@ QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const {
 
 
 void TEditor::startAutoSave() {
-    if (!autoSaveTimer->isActive()) {
+    if (preferences.autoSaveEnabled && !autoSaveTimer->isActive()) {
+
         autoSaveTimer->start();
     }
 }
@@ -1182,7 +1178,11 @@ void TEditor::stopAutoSave() {
 }
 
 void TEditor::performAutoSave() {
+    if (!preferences.autoSaveEnabled) {
+        return;
+    }
     QString filePath = this->property("filePath").toString();
+
     if (filePath.isEmpty() || !this->document()->isModified()) return;
 
     QString backupPath = filePath + ".~";
@@ -1208,7 +1208,51 @@ void TEditor::removeBackupFile() {
 
 
 void TEditor::updateHighlighterTheme(std::shared_ptr<SyntaxTheme> theme) {
-    this->highlighter->setTheme(theme);
+    if (highlighter != nullptr) {
+        highlighter->setTheme(theme);
+    }
+}
+
+void TEditor::applyPreferences(const EditorPreferences& requestedPreferences)
+{
+    preferences = PreferencesStore::normalize(requestedPreferences);
+    updateFontType(preferences.fontFamily);
+    updateFontSize(preferences.fontSize);
+
+    setLineWrapMode(preferences.wordWrapEnabled ? QPlainTextEdit::WidgetWidth
+                                                : QPlainTextEdit::NoWrap);
+    setWordWrapMode(preferences.wordWrapEnabled
+                        ? QTextOption::WrapAtWordBoundaryOrAnywhere
+                        : QTextOption::NoWrap);
+    setHorizontalScrollBarPolicy(preferences.wordWrapEnabled
+                                     ? Qt::ScrollBarAlwaysOff
+                                     : Qt::ScrollBarAsNeeded);
+
+    if (lineNumberArea != nullptr) {
+        lineNumberArea->setVisible(preferences.lineNumbersVisible);
+    }
+    if (minimap != nullptr) {
+        minimap->setVisible(preferences.minimapVisible);
+    }
+    if (autoSaveTimer != nullptr) {
+        autoSaveTimer->setInterval(preferences.autoSaveIntervalMilliseconds);
+        if (!preferences.autoSaveEnabled) {
+            autoSaveTimer->stop();
+        }
+    }
+    hoverTimer.setInterval(preferences.hoverDelayMilliseconds);
+    if (!preferences.hoverInformationEnabled) {
+        dismissHover();
+    }
+    if (!preferences.automaticCompletionEnabled) {
+        dismissCompletionPopup();
+    }
+    if (highlighter != nullptr) {
+        highlighter->setDiagnosticsVisible(preferences.inlineDiagnosticsVisible);
+    }
+    updateLineNumberAreaWidth();
+    highlightCurrentLine();
+    viewport()->update();
 }
 
 
@@ -1303,8 +1347,10 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
         return;
     }
 
-    // Handle Navigation for Live Update (Arrow Keys) ---
-    if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right) {
+        // Handle Navigation for Live Update (Arrow Keys) ---
+    if (preferences.automaticCompletionEnabled
+        && (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right)) {
+
         // Let the editor move the cursor first
         QPlainTextEdit::keyPressEvent(e);
         // Then immediately trigger completion to update the list based on the new cursor position
@@ -1347,13 +1393,19 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
 
     QPlainTextEdit::keyPressEvent(e);
 
-    if (!isShortcut && e->text().isEmpty()) return;
+        if (!isShortcut && e->text().isEmpty()) return;
+    if (!preferences.automaticCompletionEnabled && !isShortcut) {
+        dismissCompletionPopup();
+        return;
+    }
 
     performCompletion();
 }
 
 void TEditor::performCompletion() {
+
     const QTextCursor editorCursor = textCursor();
+
     CompletionContext completionContext = completionContextAt(
         editorCursor.block().text(), editorCursor.positionInBlock(),
         editorCursor.block().position());

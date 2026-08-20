@@ -75,6 +75,15 @@ void TSyntaxHighlighter::setSemanticSnapshot(LanguageAnalysisSnapshotPtr snapsho
     rehighlight();
 }
 
+void TSyntaxHighlighter::setDiagnosticsVisible(const bool visible)
+{
+    if (m_diagnosticsVisible == visible) {
+        return;
+    }
+    m_diagnosticsVisible = visible;
+    rehighlight();
+}
+
 void TSyntaxHighlighter::clearSemanticSnapshot(const quint64 revision) {
     if (revision < m_semanticRevision) {
         return;
@@ -154,10 +163,11 @@ QTextCharFormat TSyntaxHighlighter::formatForPresentation(const PresentationSpan
 
     // All diagnostic overlays carry their original normalized severity. This
     // keeps the visual language stable across lexer, parser, and semantic stages.
-    if (span.severity == SemanticDiagnosticSeverity::Error) {
+    if (m_diagnosticsVisible && span.severity == SemanticDiagnosticSeverity::Error) {
         format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
         format.setUnderlineColor(QColor(240, 100, 100));
-    } else if (span.severity == SemanticDiagnosticSeverity::Warning) {
+    } else if (m_diagnosticsVisible
+               && span.severity == SemanticDiagnosticSeverity::Warning) {
         format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
         format.setUnderlineColor(QColor(255, 180, 70));
     }

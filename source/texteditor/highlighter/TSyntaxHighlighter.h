@@ -22,6 +22,7 @@ public:
     /** Tier 2: install current-revision data-only semantic overlays. */
     void setSemanticSnapshot(LanguageAnalysisSnapshotPtr snapshot);
     void clearSemanticSnapshot(quint64 revision);
+    void setDiagnosticsVisible(bool visible);
     [[nodiscard]] quint64 semanticRevision() const { return m_semanticRevision; }
     [[nodiscard]] quint64 fastPassRevision() const { return m_fastPassRevision; }
 
@@ -39,4 +40,5 @@ private:
     QHash<int, QVector<PresentationSpan>> m_semanticSpansByBlock;
     quint64 m_semanticRevision = 0;
     quint64 m_fastPassRevision = 0;
+    bool m_diagnosticsVisible = true;
 };
