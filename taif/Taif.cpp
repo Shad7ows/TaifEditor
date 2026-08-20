@@ -31,8 +31,11 @@
 #include <QInputDialog>
 #include <QTextEdit>
 #include <QMimeData>
+#include <QSet>
 
-Taif::Taif(const QString& filePath, QWidget *parent)
+Taif::Taif(const QString& filePath, QWidget* const parent,
+           const bool createInitialDocument)
+
     : QMainWindow(parent)
 {
 
@@ -41,16 +44,18 @@ Taif::Taif(const QString& filePath, QWidget *parent)
     setting = new TSettings();
 
     setupUI();
+
     setupConnections();
     setupStyle();
 
     installEventFilter(this);
 
-    if (!filePath.isEmpty()) {
+        if (!filePath.isEmpty()) {
         openFile(filePath);
-    } else {
+    } else if (createInitialDocument) {
         newFile();
     }
+
 }
 
 Taif::~Taif() {
@@ -68,6 +73,7 @@ Taif::~Taif() {
 }
 
 void Taif::setupUI() {
+
     tabWidget = new QTabWidget(this);
     tabWidget->setObjectName("MainTabs");
     tabWidget->setDocumentMode(true);
@@ -815,85 +821,168 @@ void Taif::newFile() {
     updateWindowTitle();
 }
 
-void Taif::openFile(QString filePath) {
-    if (TEditor* current = currentEditor()) {
-        int isNeedSave = needSave();
-        if (!isNeedSave) return;
-        if (isNeedSave == 1) this->saveFile();
+void Taif::openFile(QString filePath)
+{
+    if (TEditor* const current = currentEditor()) {
+        const int saveDecision = needSave();
+        if (saveDecision == 0) {
+            return;
+        }
+        if (saveDecision == 1) {
+            saveFile();
+        }
     }
 
     if (filePath.isEmpty()) {
-        filePath = QFileDialog::getOpenFileName(this, "فتح ملف", "", "ملف ألف (*.alif *.aliflib);;All Files (*)");
+        filePath = QFileDialog::getOpenFileName(
+            this, QStringLiteral("فتح ملف"), {},
+            QStringLiteral("ملف ألف (*.alif *.aliflib);;كل الملفات (*)"));
+    }
+    if (filePath.isEmpty()) {
+        return;
     }
 
-    if (!filePath.isEmpty()) {
-        for (int i = 0; i < tabWidget->count(); ++i) {
-            TEditor* editor = qobject_cast<TEditor*>(tabWidget->widget(i));
-            if (editor && editor->property("filePath").toString() == filePath) {
-                tabWidget->setCurrentIndex(i);
-                return;
-            }
+    QString failureMessage;
+    if (!openDocumentFile(filePath, true, true, true, &failureMessage)) {
+        QMessageBox::warning(this, QStringLiteral("خطأ"),
+                             failureMessage.isEmpty()
+                                 ? QStringLiteral("لا يمكن فتح الملف.")
+                                 : failureMessage);
+    }
+}
+
+bool Taif::openDocumentFile(const QString& requestedPath,
+                            const bool promptForBackupRecovery,
+                            const bool activateTab,
+                            const bool updateRecentFiles,
+                            QString* const failureMessage)
+{
+    const QString filePath = SessionStore::normalizePath(requestedPath);
+    if (filePath.isEmpty()) {
+        if (failureMessage != nullptr) {
+            *failureMessage = QStringLiteral("مسار الملف غير صالح.");
         }
-        // -----------------------------------------
+        return false;
+    }
 
-        QFile file(filePath);
-        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            QTextStream in(&file);
-            QString content = in.readAll();
-            file.close();
-
-            TEditor *newEditor = new TEditor(setting, this);
-            connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
-            newEditor->setPlainText(content);
-            newEditor->setProperty("filePath", filePath);
-
-
-            QString backupPath = filePath + ".~";
-            if (QFile::exists(backupPath)) {
-                QMessageBox::StandardButton reply;
-                reply = QMessageBox::warning(this, "استعادة ملف",
-                                             "يبدو أن البرنامج أُغلق بشكل غير متوقع.\n"
-                                             "يوجد نسخة محفوظة تلقائيًا أحدث من الملف الأصلي.\n\n"
-                                             "هل تريد استعادتها؟",
-                                             QMessageBox::Yes | QMessageBox::No);
-                if (reply == QMessageBox::Yes) {
-                    QFile backup(backupPath);
-                    if (backup.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                        QTextStream in(&backup);
-                        newEditor->setPlainText(in.readAll()); // استبدل النص بنسخة الطوارئ
-                        newEditor->document()->setModified(true); // نعتبره معدلاً ليقوم المستخدم بحفظه
-                        backup.close();
-                    }
-                } else {
-                    // إذا رفض المستخدم، احذف النسخة الاحتياطية القديمة
-                    QFile::remove(backupPath);
-                }
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor != nullptr
+            && SessionStore::normalizePath(editor->property("filePath").toString()) == filePath) {
+            if (activateTab) {
+                tabWidget->setCurrentIndex(index);
             }
+            return true;
+        }
+    }
 
-            connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
-            connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
-            connectEditorDiagnostics(newEditor);
-            connectEditorActionState(newEditor);
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (failureMessage != nullptr) {
+            *failureMessage = QStringLiteral("لا يمكن فتح الملف: %1").arg(filePath);
+        }
+        return false;
+    }
+    QTextStream stream(&file);
+    const QString content = stream.readAll();
+    file.close();
 
-            QFileInfo fileInfo(filePath);
-            tabWidget->addTab(newEditor, fileInfo.fileName());
-            tabWidget->setCurrentWidget(newEditor);
-            tabWidget->setTabToolTip(tabWidget->currentIndex(), filePath);
-            updateWindowTitle();
+    auto* const newEditor = new TEditor(setting, this);
+    newEditor->setPlainText(content);
+    newEditor->setProperty("filePath", filePath);
 
-
-            QSettings settings("Alif", "Taif");
-            QStringList recentFiles = settings.value("RecentFiles").toStringList();
-            recentFiles.removeAll(filePath);
-            recentFiles.prepend(filePath);
-            while (recentFiles.size() > 10) {
-                recentFiles.removeLast();
+    const QString backupPath = filePath + QStringLiteral(".~");
+    if (promptForBackupRecovery && QFile::exists(backupPath)) {
+        const QMessageBox::StandardButton reply = QMessageBox::warning(
+            this, QStringLiteral("استعادة ملف"),
+            QStringLiteral("يبدو أن البرنامج أُغلق بشكل غير متوقع.\n"
+                           "يوجد نسخة محفوظة تلقائيًا أحدث من الملف الأصلي.\n\n"
+                           "هل تريد استعادتها؟"),
+            QMessageBox::Yes | QMessageBox::No);
+        if (reply == QMessageBox::Yes) {
+            QFile backup(backupPath);
+            if (backup.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream backupStream(&backup);
+                newEditor->setPlainText(backupStream.readAll());
+                newEditor->document()->setModified(true);
             }
-            settings.setValue("RecentFiles", recentFiles);
         } else {
-            QMessageBox::warning(this, "خطأ", "لا يمكن فتح الملف");
+            QFile::remove(backupPath);
         }
     }
+
+    connect(newEditor, &TEditor::openRequest, this,
+            [this](const QString& path) { openFile(path); });
+    connect(newEditor->document(), &QTextDocument::modificationChanged,
+            this, &Taif::onModificationChanged);
+    connectEditorDiagnostics(newEditor);
+    connectEditorActionState(newEditor);
+
+    const QFileInfo fileInfo(filePath);
+    const int tabIndex = tabWidget->addTab(newEditor, fileInfo.fileName());
+    tabWidget->setTabToolTip(tabIndex, filePath);
+    if (activateTab) {
+        tabWidget->setCurrentIndex(tabIndex);
+    }
+
+    if (updateRecentFiles) {
+        QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
+        QStringList recentFiles = settings.value(QStringLiteral("RecentFiles")).toStringList();
+        recentFiles.removeAll(filePath);
+        recentFiles.prepend(filePath);
+        while (recentFiles.size() > 10) {
+            recentFiles.removeLast();
+        }
+        settings.setValue(QStringLiteral("RecentFiles"), recentFiles);
+    }
+
+    updateWindowTitle();
+    return true;
+}
+
+SessionRestoreResult Taif::restoreSession(const SavedSession& savedSession)
+{
+    const SavedSession session = SessionStore::normalize(savedSession);
+    SessionRestoreResult result;
+    QSet<QString> openedPathKeys;
+
+    for (const QString& path : session.filePaths) {
+        const QString normalizedPath = SessionStore::normalizePath(path);
+        const QString pathKey = normalizedPath.toCaseFolded();
+        if (normalizedPath.isEmpty() || openedPathKeys.contains(pathKey)) {
+            continue;
+        }
+        openedPathKeys.insert(pathKey);
+
+        QString failureMessage;
+        if (openDocumentFile(normalizedPath, false, false, true, &failureMessage)) {
+            result.openedFilePaths.append(normalizedPath);
+        } else {
+            result.unavailableFilePaths.append(normalizedPath);
+        }
+    }
+
+    const QString activePath = SessionStore::normalizePath(session.activeFilePath);
+    int activeIndex = -1;
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor != nullptr
+            && SessionStore::normalizePath(editor->property("filePath").toString()) == activePath) {
+            activeIndex = index;
+            break;
+        }
+    }
+    if (activeIndex >= 0) {
+        tabWidget->setCurrentIndex(activeIndex);
+    } else if (tabWidget->count() > 0) {
+        tabWidget->setCurrentIndex(0);
+    } else {
+        newFile();
+    }
+
+    refreshDiagnosticsPanel();
+    updateEditActionState();
+    return result;
 }
 
 void Taif::loadFolder(const QString &folderPath)

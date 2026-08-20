@@ -4,6 +4,7 @@
 #include "TMenu.h"
 #include "TSearchPanel.h"
 #include "ProcessWorker.h"
+#include "SessionStore.h"
 
 #include <QMainWindow>
 #include <QStatusBar>
@@ -18,14 +19,23 @@ class QDockWidget;
 class DiagnosticsPanel;
 class TConsole;
 
+struct SessionRestoreResult final {
+    QStringList openedFilePaths;
+    QStringList unavailableFilePaths;
+};
+
 class Taif : public QMainWindow
+
 {
     Q_OBJECT
 
 public:
-    Taif(const QString& filePath = "", QWidget* parent = nullptr);
+        Taif(const QString& filePath = "", QWidget* parent = nullptr,
+         bool createInitialDocument = true);
     ~Taif();
     void loadFolder(const QString &folderPath);
+    [[nodiscard]] SessionRestoreResult restoreSession(const SavedSession& session);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
     bool eventFilter(QObject *object, QEvent *event) override;
@@ -66,6 +76,7 @@ private slots:
 
 private:
     void setupUI();
+
     void setupConnections();
     void setupStyle();
     int needSave();
@@ -77,6 +88,9 @@ private:
     void clearSearchHighlights();
     void connectEditorActionState(TEditor* editor);
     void updateEditActionState();
+    bool openDocumentFile(const QString& filePath, bool promptForBackupRecovery,
+                          bool activateTab, bool updateRecentFiles,
+                          QString* failureMessage = nullptr);
     // void setupTabWidget(QTabWidget* tw);
     // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
     // QTabWidget* getTargetTabWidget();

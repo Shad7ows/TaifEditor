@@ -1,42 +1,54 @@
 #pragma once
 
+#include "SessionStore.h"
+
 #include <QMainWindow>
 
-// قم بتضمين forward declarations لتسريع عملية البناء
-class QPushButton;
-class QListWidget;
 class QCheckBox;
+class QLabel;
+class QListWidget;
 class QListWidgetItem;
+class QPushButton;
+class QStackedLayout;
 
-class WelcomeWindow : public QMainWindow
+class WelcomeWindow final : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    WelcomeWindow(QWidget *parent = nullptr);
-    ~WelcomeWindow();
+    explicit WelcomeWindow(QWidget* parent = nullptr,
+                           SessionStore::SettingsScope sessionScope = {});
+    ~WelcomeWindow() override;
+
 protected:
-    void closeEvent(QCloseEvent *event) override;
-
-private:
-    QMenu *fileMenu;
-    QMenu *editMenu;
-    QPushButton *newFileButton;
-    QPushButton *openFileButton;
-    QPushButton *openFolderButton;
-    QListWidget *recentFilesList;
-
-    QPushButton *newSessionButton;
-    QPushButton *manageSessionsButton;
-    QListWidget *savedSessionsList;
-
-    QCheckBox *showOnStartupCheck;
-
-    void setupStyle();
+    void closeEvent(QCloseEvent* event) override;
 
 private slots:
     void handleNewFileRequest();
     void handleOpenFileRequest();
     void handleOpenFolderRequest();
-    void onRecentFileClicked(QListWidgetItem *);
+    void onRecentFileClicked(QListWidgetItem* item);
+    void createSession();
+    void manageSessions();
+    void openSelectedSession(QListWidgetItem* item);
+
+private:
+    void setupStyle();
+    void refreshSessions();
+    bool editSession(SavedSession session, bool isNew);
+    void openSession(const SavedSession& session);
+
+    QPushButton* newFileButton = nullptr;
+    QPushButton* openFileButton = nullptr;
+    QPushButton* openFolderButton = nullptr;
+    QListWidget* recentFilesList = nullptr;
+
+    QPushButton* newSessionButton = nullptr;
+    QPushButton* manageSessionsButton = nullptr;
+    QListWidget* savedSessionsList = nullptr;
+    QLabel* noSessionsLabel = nullptr;
+    QStackedLayout* sessionsContentLayout = nullptr;
+
+    QCheckBox* showOnStartupCheck = nullptr;
+    SessionStore sessionStore;
 };

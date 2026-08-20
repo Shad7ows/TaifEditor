@@ -23,6 +23,7 @@ INCLUDEPATH += \
     ../source/language/presentation \
     ../source/texteditor/analysis \
     ../source/components \
+    ../source/session \
     ../source/console \
     ../source/menubar \
     ../source/pages \
@@ -52,6 +53,8 @@ SOURCES += \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
     ../source/components/SearchReplaceEngine.cpp \
+    ../source/session/SessionStore.cpp \
+    ../source/session/SessionEditorDialog.cpp \
     ../source/console/TConsole.cpp \
     ../source/console/DockableConsoleTool.cpp \
     ../source/console/ProcessWorker.cpp \
@@ -85,6 +88,8 @@ HEADERS += \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
     ../source/components/SearchReplaceEngine.h \
+    ../source/session/SessionStore.h \
+    ../source/session/SessionEditorDialog.h \
     ../source/console/TConsole.h \
     ../source/console/DockableConsoleTool.h \
     ../source/console/ProcessWorker.h \

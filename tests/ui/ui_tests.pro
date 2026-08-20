@@ -7,7 +7,8 @@ win32:QMAKE_CXXFLAGS += /utf-8
 INCLUDEPATH += \
     ../../source/console \
     ../../source/menubar \
-    ../../source/components
+    ../../source/components \
+    ../../source/session
 
 SOURCES += \
     tst_DockableTools.cpp \
@@ -15,11 +16,15 @@ SOURCES += \
     ../../source/console/DockableConsoleTool.cpp \
     ../../source/menubar/TMenu.cpp \
     ../../source/components/TSearchPanel.cpp \
-    ../../source/components/SearchReplaceEngine.cpp
+    ../../source/components/SearchReplaceEngine.cpp \
+    ../../source/session/SessionStore.cpp \
+    ../../source/session/SessionEditorDialog.cpp
 
 HEADERS += \
     ../../source/console/TConsole.h \
     ../../source/console/DockableConsoleTool.h \
     ../../source/menubar/TMenu.h \
     ../../source/components/TSearchPanel.h \
-    ../../source/components/SearchReplaceEngine.h
+    ../../source/components/SearchReplaceEngine.h \
+    ../../source/session/SessionStore.h \
+    ../../source/session/SessionEditorDialog.h

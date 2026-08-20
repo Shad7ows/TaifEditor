@@ -2,10 +2,15 @@
 #include <QtTest/QSignalSpy>
 #include <QtWidgets/QDockWidget>
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QListWidget>
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPlainTextEdit>
 #include <QtGui/QTextDocument>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QSettings>
+#include <QtCore/QUuid>
 #include <QtWidgets/QPushButton>
 
 #include "DockableConsoleTool.h"
@@ -13,6 +18,10 @@
 #include "TMenu.h"
 #include "TSearchPanel.h"
 #include "SearchReplaceEngine.h"
+#include "SessionEditorDialog.h"
+#include "SessionStore.h"
+
+#include <utility>
 
 class DockableToolsTest final : public QObject {
     Q_OBJECT
@@ -24,6 +33,8 @@ private slots:
     void editMenuExposesOrderedCommandActions();
     void searchPanelProvidesReplaceSurface();
     void searchReplaceEnginePreservesMatchAndUndoSemantics();
+    void sessionStorePersistsNormalizedSessions();
+    void sessionEditorPreservesOrderedFilesInRtl();
 };
 
 void DockableToolsTest::bottomToolsArePersistentAndTabified()
@@ -343,6 +354,82 @@ void DockableToolsTest::searchReplaceEnginePreservesMatchAndUndoSemantics()
         QStringLiteral("["), QStringLiteral("بديل"), false, false, true};
     QVERIFY(!SearchReplaceEngine::isValid(invalidRegexQuery));
     QVERIFY(SearchReplaceEngine::collectMatches(regexText, invalidRegexQuery).isEmpty());
+}
+
+void DockableToolsTest::sessionStorePersistsNormalizedSessions()
+{
+    const QString settingsFile = QDir(QDir::tempPath()).filePath(
+        QStringLiteral("taif-session-%1.ini")
+            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    const SessionStore::SettingsScope scope{
+        QStringLiteral("TaifEditorSessionStoreTests"),
+        QStringLiteral("SessionScope"), settingsFile};
+    QSettings settings(settingsFile, QSettings::IniFormat);
+    settings.clear();
+
+    SessionStore store(scope);
+    SavedSession session;
+    session.displayName = QStringLiteral("  مشروع السيارة  ");
+    session.filePaths = {
+        QDir::tempPath() + QStringLiteral("/taif-session-one.alif"),
+        QDir::tempPath() + QStringLiteral("/taif-session-one.alif"),
+        QDir::tempPath() + QStringLiteral("/taif-session-two.alif")};
+    session.activeFilePath = session.filePaths.first();
+
+    QString errorMessage;
+    QVERIFY(store.create(session, &errorMessage));
+    QVERIFY(errorMessage.isEmpty());
+
+    const QVector<SavedSession> sessions = store.loadAll();
+    QCOMPARE(sessions.size(), 1);
+    QCOMPARE(sessions.first().displayName, QStringLiteral("مشروع السيارة"));
+    QCOMPARE(sessions.first().filePaths.size(), 2);
+    QVERIFY(!sessions.first().id.isEmpty());
+    QCOMPARE(sessions.first().activeFilePath, SessionStore::normalizePath(session.activeFilePath));
+
+    QVERIFY(!store.create(session, &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+
+    SavedSession updated = sessions.first();
+    updated.displayName = QStringLiteral("مشروع محدث");
+    std::swap(updated.filePaths[0], updated.filePaths[1]);
+    QVERIFY(store.update(updated, &errorMessage));
+    const QVector<SavedSession> updatedSessions = store.loadAll();
+    QCOMPARE(updatedSessions.first().displayName, QStringLiteral("مشروع محدث"));
+    QCOMPARE(updatedSessions.first().filePaths, updated.filePaths);
+
+    QVERIFY(store.remove(updated.id, &errorMessage));
+    QVERIFY(store.loadAll().isEmpty());
+    QFile::remove(settingsFile);
+}
+
+void DockableToolsTest::sessionEditorPreservesOrderedFilesInRtl()
+{
+    SessionEditorDialog dialog;
+    SavedSession session;
+    session.displayName = QStringLiteral("جلسة اختبار");
+    session.filePaths = {
+        QDir::tempPath() + QStringLiteral("/first.alif"),
+        QDir::tempPath() + QStringLiteral("/second.alif")};
+    dialog.setSession(session);
+    dialog.show();
+    QTest::qWait(10);
+
+    QCOMPARE(dialog.layoutDirection(), Qt::RightToLeft);
+    auto* const nameInput = dialog.findChild<QLineEdit*>(QStringLiteral("SessionNameInput"));
+    auto* const filesList = dialog.findChild<QListWidget*>(QStringLiteral("SessionFilesList"));
+    auto* const moveUpButton = dialog.findChild<QPushButton*>(QStringLiteral("MoveSessionFileUpButton"));
+    QVERIFY(nameInput != nullptr);
+    QVERIFY(filesList != nullptr);
+    QVERIFY(moveUpButton != nullptr);
+    QCOMPARE(nameInput->text(), QStringLiteral("جلسة اختبار"));
+    QCOMPARE(filesList->count(), 2);
+
+    filesList->setCurrentRow(1);
+    moveUpButton->click();
+    const SavedSession reordered = dialog.session();
+    QCOMPARE(reordered.filePaths.size(), 2);
+    QCOMPARE(reordered.filePaths.first(), SessionStore::normalizePath(session.filePaths.at(1)));
 }
 
 QTEST_MAIN(DockableToolsTest)
