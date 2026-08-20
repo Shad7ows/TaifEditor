@@ -5,6 +5,7 @@
 #include "ProcessWorker.h"
 
 #include "TSearchPanel.h"
+#include "SearchReplaceEngine.h"
 #include "DiagnosticsPanel.h"
 
 #include <QThread>
@@ -18,6 +19,8 @@
 #include <QCoreApplication>
 #include <QTextStream>
 #include <QApplication>
+#include <QClipboard>
+
 #include <QToolBar>
 #include <QHeaderView>
 #include <QSettings>
@@ -26,6 +29,8 @@
 #include <QKeyEvent>
 #include <QTimer>
 #include <QInputDialog>
+#include <QTextEdit>
+#include <QMimeData>
 
 Taif::Taif(const QString& filePath, QWidget *parent)
     : QMainWindow(parent)
@@ -114,8 +119,7 @@ void Taif::setupUI() {
     fileTreeView->setVisible(false);
 
     editorSplitter->addWidget(tabWidget);
-    editorSplitter->addWidget(searchBar);
-    editorSplitter->setSizes({1000, 45});
+    editorSplitter->setSizes({1000});
 
     mainSplitter->addWidget(fileTreeView);
     mainSplitter->addWidget(editorSplitter);
@@ -182,8 +186,30 @@ void Taif::setupConnections() {
     connect(menuBar, &TMenuBar::saveRequested, this, &Taif::saveFile);
     connect(menuBar, &TMenuBar::saveAsRequested, this, &Taif::saveFileAs);
     connect(menuBar, &TMenuBar::settingsRequest, this, &Taif::openSettings);
-    connect(menuBar, &TMenuBar::exitRequested, this, &Taif::exitApp);
+        connect(menuBar, &TMenuBar::exitRequested, this, &Taif::exitApp);
+    connect(menuBar, &TMenuBar::undoRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->undo(); });
+    connect(menuBar, &TMenuBar::redoRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->redo(); });
+    connect(menuBar, &TMenuBar::cutRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->cut(); });
+    connect(menuBar, &TMenuBar::copyRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->copy(); });
+    connect(menuBar, &TMenuBar::pasteRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->paste(); });
+    connect(menuBar, &TMenuBar::findRequested, this, &Taif::showFindBar);
+    connect(menuBar, &TMenuBar::replaceRequested, this, &Taif::showReplaceBar);
+    connect(menuBar, &TMenuBar::goToLineRequested, this, &Taif::goToLine);
+    connect(menuBar, &TMenuBar::toggleCommentRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->toggleComment(); });
+    connect(menuBar, &TMenuBar::duplicateLineRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->duplicateLine(); });
+    connect(menuBar, &TMenuBar::moveLineUpRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->moveLineUp(); });
+    connect(menuBar, &TMenuBar::moveLineDownRequested, this,
+            [this]() { if (TEditor* editor = currentEditor()) editor->moveLineDown(); });
     connect(menuBar, &TMenuBar::runRequested, this, &Taif::runAlif);
+
     connect(menuBar, &TMenuBar::aboutRequested, this, &Taif::aboutTaif);
     connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
         connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
@@ -204,6 +230,8 @@ void Taif::setupConnections() {
     connect(terminalDock, &QDockWidget::visibilityChanged,
             this, scheduleBottomToolActionStateSync);
     syncBottomToolActionState();
+    connect(QApplication::clipboard(), &QClipboard::dataChanged,
+            this, &Taif::updateEditActionState);
 
     connect(tabWidget, &QTabWidget::currentChanged, this, &Taif::updateWindowTitle);
 
@@ -211,16 +239,12 @@ void Taif::setupConnections() {
 
     connect(searchBar, &SearchPanel::findNext, this, &Taif::findNextText);
     connect(searchBar, &SearchPanel::findText, this, &Taif::findText);
-    connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
+        connect(searchBar, &SearchPanel::findPrevious, this, &Taif::findPrevText);
+    connect(searchBar, &SearchPanel::replaceOne, this, &Taif::replaceOne);
+    connect(searchBar, &SearchPanel::replaceAll, this, &Taif::replaceAll);
     connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
 
-    new QShortcut(QKeySequence::Find, this, SLOT(showFindBar()));
-    new QShortcut(QKeySequence::Save, this, SLOT(saveFile()));
-    new QShortcut(QKeySequence("Ctrl+G"), this, SLOT(goToLine()));
-    new QShortcut(QKeySequence("Ctrl+/"), this, [this](){ if (auto e = currentEditor()) e->toggleComment();});
-    new QShortcut(QKeySequence("Ctrl+D"), this, [this](){ if (auto e = currentEditor()) e->duplicateLine();});
-    new QShortcut(QKeySequence("Alt+Up"), this, [this](){ if (auto e = currentEditor()) e->moveLineUp(); });
-    new QShortcut(QKeySequence("Alt+Down"), this, [this](){ if (auto e = currentEditor()) e->moveLineDown(); });
+
 }
 
 void Taif::setupStyle() {
@@ -461,42 +485,237 @@ void Taif::goToLine()
     }
 }
 
-void Taif::showFindBar() {
-    searchBar->show();
-    searchBar->setFocusToInput();
+namespace {
+
+SearchReplaceEngine::Query searchQuery(const SearchPanel* const panel)
+{
+    return {
+        panel->searchText(),
+        panel->replaceText(),
+        panel->isCaseSensitive(),
+        panel->isWholeWord(),
+        panel->isRegex()
+    };
 }
 
-void Taif::hideFindBar() {
+void applySearchHighlights(TEditor* const editor,
+                           const QList<QPair<int, int>>& matches,
+                           const int currentIndex)
+{
+    if (editor == nullptr) {
+        return;
+    }
+
+    QList<QTextEdit::ExtraSelection> selections;
+    const QColor matchColor(245, 158, 11, 70);
+    const QColor currentMatchColor(245, 158, 11, 160);
+    for (int index = 0; index < matches.size(); ++index) {
+        QTextEdit::ExtraSelection selection;
+        QTextCursor cursor(editor->document());
+        cursor.setPosition(matches.at(index).first);
+        cursor.setPosition(matches.at(index).first + matches.at(index).second,
+                           QTextCursor::KeepAnchor);
+        selection.cursor = cursor;
+        selection.format.setBackground(index == currentIndex ? currentMatchColor : matchColor);
+        selections.append(selection);
+    }
+    editor->setExtraSelections(selections);
+}
+
+} // namespace
+
+void Taif::showFindBar()
+{
+    if (currentEditor() == nullptr) {
+        return;
+    }
+    searchBar->showReplaceRow(false);
+    searchBar->showIn(currentEditor());
+}
+
+void Taif::showReplaceBar()
+{
+    if (currentEditor() == nullptr) {
+        return;
+    }
+    searchBar->showReplaceRow(true);
+    searchBar->showIn(currentEditor());
+}
+
+void Taif::clearSearchHighlights()
+{
+    if (TEditor* const editor = currentEditor()) {
+        editor->setExtraSelections({});
+    }
+}
+
+void Taif::hideFindBar()
+{
     searchBar->hide();
-    if (TEditor* editor = currentEditor()) {
-        editor->setFocus();
+    clearSearchHighlights();
+    if (TEditor* const editor = currentEditor()) {
+        editor->setFocus(Qt::OtherFocusReason);
     }
 }
 
-
-void Taif::performSearch(bool forward, bool next) {
-    TEditor* editor = currentEditor();
-    QString text = searchBar->getText();
-    if (!editor or text.isEmpty()) return;
-
-    QTextDocument::FindFlags flags{};
-    if (searchBar->isCaseSensitive()) flags |= QTextDocument::FindCaseSensitively;
-    if (!forward) flags |= QTextDocument::FindBackward;
-
-    if (!next) editor->moveCursor(forward ? QTextCursor::Start : QTextCursor::End);
-
-    bool found = editor->find(text, flags);
-    if (!found and next) {
-        editor->moveCursor(forward ? QTextCursor::Start : QTextCursor::End);
-        found = editor->find(text, flags);
+void Taif::performSearch(const bool forward, const bool next)
+{
+    TEditor* const editor = currentEditor();
+    const QString pattern = searchBar->searchText();
+    if (editor == nullptr || pattern.isEmpty()) {
+        clearSearchHighlights();
+        searchBar->setMatchInfo(0, 0);
+        searchBar->setNoMatchesFound(false);
+        return;
     }
 
-    if (!found) QApplication::beep();
+    const SearchReplaceEngine::Query query = searchQuery(searchBar);
+    if (!SearchReplaceEngine::isValid(query)) {
+        clearSearchHighlights();
+        searchBar->setMatchInfo(0, 0);
+        searchBar->setNoMatchesFound(true);
+        return;
+    }
+
+    const QList<QPair<int, int>> matches = SearchReplaceEngine::collectMatches(
+        editor->toPlainText(), query);
+    if (matches.isEmpty()) {
+        clearSearchHighlights();
+        searchBar->setMatchInfo(0, 0);
+        searchBar->setNoMatchesFound(true);
+        return;
+    }
+
+    const QTextCursor cursor = editor->textCursor();
+    const int selectionStart = cursor.selectionStart();
+    const int selectionEnd = cursor.selectionEnd();
+    int currentIndex = 0;
+
+    if (!next) {
+        bool selectedMatchFound = false;
+        for (int index = 0; index < matches.size(); ++index) {
+            if (matches.at(index).first == selectionStart
+                && matches.at(index).first + matches.at(index).second == selectionEnd) {
+                currentIndex = index;
+                selectedMatchFound = true;
+                break;
+            }
+        }
+        if (!selectedMatchFound) {
+            for (int index = 0; index < matches.size(); ++index) {
+                if (matches.at(index).first >= selectionStart) {
+                    currentIndex = index;
+                    break;
+                }
+                currentIndex = index;
+            }
+        }
+    } else if (forward) {
+        bool foundNext = false;
+        for (int index = 0; index < matches.size(); ++index) {
+            if (matches.at(index).first >= selectionEnd) {
+                currentIndex = index;
+                foundNext = true;
+                break;
+            }
+        }
+        if (!foundNext) {
+            currentIndex = 0;
+        }
+    } else {
+        currentIndex = matches.size() - 1;
+        for (int index = matches.size() - 1; index >= 0; --index) {
+            if (matches.at(index).first < selectionStart) {
+                currentIndex = index;
+                break;
+            }
+        }
+    }
+
+    applySearchHighlights(editor, matches, currentIndex);
+    QTextCursor matchCursor(editor->document());
+    matchCursor.setPosition(matches.at(currentIndex).first);
+    matchCursor.setPosition(matches.at(currentIndex).first + matches.at(currentIndex).second,
+                            QTextCursor::KeepAnchor);
+    editor->setTextCursor(matchCursor);
+    editor->ensureCursorVisible();
+    searchBar->setMatchInfo(currentIndex + 1, matches.size());
+    searchBar->setNoMatchesFound(false);
 }
 
 void Taif::findText() { performSearch(true, false); }
 void Taif::findNextText() { performSearch(true, true); }
 void Taif::findPrevText() { performSearch(false, true); }
+
+void Taif::replaceOne()
+{
+    TEditor* const editor = currentEditor();
+    const QString pattern = searchBar->searchText();
+    if (editor == nullptr || pattern.isEmpty() || editor->isReadOnly()) {
+        return;
+    }
+
+    const SearchReplaceEngine::Query query = searchQuery(searchBar);
+    if (!SearchReplaceEngine::isValid(query)) {
+        searchBar->setNoMatchesFound(true);
+        return;
+    }
+
+    const QString text = editor->toPlainText();
+    const QList<QPair<int, int>> matches = SearchReplaceEngine::collectMatches(text, query);
+    if (matches.isEmpty()) {
+        searchBar->setNoMatchesFound(true);
+        return;
+    }
+
+    const int selectionStart = editor->textCursor().selectionStart();
+    int targetIndex = 0;
+    for (int index = 0; index < matches.size(); ++index) {
+        const int matchStart = matches.at(index).first;
+        const int matchEnd = matchStart + matches.at(index).second;
+        if (matchStart <= selectionStart && selectionStart < matchEnd) {
+            targetIndex = index;
+            break;
+        }
+    }
+
+    QTextCursor editCursor(editor->document());
+    editCursor.setPosition(matches.at(targetIndex).first);
+    editCursor.setPosition(matches.at(targetIndex).first + matches.at(targetIndex).second,
+                           QTextCursor::KeepAnchor);
+    editCursor.beginEditBlock();
+    editCursor.insertText(SearchReplaceEngine::replacementForMatch(
+        text.mid(matches.at(targetIndex).first, matches.at(targetIndex).second), query));
+    editCursor.endEditBlock();
+    editor->setTextCursor(editCursor);
+    performSearch(true, true);
+}
+
+void Taif::replaceAll()
+{
+    TEditor* const editor = currentEditor();
+    const QString pattern = searchBar->searchText();
+    if (editor == nullptr || pattern.isEmpty() || editor->isReadOnly()) {
+        return;
+    }
+
+    const SearchReplaceEngine::Query query = searchQuery(searchBar);
+    if (!SearchReplaceEngine::isValid(query)) {
+        searchBar->setNoMatchesFound(true);
+        return;
+    }
+
+    const QString originalText = editor->toPlainText();
+    const QList<QPair<int, int>> matches = SearchReplaceEngine::collectMatches(originalText, query);
+    if (matches.isEmpty()) {
+        searchBar->setNoMatchesFound(true);
+        return;
+    }
+
+    SearchReplaceEngine::replaceAll(editor->document(), originalText, matches, query);
+
+    performSearch(true, false);
+}
 
 
 void Taif::syncBottomToolActionState()
@@ -591,6 +810,7 @@ void Taif::newFile() {
 
     connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
     connectEditorDiagnostics(newEditor);
+    connectEditorActionState(newEditor);
     connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
     updateWindowTitle();
 }
@@ -653,6 +873,7 @@ void Taif::openFile(QString filePath) {
             connect(newEditor->document(), &QTextDocument::modificationChanged, this, &Taif::onModificationChanged);
             connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
             connectEditorDiagnostics(newEditor);
+            connectEditorActionState(newEditor);
 
             QFileInfo fileInfo(filePath);
             tabWidget->addTab(newEditor, fileInfo.fileName());
@@ -833,7 +1054,11 @@ void Taif::exitApp() {
 
 void Taif::onCurrentTabChanged()
 {
+    if (searchBar != nullptr && searchBar->isVisible()) {
+        searchBar->hide();
+    }
     updateWindowTitle();
+
     updateCursorPosition();
 
     TEditor* editor = currentEditor();
@@ -841,6 +1066,52 @@ void Taif::onCurrentTabChanged()
         connect(editor, &QPlainTextEdit::cursorPositionChanged, this, &Taif::updateCursorPosition);
     }
     refreshDiagnosticsPanel();
+    updateEditActionState();
+}
+
+void Taif::connectEditorActionState(TEditor* const editor)
+{
+    if (editor == nullptr) {
+        return;
+    }
+
+    connect(editor, &QPlainTextEdit::copyAvailable, this,
+            [this](const bool) { updateEditActionState(); });
+    connect(editor, &QPlainTextEdit::cursorPositionChanged, this,
+            [this]() { updateEditActionState(); });
+    connect(editor, &QPlainTextEdit::undoAvailable, this,
+            [this](const bool) { updateEditActionState(); });
+    connect(editor, &QPlainTextEdit::redoAvailable, this,
+            [this](const bool) { updateEditActionState(); });
+    connect(editor, &QPlainTextEdit::textChanged, this,
+            [this]() { updateEditActionState(); });
+}
+
+void Taif::updateEditActionState()
+{
+    if (menuBar == nullptr) {
+        return;
+    }
+
+    TEditor* const editor = currentEditor();
+    const bool hasEditor = editor != nullptr;
+    const bool editable = hasEditor && !editor->isReadOnly();
+    const bool hasSelection = hasEditor && editor->textCursor().hasSelection();
+    const QMimeData* const mimeData = QApplication::clipboard()->mimeData();
+    const bool canPasteText = editable && mimeData != nullptr && mimeData->hasText();
+
+    menuBar->undoAction->setEnabled(editable && editor->document()->isUndoAvailable());
+    menuBar->redoAction->setEnabled(editable && editor->document()->isRedoAvailable());
+    menuBar->cutAction->setEnabled(editable && hasSelection);
+    menuBar->copyAction->setEnabled(hasSelection);
+    menuBar->pasteAction->setEnabled(canPasteText);
+    menuBar->findAction->setEnabled(hasEditor);
+    menuBar->replaceAction->setEnabled(editable);
+    menuBar->goToLineAction->setEnabled(hasEditor);
+    menuBar->toggleCommentAction->setEnabled(editable);
+    menuBar->duplicateLineAction->setEnabled(editable);
+    menuBar->moveLineUpAction->setEnabled(editable);
+    menuBar->moveLineDownAction->setEnabled(editable);
 }
 
 void Taif::connectEditorDiagnostics(TEditor* editor) {

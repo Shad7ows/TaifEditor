@@ -1,11 +1,18 @@
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
 #include <QtWidgets/QDockWidget>
+#include <QtWidgets/QLabel>
+#include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMainWindow>
+#include <QtWidgets/QPlainTextEdit>
+#include <QtGui/QTextDocument>
+#include <QtWidgets/QPushButton>
 
 #include "DockableConsoleTool.h"
 #include "TConsole.h"
 #include "TMenu.h"
+#include "TSearchPanel.h"
+#include "SearchReplaceEngine.h"
 
 class DockableToolsTest final : public QObject {
     Q_OBJECT
@@ -14,6 +21,9 @@ private slots:
     void bottomToolsArePersistentAndTabified();
     void activationSelectsRequestedBottomToolTab();
     void viewMenuExposesOrderedDockActions();
+    void editMenuExposesOrderedCommandActions();
+    void searchPanelProvidesReplaceSurface();
+    void searchReplaceEnginePreservesMatchAndUndoSemantics();
 };
 
 void DockableToolsTest::bottomToolsArePersistentAndTabified()
@@ -161,6 +171,178 @@ void DockableToolsTest::viewMenuExposesOrderedDockActions()
     QCOMPARE(alifOutputSpy.count(), 1);
     QCOMPARE(terminalSpy.count(), 1);
     QCOMPARE(problemsSpy.count(), 1);
+}
+
+void DockableToolsTest::editMenuExposesOrderedCommandActions()
+{
+    TMenuBar menuBar;
+
+    QMenu* editMenu = nullptr;
+    for (QAction* const menuAction : menuBar.actions()) {
+        if (menuAction->text() == QStringLiteral("تحرير")) {
+            editMenu = menuAction->menu();
+            break;
+        }
+    }
+
+    QVERIFY(editMenu != nullptr);
+    QCOMPARE(editMenu->layoutDirection(), Qt::RightToLeft);
+
+    QList<QAction*> commandActions;
+    for (QAction* const action : editMenu->actions()) {
+        if (!action->isSeparator()) {
+            commandActions.append(action);
+        }
+    }
+
+    const QList<QAction*> expectedActions = {
+        menuBar.undoAction, menuBar.redoAction,
+        menuBar.cutAction, menuBar.copyAction, menuBar.pasteAction,
+        menuBar.findAction, menuBar.replaceAction, menuBar.goToLineAction,
+        menuBar.toggleCommentAction, menuBar.duplicateLineAction,
+        menuBar.moveLineUpAction, menuBar.moveLineDownAction
+    };
+    QCOMPARE(commandActions, expectedActions);
+
+    QCOMPARE(menuBar.undoAction->text(), QStringLiteral("تراجع"));
+    QCOMPARE(menuBar.redoAction->text(), QStringLiteral("إعادة"));
+    QCOMPARE(menuBar.replaceAction->text(), QStringLiteral("بحث واستبدال"));
+    QCOMPARE(menuBar.undoAction->shortcut(), QKeySequence::Undo);
+    QCOMPARE(menuBar.redoAction->shortcut(), QKeySequence::Redo);
+    QCOMPARE(menuBar.findAction->shortcut(), QKeySequence::Find);
+    QCOMPARE(menuBar.replaceAction->shortcut(), QKeySequence(QStringLiteral("Ctrl+H")));
+    QCOMPARE(menuBar.goToLineAction->shortcut(), QKeySequence(QStringLiteral("Ctrl+G")));
+    QCOMPARE(menuBar.toggleCommentAction->objectName(), QStringLiteral("ToggleCommentAction"));
+    QCOMPARE(menuBar.moveLineDownAction->objectName(), QStringLiteral("MoveLineDownAction"));
+
+    QSignalSpy undoSpy(&menuBar, &TMenuBar::undoRequested);
+    QSignalSpy redoSpy(&menuBar, &TMenuBar::redoRequested);
+    QSignalSpy cutSpy(&menuBar, &TMenuBar::cutRequested);
+    QSignalSpy copySpy(&menuBar, &TMenuBar::copyRequested);
+    QSignalSpy pasteSpy(&menuBar, &TMenuBar::pasteRequested);
+    QSignalSpy findSpy(&menuBar, &TMenuBar::findRequested);
+    QSignalSpy replaceSpy(&menuBar, &TMenuBar::replaceRequested);
+    QSignalSpy goToLineSpy(&menuBar, &TMenuBar::goToLineRequested);
+    QSignalSpy commentSpy(&menuBar, &TMenuBar::toggleCommentRequested);
+    QSignalSpy duplicateSpy(&menuBar, &TMenuBar::duplicateLineRequested);
+    QSignalSpy moveUpSpy(&menuBar, &TMenuBar::moveLineUpRequested);
+    QSignalSpy moveDownSpy(&menuBar, &TMenuBar::moveLineDownRequested);
+
+    for (QAction* const action : expectedActions) {
+        action->trigger();
+    }
+
+    QCOMPARE(undoSpy.count(), 1);
+    QCOMPARE(redoSpy.count(), 1);
+    QCOMPARE(cutSpy.count(), 1);
+    QCOMPARE(copySpy.count(), 1);
+    QCOMPARE(pasteSpy.count(), 1);
+    QCOMPARE(findSpy.count(), 1);
+    QCOMPARE(replaceSpy.count(), 1);
+    QCOMPARE(goToLineSpy.count(), 1);
+    QCOMPARE(commentSpy.count(), 1);
+    QCOMPARE(duplicateSpy.count(), 1);
+    QCOMPARE(moveUpSpy.count(), 1);
+    QCOMPARE(moveDownSpy.count(), 1);
+}
+
+void DockableToolsTest::searchPanelProvidesReplaceSurface()
+{
+    QWidget window;
+    window.resize(900, 620);
+    QPlainTextEdit editor(&window);
+    editor.setGeometry(120, 50, 740, 520);
+    window.show();
+
+    SearchPanel panel(&window);
+    panel.showIn(&editor);
+    QTRY_VERIFY(panel.isVisible());
+
+    QCOMPARE(panel.layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(panel.anchorWidget(), static_cast<QWidget*>(&editor));
+    QCOMPARE(panel.parentWidget(), static_cast<QWidget*>(&window));
+    QVERIFY(panel.windowFlags().testFlag(Qt::FramelessWindowHint));
+    QVERIFY(panel.geometry().top() >= editor.geometry().top());
+    QVERIFY(panel.geometry().right() < editor.geometry().right());
+    auto* const searchInput = panel.findChild<QLineEdit*>(QStringLiteral("SearchInput"));
+    auto* const replacementInput = panel.findChild<QLineEdit*>(QStringLiteral("ReplacementInput"));
+    auto* const replaceRow = panel.findChild<QWidget*>(QStringLiteral("ReplaceRow"));
+    auto* const nextButton = panel.findChild<QPushButton*>(QStringLiteral("FindNextButton"));
+    auto* const previousButton = panel.findChild<QPushButton*>(QStringLiteral("FindPreviousButton"));
+    auto* const replaceButton = panel.findChild<QPushButton*>(QStringLiteral("ReplaceOneButton"));
+    auto* const replaceAllButton = panel.findChild<QPushButton*>(QStringLiteral("ReplaceAllButton"));
+    auto* const matchInfo = panel.findChild<QLabel*>(QStringLiteral("SearchMatchInfo"));
+
+    QVERIFY(searchInput != nullptr);
+    QVERIFY(replacementInput != nullptr);
+    QVERIFY(replaceRow != nullptr);
+    QVERIFY(nextButton != nullptr);
+    QVERIFY(previousButton != nullptr);
+    QVERIFY(replaceButton != nullptr);
+    QVERIFY(replaceAllButton != nullptr);
+    QVERIFY(matchInfo != nullptr);
+
+    panel.showReplaceRow(false);
+    QVERIFY(!replaceRow->isVisible());
+    QCOMPARE(panel.height(), 48);
+    panel.showReplaceRow(true);
+    QTRY_VERIFY(replaceRow->isVisible());
+    QCOMPARE(panel.height(), 96);
+
+    editor.resize(620, 520);
+    QTRY_VERIFY(panel.geometry().right() < editor.geometry().right());
+
+    QSignalSpy findTextSpy(&panel, &SearchPanel::findText);
+    QSignalSpy nextSpy(&panel, &SearchPanel::findNext);
+    QSignalSpy previousSpy(&panel, &SearchPanel::findPrevious);
+    QSignalSpy replaceOneSpy(&panel, &SearchPanel::replaceOne);
+    QSignalSpy replaceAllSpy(&panel, &SearchPanel::replaceAll);
+
+    searchInput->setText(QStringLiteral("نص"));
+    replacementInput->setText(QStringLiteral("بديل"));
+    QCOMPARE(panel.searchText(), QStringLiteral("نص"));
+    QCOMPARE(panel.replaceText(), QStringLiteral("بديل"));
+    QCOMPARE(findTextSpy.count(), 1);
+
+    nextButton->click();
+    previousButton->click();
+    replaceButton->click();
+    replaceAllButton->click();
+    QCOMPARE(nextSpy.count(), 1);
+    QCOMPARE(previousSpy.count(), 1);
+    QCOMPARE(replaceOneSpy.count(), 1);
+    QCOMPARE(replaceAllSpy.count(), 1);
+
+    panel.setMatchInfo(2, 5);
+    QCOMPARE(matchInfo->text(), QStringLiteral("2/5"));
+    panel.setNoMatchesFound(true);
+    QVERIFY(searchInput->styleSheet().contains(QStringLiteral("#ef4444")));
+}
+
+void DockableToolsTest::searchReplaceEnginePreservesMatchAndUndoSemantics()
+{
+    const SearchReplaceEngine::Query wholeWordQuery{
+        QStringLiteral("سيارة"), QStringLiteral("مركبة"), false, true, false};
+    const QString originalText = QStringLiteral("سيارة سيارة سيارات");
+    const QList<SearchReplaceEngine::MatchRange> matches =
+        SearchReplaceEngine::collectMatches(originalText, wholeWordQuery);
+    QCOMPARE(matches.size(), 2);
+
+    QTextDocument document(originalText);
+    SearchReplaceEngine::replaceAll(&document, originalText, matches, wholeWordQuery);
+    QCOMPARE(document.toPlainText(), QStringLiteral("مركبة مركبة سيارات"));
+    document.undo();
+    QCOMPARE(document.toPlainText(), originalText);
+
+    const SearchReplaceEngine::Query regexQuery{
+        QStringLiteral("لون[0-9]"), QStringLiteral("خاصية"), true, false, true};
+    const QString regexText = QStringLiteral("لون1 لون2 لون");
+    QCOMPARE(SearchReplaceEngine::collectMatches(regexText, regexQuery).size(), 2);
+
+    const SearchReplaceEngine::Query invalidRegexQuery{
+        QStringLiteral("["), QStringLiteral("بديل"), false, false, true};
+    QVERIFY(!SearchReplaceEngine::isValid(invalidRegexQuery));
+    QVERIFY(SearchReplaceEngine::collectMatches(regexText, invalidRegexQuery).isEmpty());
 }
 
 QTEST_MAIN(DockableToolsTest)

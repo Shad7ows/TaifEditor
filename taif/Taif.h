@@ -54,11 +54,14 @@ private slots:
     void onCurrentTabChanged();
 
     void showFindBar();
+    void showReplaceBar();
     void hideFindBar();
     void performSearch(bool forward, bool next);
     void findText();
     void findNextText();
     void findPrevText();
+    void replaceOne();
+    void replaceAll();
     void goToLine();
 
 private:
@@ -71,6 +74,9 @@ private:
     void refreshDiagnosticsPanel();
     void showAndRaiseDock(QDockWidget* dock);
     void syncBottomToolActionState();
+    void clearSearchHighlights();
+    void connectEditorActionState(TEditor* editor);
+    void updateEditActionState();
     // void setupTabWidget(QTabWidget* tw);
     // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
     // QTabWidget* getTargetTabWidget();

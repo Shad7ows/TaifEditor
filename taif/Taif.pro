@@ -51,6 +51,7 @@ SOURCES += \
     ../source/components/TMinimap.cpp \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
+    ../source/components/SearchReplaceEngine.cpp \
     ../source/console/TConsole.cpp \
     ../source/console/DockableConsoleTool.cpp \
     ../source/console/ProcessWorker.cpp \
@@ -83,6 +84,7 @@ HEADERS += \
     ../source/components/TMinimap.h \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
+    ../source/components/SearchReplaceEngine.h \
     ../source/console/TConsole.h \
     ../source/console/DockableConsoleTool.h \
     ../source/console/ProcessWorker.h \

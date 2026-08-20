@@ -6,15 +6,20 @@ win32:QMAKE_CXXFLAGS += /utf-8
 
 INCLUDEPATH += \
     ../../source/console \
-    ../../source/menubar
+    ../../source/menubar \
+    ../../source/components
 
 SOURCES += \
     tst_DockableTools.cpp \
     ../../source/console/TConsole.cpp \
     ../../source/console/DockableConsoleTool.cpp \
-    ../../source/menubar/TMenu.cpp
+    ../../source/menubar/TMenu.cpp \
+    ../../source/components/TSearchPanel.cpp \
+    ../../source/components/SearchReplaceEngine.cpp
 
 HEADERS += \
     ../../source/console/TConsole.h \
     ../../source/console/DockableConsoleTool.h \
-    ../../source/menubar/TMenu.h
+    ../../source/menubar/TMenu.h \
+    ../../source/components/TSearchPanel.h \
+    ../../source/components/SearchReplaceEngine.h

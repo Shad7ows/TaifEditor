@@ -31,9 +31,23 @@ public:
 
     QAction* alifOutputAction = nullptr;
     QAction* terminalAction = nullptr;
-    QAction* problemsAction = nullptr;
+        QAction* problemsAction = nullptr;
+
+    QAction* undoAction = nullptr;
+    QAction* redoAction = nullptr;
+    QAction* cutAction = nullptr;
+    QAction* copyAction = nullptr;
+    QAction* pasteAction = nullptr;
+    QAction* findAction = nullptr;
+    QAction* replaceAction = nullptr;
+    QAction* goToLineAction = nullptr;
+    QAction* toggleCommentAction = nullptr;
+    QAction* duplicateLineAction = nullptr;
+    QAction* moveLineUpAction = nullptr;
+    QAction* moveLineDownAction = nullptr;
 
 signals:
+
     void newRequested();
     void openFileRequested();
     void openFolderRequested();
@@ -47,5 +61,17 @@ signals:
     void showAlifOutputRequested();
     void showTerminalRequested();
     void showProblemsRequested();
+    void undoRequested();
+    void redoRequested();
+    void cutRequested();
+    void copyRequested();
+    void pasteRequested();
+    void findRequested();
+    void replaceRequested();
+    void goToLineRequested();
+    void toggleCommentRequested();
+    void duplicateLineRequested();
+    void moveLineUpRequested();
+    void moveLineDownRequested();
 
 };
