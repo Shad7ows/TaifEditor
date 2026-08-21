@@ -2,9 +2,9 @@
 #include "ApplicationBootstrap.h"
 
 #include "SessionEditorDialog.h"
-#include "Taif.h"
 
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -367,16 +367,7 @@ void WelcomeWindow::openSelectedSession(QListWidgetItem* const item)
 
 void WelcomeWindow::openSession(const SavedSession& session)
 {
-    auto* const editor = new Taif({}, nullptr, false);
-    const SessionRestoreResult restoreResult = editor->restoreSession(session);
-    editor->show();
-
-    if (!restoreResult.unavailableFilePaths.isEmpty()) {
-        QMessageBox::warning(editor, QStringLiteral("ملفات غير متاحة"),
-                             QStringLiteral("تعذر فتح الملفات التالية:\n%1")
-                                 .arg(restoreResult.unavailableFilePaths.join(u'\n')));
-    }
-    close();
+    emit sessionOpenRequested(session);
 }
 
 void WelcomeWindow::onRecentFileClicked(QListWidgetItem* const item)
@@ -390,16 +381,12 @@ void WelcomeWindow::onRecentFileClicked(QListWidgetItem* const item)
         return;
     }
 
-    auto* const editor = new Taif(filePath);
-    editor->show();
-    close();
+    emit fileOpenRequested(filePath);
 }
 
 void WelcomeWindow::handleNewFileRequest()
 {
-    auto* const editor = new Taif();
-    editor->show();
-    close();
+    emit newDocumentRequested();
 }
 
 void WelcomeWindow::handleOpenFileRequest()
@@ -411,9 +398,7 @@ void WelcomeWindow::handleOpenFileRequest()
         return;
     }
 
-    auto* const editor = new Taif(filePath);
-    editor->show();
-    close();
+    emit fileOpenRequested(filePath);
 }
 
 void WelcomeWindow::handleOpenFolderRequest()
@@ -423,10 +408,7 @@ void WelcomeWindow::handleOpenFolderRequest()
         return;
     }
 
-    auto* const editor = new Taif();
-    editor->loadFolder(folderPath);
-    editor->show();
-    close();
+    emit folderOpenRequested(folderPath);
 }
 
 void WelcomeWindow::closeEvent(QCloseEvent* const event)

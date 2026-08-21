@@ -25,6 +25,9 @@
 #include "SessionStore.h"
 #include "TBreadcrumbBar.h"
 #include "ApplicationBootstrap.h"
+#include "ApplicationWindowController.h"
+#include "TWelcomeWindow.h"
+#include "Taif.h"
 #include "EditorPreferences.h"
 #include "TSettings.h"
 #include "RecoveryStore.h"
@@ -54,6 +57,7 @@ private slots:
     void breadcrumbBarRendersOrderedFileAndSemanticSegments();
     void breadcrumbBarClearsSemanticSegmentsAndEmitsNavigationSignals();
     void applicationBootstrapProvidesStableFontRolesAndLaunchValidation();
+    void applicationWindowControllerOwnsTopLevelWindowRouting();
     void editorPreferencesNormalizeInvalidValues();
     void settingsWindowUsesRtlDraftApplyCancelWorkflow();
     void recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots();
@@ -112,6 +116,41 @@ void DockableToolsTest::alifRunControllerValidatesRunsAndCancels()
     controller.cancel();
     QTRY_VERIFY_WITH_TIMEOUT(cancelledFinishedSpy.count() == 1, 4000);
     QVERIFY(!controller.isActive());
+}
+
+void DockableToolsTest::applicationWindowControllerOwnsTopLevelWindowRouting()
+{
+    auto* const application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application != nullptr);
+    ApplicationBootstrap::initialize(*application);
+
+    ApplicationWindowController controller;
+    int welcomeWindowCount = 0;
+    WelcomeWindow* welcome = nullptr;
+    Taif* editor = nullptr;
+    connect(&controller, &ApplicationWindowController::welcomeWindowCreated,
+            &controller, [&welcomeWindowCount, &welcome](WelcomeWindow* const window) {
+                ++welcomeWindowCount;
+                welcome = window;
+            });
+    connect(&controller, &ApplicationWindowController::editorWindowCreated,
+            &controller, [&editor](Taif* const window) { editor = window; });
+
+    controller.showInitial({});
+    QTRY_COMPARE_WITH_TIMEOUT(welcomeWindowCount, 1, 1000);
+    QVERIFY(welcome != nullptr);
+    QVERIFY(welcome->isVisible());
+
+    QMetaObject::invokeMethod(welcome, "newDocumentRequested", Qt::DirectConnection);
+    QTRY_VERIFY_WITH_TIMEOUT(editor != nullptr, 1000);
+    QVERIFY(editor->isVisible());
+    QTRY_VERIFY_WITH_TIMEOUT(!welcome->isVisible(), 1000);
+
+    QMetaObject::invokeMethod(editor, "exitApp", Qt::DirectConnection);
+    QTRY_COMPARE_WITH_TIMEOUT(welcomeWindowCount, 2, 3000);
+    QVERIFY(welcome != nullptr);
+    QVERIFY(welcome->isVisible());
+    welcome->close();
 }
 
 void DockableToolsTest::recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots()

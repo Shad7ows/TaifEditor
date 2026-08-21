@@ -32,6 +32,12 @@ private slots:
     void manageSessions();
     void openSelectedSession(QListWidgetItem* item);
 
+signals:
+    void newDocumentRequested();
+    void fileOpenRequested(QString filePath);
+    void folderOpenRequested(QString folderPath);
+    void sessionOpenRequested(SavedSession session);
+
 private:
     void setupStyle();
     void refreshSessions();

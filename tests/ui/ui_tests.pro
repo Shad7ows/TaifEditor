@@ -10,6 +10,7 @@ INCLUDEPATH += \
     ../../source/console \
     ../../source/menubar \
     ../../source/components \
+    ../../source/pages \
     ../../source/session \
     ../../source/texteditor \
     ../../source/texteditor/autocomplete \
@@ -34,6 +35,7 @@ SOURCES += \
     ../../source/menubar/TMenu.cpp \
     ../../source/components/TSearchPanel.cpp \
     ../../source/components/SearchReplaceEngine.cpp \
+    ../../source/components/TFlatButton.cpp \
     ../../source/session/SessionStore.cpp \
     ../../source/session/SessionEditorDialog.cpp \
     ../../source/settings/EditorPreferences.cpp \
@@ -54,13 +56,17 @@ SOURCES += \
     ../../source/texteditor/analysis/SemanticHoverProvider.cpp \
     ../../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../../source/texteditor/hover/HoverPopup.cpp \
+    ../../source/texteditor/diagnostics/DiagnosticsPanel.cpp \
     ../../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
     ../../source/texteditor/TEditor.cpp \
     ../../source/components/TMinimap.cpp \
     ../../source/run/AlifRunController.cpp \
     ../../source/texteditor/navigation/TBreadcrumbBar.cpp \
-    ../../taif/ApplicationBootstrap.cpp
+    ../../source/pages/TWelcomeWindow.cpp \
+    ../../taif/ApplicationBootstrap.cpp \
+    ../../taif/ApplicationWindowController.cpp \
+    ../../taif/Taif.cpp
 
 HEADERS += \
     ../../source/console/TConsole.h \
@@ -83,10 +89,15 @@ HEADERS += \
     ../../source/texteditor/analysis/SemanticHoverProvider.h \
     ../../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../../source/texteditor/hover/HoverPopup.h \
+    ../../source/texteditor/diagnostics/DiagnosticsPanel.h \
     ../../source/texteditor/highlighter/TSyntaxDefinition.h \
     ../../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../../source/components/TMinimap.h \
+    ../../source/components/TFlatButton.h \
+    ../../source/pages/TWelcomeWindow.h \
     ../../source/run/AlifRunController.h \
     ../../source/texteditor/navigation/BreadcrumbTypes.h \
     ../../source/texteditor/navigation/TBreadcrumbBar.h \
-    ../../taif/ApplicationBootstrap.h
+    ../../taif/ApplicationBootstrap.h \
+    ../../taif/ApplicationWindowController.h \
+    ../../taif/Taif.h

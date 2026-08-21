@@ -1,11 +1,11 @@
 # TaifEditor Startup and Main-Window Lifecycle
 
 **Status:** Implemented and validated  
-**Applies to:** `ApplicationBootstrap`, `main.cpp`, `TSettings`, `WelcomeWindow`, and non-visual lifecycle code in `Taif`
+**Applies to:** `ApplicationBootstrap`, `ApplicationWindowController`, `main.cpp`, `TSettings`, `WelcomeWindow`, and non-visual lifecycle code in `Taif`
 
 ## Purpose
 
-TaifEditor startup is intentionally split into two layers. `ApplicationBootstrap` owns process-wide application policy that must exist before any UI is created, while `main.cpp` only creates `QApplication`, invokes that policy, interprets the optional launch file, selects the initial window, and enters the event loop. This prevents resource-font registration, Arabic/RTL defaults, application metadata, and command-line validation from being duplicated across windows.
+TaifEditor startup is intentionally split into three layers. `ApplicationBootstrap` owns process-wide application policy that must exist before any UI is created; `ApplicationWindowController` owns top-level Welcome/editor routing and transition lifetime; and `main.cpp` only constructs `QApplication`, invokes bootstrap, validates the optional launch file, delegates initial routing, and enters the event loop. This prevents resource-font registration, Arabic/RTL defaults, application metadata, command-line validation, and window ownership policy from being duplicated across windows.
 
 `Taif` remains the main-window coordinator. Its existing `setupUI()` implementation is explicitly preserved: its layouts, widget hierarchy, docks, toolbar, object names, insertion order, Arabic labels, and visual behavior are not part of this lifecycle refactor.
 
@@ -20,9 +20,27 @@ TaifEditor startup is intentionally split into two layers. `ApplicationBootstrap
 | Font family access | Named catalog accessors | UI code never reads `QFontDatabase` using a registration index. |
 | Global scrollbar QSS | `ApplicationBootstrap` | Cross-window scrollbar policy is applied once. |
 | Optional launch file | `ApplicationBootstrap::parseLaunchRequest()` | Zero or one positional file is valid; more than one returns an Arabic error message. |
-| Initial window route | `main.cpp` | A launch file opens `Taif`; no file opens `WelcomeWindow`. |
+| Initial window route | `ApplicationWindowController` | A launch file opens `Taif`; no file opens `WelcomeWindow`. |
+| Top-level window creation | `ApplicationWindowController` | `main.cpp`, `WelcomeWindow`, and `Taif` do not construct one another directly. |
+| Welcome actions | `WelcomeWindow` | Emits new-file, file, folder, or session intent only; it has no `Taif` construction or restore policy. |
+| Return to welcome | `Taif` + `ApplicationWindowController` | `Taif` emits a request; the controller waits for accepted destruction before creating/showing Welcome. A rejected close cancels the pending transition. |
 
-> **Ordering rule:** No `Taif`, `WelcomeWindow`, or `TSettings` instance may be constructed before `ApplicationBootstrap::initialize()` completes.
+> **Ordering rule:** No `Taif`, `WelcomeWindow`, or `TSettings` instance may be constructed before `ApplicationBootstrap::initialize()` completes. `ApplicationWindowController` is created only after launch validation succeeds.
+
+## Top-Level Window Ownership
+
+`ApplicationWindowController` is the sole process-level owner of top-level routing. It creates a `WelcomeWindow` lazily, tracks every created `Taif` instance with Qt lifetime signals, and centralizes new-file, open-file, open-folder, and saved-session restoration. The controller preserves existing Arabic dialogs and recovery behavior because it delegates actual editor/session work to the existing `Taif` APIs.
+
+| Transition | Controller behavior |
+|---|---|
+| Startup with no path | Creates/shows `WelcomeWindow`. |
+| Startup/open with a path | Creates/shows `Taif` with that path. |
+| Welcome new/file/folder intent | Creates the appropriate editor window, shows/activates it, then closes the welcome surface. |
+| Welcome session intent | Creates an editor with no default document, restores the session, then reports unavailable files in the existing Arabic dialog. |
+| Taif “exit to welcome” intent | Marks only that editor as pending return, requests normal close, and creates/shows Welcome only after destruction. |
+| Cancelled editor close | Clears the pending return state; no stray Welcome window appears later. |
+
+> **Ownership invariant:** UI windows express intent through signals. Only `ApplicationWindowController` decides which top-level window to create, show, close, or re-activate.
 
 ## Font Catalog
 
@@ -77,12 +95,12 @@ Document-close decisions are typed through `SaveDecision` instead of integer sen
 
 | Target | Required coverage |
 |---|---|
-| Focused UI suite | Bootstrap sets application identity and RTL direction; named font roles are non-empty; valid and invalid launch requests are distinguished; prior dock, menu, search, session, and breadcrumb tests remain green. |
-| Full application build | Registers `ApplicationBootstrap`, resolves all font-consumer includes, and links `Taif` save/close changes. |
+| Focused UI suite | Bootstrap sets application identity and RTL direction; named font roles are non-empty; valid and invalid launch requests are distinguished; the lifecycle controller routes Welcome → editor → Welcome; and prior dock, menu, search, session, and breadcrumb tests remain green. |
+| Full application build | Registers `ApplicationBootstrap` and `ApplicationWindowController`, resolves all lifecycle/font-consumer includes, and links `Taif` save/close changes. |
 | Language suites | Lexer, parser, semantic, and analysis behavior must remain unchanged. |
 
 Before accepting future startup or lifecycle changes, build the full application and run all regression targets. Remove generated qmake files, release/debug outputs, and temporary validation scripts before final delivery.
 
 ## Recommended Follow-On
 
-`Taif::runAlif()` still coordinates worker construction, thread construction, synchronous version probing, and console wiring. The next isolated maintenance feature should introduce an `AlifRunController` that owns one worker and one thread, defines cancellation and shutdown semantics, and reports execution state to `Taif`. Do not combine that execution-controller work with startup or `setupUI()` changes without a separate approved plan.
+Managed Alif execution is now owned by `AlifRunController`. The next isolated hardening phase should instead reduce `TEditor` constructor and recovery/presentation responsibility concentration without combining editor-cohesion work with lifecycle or `setupUI()` changes without a separate approved plan.

@@ -1,6 +1,5 @@
 #include "ApplicationBootstrap.h"
-#include "Taif.h"
-#include "TWelcomeWindow.h"
+#include "ApplicationWindowController.h"
 
 #include <QApplication>
 #include <QMessageBox>
@@ -20,13 +19,8 @@ int main(int argc, char* argv[])
     }
 
     application.setQuitOnLastWindowClosed(true);
-    if (!launchRequest.filePath.isEmpty()) {
-        auto* const editor = new Taif(launchRequest.filePath);
-        editor->show();
-    } else {
-        auto* const welcomeWindow = new WelcomeWindow();
-        welcomeWindow->show();
-    }
+    ApplicationWindowController windowController(&application);
+    windowController.showInitial(launchRequest);
 
     return application.exec();
 }

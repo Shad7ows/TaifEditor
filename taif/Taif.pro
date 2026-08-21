@@ -52,6 +52,7 @@ SOURCES += \
     ../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
     ApplicationBootstrap.cpp \
+    ApplicationWindowController.cpp \
     Taif.cpp \
     main.cpp \
     ../source/texteditor/TEditor.cpp \
@@ -96,6 +97,7 @@ HEADERS += \
     ../source/texteditor/highlighter/TSyntaxThemes.h \
     ../source/texteditor/highlighter/TToken.h \
     ApplicationBootstrap.h \
+    ApplicationWindowController.h \
     Taif.h \
     ../source/texteditor/TEditor.h \
     ../source/components/TMinimap.h \
