@@ -2,7 +2,6 @@
 #include "TWelcomeWindow.h"
 #include "TConsole.h"
 #include "DockableConsoleTool.h"
-#include "ProcessWorker.h"
 
 #include "TSearchPanel.h"
 #include "SearchReplaceEngine.h"
@@ -10,7 +9,7 @@
 #include "TBreadcrumbBar.h"
 #include "TRecoveryDialog.h"
 
-#include <QThread>
+
 #include <QDockWidget>
 #include <QVBoxLayout>
 #include <QMessageBox>
@@ -49,6 +48,44 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
     recoveryCoordinator->pruneExpiredEntries(30);
 
     setupUI();
+    runController = new AlifRunController(this);
+    connect(runController, &AlifRunController::standardOutput,
+            alifOutputConsole, &TConsole::appendPlainTextThreadSafe);
+    connect(runController, &AlifRunController::standardError,
+            alifOutputConsole, &TConsole::appendPlainTextThreadSafe);
+    connect(runController, &AlifRunController::launchFailed, this, [this](const QString& message) {
+        if (alifOutputConsole != nullptr) {
+            alifOutputConsole->appendPlainTextThreadSafe(
+                QStringLiteral("تعذر تشغيل ألف: %1\n").arg(message));
+        }
+    });
+    connect(runController, &AlifRunController::finished, this,
+            [this](const int exitCode, const QProcess::ExitStatus exitStatus) {
+        if (alifOutputConsole == nullptr) {
+            return;
+        }
+        const QString outcome = exitStatus == QProcess::NormalExit
+            ? QStringLiteral("اكتمل التنفيذ (رمز الخروج = %1).\n").arg(exitCode)
+            : QStringLiteral("انتهى التنفيذ بشكل غير طبيعي.\n");
+        alifOutputConsole->appendPlainTextThreadSafe(
+            QStringLiteral("\n──────────────────────────────\n%1").arg(outcome));
+    });
+    connect(runController, &AlifRunController::stateChanged, this,
+            [this](const AlifRunController::State state) {
+        const bool active = state == AlifRunController::State::Starting
+            || state == AlifRunController::State::Running
+            || state == AlifRunController::State::Stopping;
+        const QString label = active ? QStringLiteral("إيقاف التنفيذ")
+                                     : QStringLiteral("تشغيل");
+        if (menuBar != nullptr && menuBar->runAction != nullptr) {
+            menuBar->runAction->setText(label);
+        }
+        if (runToolbarAction != nullptr) {
+            runToolbarAction->setToolTip(label);
+        }
+    });
+    connect(alifOutputConsole, &TConsole::commandEntered,
+            runController, &AlifRunController::sendInput);
     setupConnections();
     connectSettingsSignals();
     setupStyle();
@@ -71,10 +108,10 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
 }
 
 Taif::~Taif() {
-    if (thread) {
-        thread->wait();
-        thread->quit();
+    if (runController != nullptr) {
+        runController->shutdown();
     }
+
     if (TEditor* editor = currentEditor()) {
         QSettings settings("Alif", "Taif");
         settings.setValue("editorFontSize", editor->font().pixelSize());
@@ -124,7 +161,7 @@ void Taif::setupUI() {
     toggleSidebarAction->setChecked(false);
     mainToolBar->addAction(toggleSidebarAction);
 
-    QAction *runToolbarAction = new QAction(QIcon(":/icons/resources/run.svg"), "تشغيل الملف الحالي", this);
+    runToolbarAction = new QAction(QIcon(":/icons/resources/run.svg"), "تشغيل الملف الحالي", this);
 
     mainToolBar->addAction(runToolbarAction);
     connect(runToolbarAction, &QAction::triggered, this, &Taif::runAlif);
@@ -1586,108 +1623,65 @@ void Taif::updateCursorPosition()
 
 //----------------
 
-void Taif::runAlif() {
-    TEditor *editor = currentEditor();
-    if (!editor) return;
+void Taif::runAlif()
+{
+    TEditor* const editor = currentEditor();
+    TConsole* const console = alifOutputConsole;
+    if (editor == nullptr || console == nullptr || alifOutputDock == nullptr
+        || runController == nullptr) {
+        return;
+    }
+
+    showAndRaiseDock(alifOutputDock);
+    if (runController->isActive()) {
+        console->appendPlainTextThreadSafe(QStringLiteral("\nجار إيقاف التنفيذ...\n"));
+        runController->cancel();
+        return;
+    }
 
     QString filePath = editor->property("filePath").toString();
     if (filePath.isEmpty() || editor->document()->isModified()) {
-        QMessageBox::warning(this, "تنبيه", "يجب حفظ الملف قبل التشغيل.");
+        QMessageBox::warning(this, QStringLiteral("تنبيه"),
+                             QStringLiteral("يجب حفظ الملف قبل التشغيل."));
         saveFile();
         filePath = editor->property("filePath").toString();
-        if (filePath.isEmpty() || editor->document()->isModified()) return;
-    }
-
-    TConsole* console = alifOutputConsole;
-    if (console == nullptr || alifOutputDock == nullptr) {
-        return;
-    }
-    showAndRaiseDock(alifOutputDock);
-
-    QString program;
-    QString appDir = QCoreApplication::applicationDirPath();
-
-#if defined(Q_OS_WIN)
-    QString localAlif = QDir(appDir).filePath("alif/alif.exe");
-    qDebug() <<  " -------------------------------------------------------------------------------------------- "  << localAlif <<  " -------------------------------------------------------------------------------------------- ";
-
-    if (QFile::exists(localAlif)) {
-        program = localAlif;
-    } else {
-        program = "alif/alif.exe";
-    }
-#elif defined(Q_OS_LINUX) || defined(Q_OS_MACOS)
-    program = QDir(appDir).filePath("alif/alif");
-#endif
-
-    if (!QFile::exists(program)) {
-        console->clear();
-        console->appendPlainTextThreadSafe("❌ خطأ: لم يتم العثور على مترجم ألف!");
-        console->appendPlainTextThreadSafe("المسار المتوقع: " + program);
-
-#if defined(Q_OS_LINUX)
-        console->appendPlainTextThreadSafe("تأكد من أن ملف 'alif' موجود ولديه صلاحية التنفيذ (chmod +x).");
-#endif
-        return;
-    }
-
-    QStringList args = { filePath };
-    QString workingDir = QFileInfo(filePath).absolutePath();
-
-    if (worker) {
-        worker->disconnect();
-        worker->deleteLater();
-        worker = nullptr;
-    }
-
-    console->clear();
-
-    // Fetch and print the version (alif -ن)
-    QProcess versionCheck{};
-    versionCheck.setWorkingDirectory(QFileInfo(program).absolutePath());
-    versionCheck.start(program, {"-ن"});
-
-    // We wait briefly (max 2s) for the version check as it's a fast command
-    if (versionCheck.waitForFinished(2000)) {
-        QString versionOutput = versionCheck.readAll();
-        if (!versionOutput.isEmpty()) {
-            console->appendPlainTextThreadSafe(versionOutput);
+        if (filePath.isEmpty() || editor->document()->isModified()) {
+            return;
         }
     }
 
-    console->appendPlainTextThreadSafe("🚀 بدء تشغيل ملف ألف: " + QFileInfo(filePath).fileName() + "\n\n");
-
-    worker = new ProcessWorker(program, args, workingDir);
-    QThread *thread = new QThread();
-
-    worker->moveToThread(thread);
-
-    connect(thread, &QThread::started, worker, &ProcessWorker::start);
-    connect(worker, &ProcessWorker::outputReady,
-            console, &TConsole::appendPlainTextThreadSafe);
-    connect(worker, &ProcessWorker::errorReady,
-            console, &TConsole::appendPlainTextThreadSafe);
-
-    connect(worker, &ProcessWorker::finished, this, [=](int code){
+    const QString applicationDirectory = QCoreApplication::applicationDirPath();
+#if defined(Q_OS_WIN)
+    const QString program = QDir(applicationDirectory).filePath(QStringLiteral("alif/alif.exe"));
+#else
+    const QString program = QDir(applicationDirectory).filePath(QStringLiteral("alif/alif"));
+#endif
+    if (!QFileInfo::exists(program)) {
+        console->clear();
         console->appendPlainTextThreadSafe(
-            "\n──────────────────────────────\n✅ انتهى التنفيذ (رمز الخروج = "
-            + QString::number(code) + ")\n"
-            );
-        thread->quit();
-    });
+            QStringLiteral("تعذر العثور على مترجم ألف.\nالمسار المتوقع: %1\n").arg(program));
+#if defined(Q_OS_LINUX)
+        console->appendPlainTextThreadSafe(
+            QStringLiteral("تأكد من وجود ملف ألف ومن منحه صلاحية التنفيذ.\n"));
+#endif
+        return;
+    }
 
-    connect(worker, &QObject::destroyed, this, [this]() {
-        worker = nullptr;
-    });
-    // Clean up thread and worker memory when finished
-    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-    connect(worker, &QObject::destroyed, thread, &QThread::quit); // Quit thread when worker is gone
-    connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+    console->clear();
+    console->appendPlainTextThreadSafe(
+        QStringLiteral("بدء تشغيل ملف ألف: %1\n\n").arg(QFileInfo(filePath).fileName()));
 
-    connect(console, &TConsole::commandEntered,
-            worker, &ProcessWorker::sendInput);
+    AlifRunController::Request request;
+    request.program = program;
+    request.arguments = {filePath};
+    request.workingDirectory = QFileInfo(filePath).absolutePath();
+    request.displayName = QFileInfo(filePath).fileName();
 
-    thread->start();
+    QString errorMessage;
+    if (!runController->start(request, &errorMessage)) {
+        console->appendPlainTextThreadSafe(
+            QStringLiteral("تعذر تشغيل ألف: %1\n").arg(errorMessage));
+    }
 }
 
 //----------------

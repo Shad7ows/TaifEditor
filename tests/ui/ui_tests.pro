@@ -17,6 +17,7 @@ INCLUDEPATH += \
     ../../source/language/lexer \
     ../../source/settings \
     ../../source/recovery \
+    ../../source/run \
     ../../source/texteditor/highlighter \
     ../../taif
 
@@ -33,6 +34,7 @@ SOURCES += \
     ../../source/settings/TSettings.cpp \
     ../../source/recovery/RecoveryStore.cpp \
     ../../source/recovery/TRecoveryDialog.cpp \
+    ../../source/run/AlifRunController.cpp \
     ../../source/texteditor/navigation/TBreadcrumbBar.cpp \
     ../../taif/ApplicationBootstrap.cpp
 
@@ -48,6 +50,7 @@ HEADERS += \
     ../../source/settings/TSettings.h \
     ../../source/recovery/RecoveryStore.h \
     ../../source/recovery/TRecoveryDialog.h \
+    ../../source/run/AlifRunController.h \
     ../../source/texteditor/navigation/BreadcrumbTypes.h \
     ../../source/texteditor/navigation/TBreadcrumbBar.h \
     ../../taif/ApplicationBootstrap.h

@@ -3,7 +3,7 @@
 #include "TEditor.h"
 #include "TMenu.h"
 #include "TSearchPanel.h"
-#include "ProcessWorker.h"
+#include "AlifRunController.h"
 #include "SessionStore.h"
 #include "RecoveryCoordinator.h"
 
@@ -146,10 +146,8 @@ private:
     QDockWidget* alifOutputDock{};
     TConsole* systemTerminal{};
     TConsole* alifOutputConsole{};
-
-    ProcessWorker* worker{};
-
-    QThread* thread{};
+    AlifRunController* runController{};
+    QAction* runToolbarAction{};
 
     QLabel *cursorPositionLabel{};
     // QLabel *encodingLabel{};

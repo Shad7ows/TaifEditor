@@ -29,6 +29,7 @@
 #include "TSettings.h"
 #include "RecoveryStore.h"
 #include "TRecoveryDialog.h"
+#include "AlifRunController.h"
 
 #include <QTemporaryDir>
 #include <QTreeWidget>
@@ -55,7 +56,58 @@ private slots:
     void settingsWindowUsesRtlDraftApplyCancelWorkflow();
     void recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots();
     void recoveryDialogUsesRtlAndSelectsEntriesByDefault();
+    void alifRunControllerValidatesRunsAndCancels();
 };
+
+void DockableToolsTest::alifRunControllerValidatesRunsAndCancels()
+{
+    AlifRunController controller;
+
+    AlifRunController::Request invalidRequest;
+    invalidRequest.program = QStringLiteral("Z:/missing-alif-runtime.exe");
+    QString validationError;
+    QVERIFY(!controller.start(invalidRequest, &validationError));
+    QVERIFY(!validationError.isEmpty());
+    QCOMPARE(controller.state(), AlifRunController::State::Idle);
+
+    AlifRunController::Request quickRequest;
+#if defined(Q_OS_WIN)
+    quickRequest.program = qEnvironmentVariable("COMSPEC", QStringLiteral("C:/Windows/System32/cmd.exe"));
+    quickRequest.arguments = {QStringLiteral("/C"), QStringLiteral("echo managed-run-output")};
+#else
+    quickRequest.program = QStringLiteral("/bin/sh");
+    quickRequest.arguments = {QStringLiteral("-c"), QStringLiteral("printf managed-run-output")};
+#endif
+    quickRequest.workingDirectory = QDir::tempPath();
+
+    QSignalSpy outputSpy(&controller, &AlifRunController::standardOutput);
+    QSignalSpy finishedSpy(&controller, &AlifRunController::finished);
+    QString startError;
+    QVERIFY(controller.start(quickRequest, &startError));
+    QTRY_VERIFY_WITH_TIMEOUT(finishedSpy.count() == 1, 3000);
+    QVERIFY(!outputSpy.isEmpty());
+    QVERIFY(outputSpy.constFirst().constFirst().toString().contains(
+        QStringLiteral("managed-run-output")));
+    QVERIFY(!controller.isActive());
+
+    AlifRunController::Request longRequest;
+#if defined(Q_OS_WIN)
+    longRequest.program = quickRequest.program;
+    longRequest.arguments = {QStringLiteral("/C"),
+                             QStringLiteral("ping -n 10 127.0.0.1 > nul")};
+#else
+    longRequest.program = QStringLiteral("/bin/sh");
+    longRequest.arguments = {QStringLiteral("-c"), QStringLiteral("sleep 10")};
+#endif
+    longRequest.workingDirectory = QDir::tempPath();
+
+    QSignalSpy cancelledFinishedSpy(&controller, &AlifRunController::finished);
+    QVERIFY(controller.start(longRequest, &startError));
+    QTRY_VERIFY_WITH_TIMEOUT(controller.isActive(), 1000);
+    controller.cancel();
+    QTRY_VERIFY_WITH_TIMEOUT(cancelledFinishedSpy.count() == 1, 4000);
+    QVERIFY(!controller.isActive());
+}
 
 void DockableToolsTest::recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots()
 {

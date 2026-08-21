@@ -31,6 +31,7 @@ INCLUDEPATH += \
     ../source/pages \
     ../source/settings \
     ../source/recovery \
+    ../source/run \
 
 SOURCES += \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -69,6 +70,7 @@ SOURCES += \
     ../source/recovery/RecoveryStore.cpp \
     ../source/recovery/RecoveryCoordinator.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
+    ../source/run/AlifRunController.cpp \
     ../source/settings/TSettings.cpp
 
 HEADERS += \
@@ -111,6 +113,7 @@ HEADERS += \
     ../source/recovery/RecoveryStore.h \
     ../source/recovery/RecoveryCoordinator.h \
     ../source/recovery/TRecoveryDialog.h \
+    ../source/run/AlifRunController.h \
     ../source/settings/TSettings.h
 
 # Add the application icon (Windows)
