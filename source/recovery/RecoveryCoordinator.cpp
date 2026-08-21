@@ -1,11 +1,9 @@
 #include "RecoveryCoordinator.h"
 
-#include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
-#include <QElapsedTimer>
-#include <QEventLoop>
 #include <QMetaObject>
+#include <QTimer>
 #include <QUuid>
 
 RecoveryWriter::RecoveryWriter(RecoveryStore store)
@@ -38,11 +36,11 @@ RecoveryCoordinator::RecoveryCoordinator(QString recoveryRoot, QObject* const pa
     m_writer->moveToThread(&m_workerThread);
     connect(m_writer, &RecoveryWriter::writeFinished,
             this, &RecoveryCoordinator::onWriteFinished, Qt::QueuedConnection);
-    connect(m_writer, &RecoveryWriter::removalFinished, this,
-            [this](const QString& entryId, const bool, const QString&) {
-                m_removalsInFlight.remove(entryId);
-                dispatchPendingOrRemoval(entryId);
-            }, Qt::QueuedConnection);
+    connect(m_writer, &RecoveryWriter::removalFinished,
+            this, &RecoveryCoordinator::onRemovalFinished, Qt::QueuedConnection);
+    connect(&m_flushDeadlineTimer, &QTimer::timeout,
+            this, &RecoveryCoordinator::onFlushDeadline);
+    m_flushDeadlineTimer.setSingleShot(true);
     connect(&m_workerThread, &QThread::finished, m_writer, &QObject::deleteLater);
     m_workerThread.start();
 }
@@ -199,26 +197,72 @@ void RecoveryCoordinator::onWriteFinished(RecoveryWriteResult result)
     if (inFlight == m_inFlightRevisions.end() || inFlight.value() != result.documentRevision) {
         return;
     }
+
     m_inFlightRevisions.erase(inFlight);
+    if (!result.succeeded) {
+        m_flushSawFailure = true;
+    }
     emit snapshotPersisted(result);
     dispatchPendingOrRemoval(result.entryId);
+    if (isIdle()) {
+        completeFlush(!m_flushSawFailure);
+    }
+}
+
+void RecoveryCoordinator::onRemovalFinished(QString entryId, const bool succeeded,
+                                            QString errorMessage)
+{
+    if (!m_removalsInFlight.remove(entryId)) {
+        return;
+    }
+
+    m_removalRequested.remove(entryId);
+    if (!succeeded) {
+        m_flushSawFailure = true;
+        emit removalFailed(entryId, std::move(errorMessage));
+    }
+    dispatchPendingOrRemoval(entryId);
+    if (isIdle()) {
+        completeFlush(!m_flushSawFailure);
+    }
+}
+
+void RecoveryCoordinator::requestFlush(const int deadlineMilliseconds)
+{
+    if (m_shutdown) {
+        return;
+    }
+
+    m_flushRequested = true;
+    m_flushSawFailure = false;
+    m_flushDeadlineTimer.start(qBound(1, deadlineMilliseconds, 30000));
+    QTimer::singleShot(0, this, [this]() {
+        if (isIdle()) {
+            completeFlush(!m_flushSawFailure);
+        }
+    });
+}
+
+void RecoveryCoordinator::onFlushDeadline()
+{
+    completeFlush(false);
+}
+
+void RecoveryCoordinator::completeFlush(const bool allPersisted)
+{
+    if (!m_flushRequested) {
+        return;
+    }
+
+    m_flushDeadlineTimer.stop();
+    m_flushRequested = false;
+    emit flushCompleted(allPersisted && isIdle() && !m_flushSawFailure);
 }
 
 bool RecoveryCoordinator::isIdle() const
 {
     return m_pendingSnapshots.isEmpty() && m_inFlightRevisions.isEmpty()
-        && m_removalsInFlight.isEmpty();
-}
-
-bool RecoveryCoordinator::waitForIdle(const int timeoutMilliseconds)
-{
-    QElapsedTimer timer;
-    timer.start();
-    while (!isIdle() && timer.elapsed() < timeoutMilliseconds) {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 25);
-        QThread::msleep(5);
-    }
-    return isIdle();
+        && m_removalRequested.isEmpty() && m_removalsInFlight.isEmpty();
 }
 
 void RecoveryCoordinator::shutdown()
@@ -226,8 +270,13 @@ void RecoveryCoordinator::shutdown()
     if (m_shutdown) {
         return;
     }
-    [[maybe_unused]] const bool recoveryFlushed = waitForIdle(1500);
+
+    // Normal window closure waits through requestFlush() and its signal. The
+    // destructor must not pump GUI events; callbacks during teardown would make
+    // the close path reentrant. In-flight worker I/O is bounded by its thread
+    // shutdown, while work not yet accepted remains recoverably dirty in the UI.
     m_shutdown = true;
+    m_flushDeadlineTimer.stop();
     m_pendingSnapshots.clear();
     m_removalRequested.clear();
     m_workerThread.quit();

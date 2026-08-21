@@ -128,10 +128,15 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     autoSaveTimer->setInterval(750);
     recoveryMaximumTimer = new QTimer(this);
     recoveryMaximumTimer->setSingleShot(false);
+    recoveryRetryTimer = new QTimer(this);
+    recoveryRetryTimer->setSingleShot(true);
+    recoveryRetryTimer->setInterval(30000);
 
     connect(autoSaveTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
     connect(recoveryMaximumTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
-    connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::startAutoSave);
+    connect(recoveryRetryTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
+    connect(this->document(), &QTextDocument::contentsChanged,
+            this, &TEditor::scheduleRecoveryCapture);
 
     applyPreferences(PreferencesStore::load());
     if (setting != nullptr) {
@@ -1174,9 +1179,21 @@ QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const {
 
 void TEditor::setRecoveryCoordinator(RecoveryCoordinator* const coordinator)
 {
+    if (recoveryCoordinator == coordinator) {
+        return;
+    }
+    if (recoveryCoordinator != nullptr) {
+        disconnect(recoveryCoordinator, &RecoveryCoordinator::snapshotPersisted,
+                   this, &TEditor::acknowledgeRecoverySnapshot);
+    }
+
     recoveryCoordinator = coordinator;
-    if (recoveryCoordinator != nullptr && m_recoveryDocumentId.isEmpty()) {
-        m_recoveryDocumentId = recoveryCoordinator->createDocumentId();
+    if (recoveryCoordinator != nullptr) {
+        connect(recoveryCoordinator, &RecoveryCoordinator::snapshotPersisted,
+                this, &TEditor::acknowledgeRecoverySnapshot);
+        if (m_recoveryDocumentId.isEmpty()) {
+            m_recoveryDocumentId = recoveryCoordinator->createDocumentId();
+        }
     }
 }
 
@@ -1185,11 +1202,39 @@ QString TEditor::recoveryDocumentId() const
     return m_recoveryDocumentId;
 }
 
+bool TEditor::hasPendingRecoveryPersistence() const
+{
+    return m_recoveryDirty || m_recoverySnapshotAwaitingAcknowledgement
+        || m_lastPersistedRecoveryRevision < m_lastRequestedRecoveryRevision;
+}
+
+bool TEditor::isRecoveryRetryScheduled() const
+{
+    return recoveryRetryTimer != nullptr && recoveryRetryTimer->isActive();
+}
+
+quint64 TEditor::lastRequestedRecoveryRevision() const
+{
+    return m_lastRequestedRecoveryRevision;
+}
+
+quint64 TEditor::lastPersistedRecoveryRevision() const
+{
+    return m_lastPersistedRecoveryRevision;
+}
+
+quint64 TEditor::currentDirtyRecoveryRevision() const
+{
+    return m_currentDirtyRevision;
+}
+
 void TEditor::adoptRecoveryEntry(const RecoveryEntry& entry)
 {
     if (!entry.id.isEmpty()) {
         m_recoveryDocumentId = entry.id;
-        m_recoveryRevision = entry.documentRevision;
+        m_currentDirtyRevision = entry.documentRevision;
+        m_lastRequestedRecoveryRevision = entry.documentRevision;
+        m_lastPersistedRecoveryRevision = entry.documentRevision;
     }
 }
 
@@ -1197,6 +1242,9 @@ void TEditor::startAutoSave()
 {
     if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr) {
         return;
+    }
+    if (m_currentDirtyRevision == 0) {
+        m_currentDirtyRevision = 1;
     }
     m_recoveryDirty = true;
     autoSaveTimer->start();
@@ -1207,7 +1255,9 @@ void TEditor::startAutoSave()
 
 void TEditor::stopAutoSave()
 {
-    autoSaveTimer->stop();
+    if (autoSaveTimer != nullptr) {
+        autoSaveTimer->stop();
+    }
     if (recoveryMaximumTimer != nullptr) {
         recoveryMaximumTimer->stop();
     }
@@ -1215,12 +1265,21 @@ void TEditor::stopAutoSave()
 
 void TEditor::scheduleRecoveryCapture()
 {
+    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr) {
+        return;
+    }
+    ++m_currentDirtyRevision;
+    m_recoveryRetryCount = 0;
+    if (recoveryRetryTimer != nullptr) {
+        recoveryRetryTimer->stop();
+    }
     startAutoSave();
 }
 
 void TEditor::flushRecoverySnapshot()
 {
-    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr || !m_recoveryDirty) {
+    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr || !m_recoveryDirty
+        || m_recoverySnapshotAwaitingAcknowledgement) {
         return;
     }
     if (m_recoveryDocumentId.isEmpty()) {
@@ -1233,13 +1292,61 @@ void TEditor::flushRecoverySnapshot()
     entry.sourcePath = sourcePath;
     entry.displayName = sourcePath.isEmpty() ? QStringLiteral("غير معنون")
                                               : QFileInfo(sourcePath).fileName();
-    entry.documentRevision = ++m_recoveryRevision;
+    entry.documentRevision = m_currentDirtyRevision;
     entry.sourceFingerprint = RecoveryStore::fingerprintForPath(sourcePath);
     entry.untitled = sourcePath.isEmpty();
-    recoveryCoordinator->submitSnapshot({entry, toPlainText()});
 
-    m_recoveryDirty = false;
+    m_lastRequestedRecoveryRevision = entry.documentRevision;
+    m_recoverySnapshotAwaitingAcknowledgement = true;
+    recoveryCoordinator->submitSnapshot({entry, toPlainText()});
+}
+
+void TEditor::acknowledgeRecoverySnapshot(RecoveryWriteResult result)
+{
+    if (result.entryId != m_recoveryDocumentId
+        || result.documentRevision != m_lastRequestedRecoveryRevision) {
+        return;
+    }
+
+    m_recoverySnapshotAwaitingAcknowledgement = false;
+    if (!result.succeeded) {
+        m_recoveryDirty = true;
+        scheduleRecoveryRetry();
+        return;
+    }
+
+    m_lastPersistedRecoveryRevision = result.documentRevision;
+    m_recoveryRetryCount = 0;
+    if (recoveryRetryTimer != nullptr) {
+        recoveryRetryTimer->stop();
+    }
+    if (m_currentDirtyRevision == m_lastPersistedRecoveryRevision) {
+        m_recoveryDirty = false;
+        stopAutoSave();
+        return;
+    }
+
+    // The document changed while its previous snapshot was being written.
+    // Preserve the dirty state and capture the newer revision after its debounce.
+    m_recoveryDirty = true;
+    startAutoSave();
+}
+
+void TEditor::scheduleRecoveryRetry()
+{
+    constexpr int maximumRetries = 3;
+    if (m_recoveryRetryCount >= maximumRetries) {
+        // Keep the document visibly/persistently dirty. A later edit or the
+        // close-path flush can make another explicit persistence attempt.
+        stopAutoSave();
+        return;
+    }
+
+    ++m_recoveryRetryCount;
     stopAutoSave();
+    if (recoveryRetryTimer != nullptr) {
+        recoveryRetryTimer->start();
+    }
 }
 
 void TEditor::performAutoSave()
@@ -1250,7 +1357,16 @@ void TEditor::performAutoSave()
 void TEditor::clearRecoverySnapshot()
 {
     stopAutoSave();
+    if (recoveryRetryTimer != nullptr) {
+        recoveryRetryTimer->stop();
+    }
     m_recoveryDirty = false;
+    m_recoverySnapshotAwaitingAcknowledgement = false;
+    m_recoveryRetryCount = 0;
+    // A successful normal save is itself durable. Ignore any older in-flight
+    // recovery acknowledgement and keep the public pending state consistent.
+    m_lastRequestedRecoveryRevision = m_currentDirtyRevision;
+    m_lastPersistedRecoveryRevision = m_currentDirtyRevision;
     if (recoveryCoordinator != nullptr && !m_recoveryDocumentId.isEmpty()) {
         recoveryCoordinator->removeEntry(m_recoveryDocumentId);
     }
@@ -1294,6 +1410,9 @@ void TEditor::applyPreferences(const EditorPreferences& requestedPreferences)
     }
     if (!preferences.autoSaveEnabled) {
         stopAutoSave();
+        if (recoveryRetryTimer != nullptr) {
+            recoveryRetryTimer->stop();
+        }
     }
     hoverTimer.setInterval(preferences.hoverDelayMilliseconds);
     if (!preferences.hoverInformationEnabled) {

@@ -11,7 +11,13 @@ INCLUDEPATH += \
     ../../source/menubar \
     ../../source/components \
     ../../source/session \
+    ../../source/texteditor \
+    ../../source/texteditor/autocomplete \
+    ../../source/texteditor/analysis \
+    ../../source/texteditor/hover \
+    ../../source/texteditor/diagnostics \
     ../../source/texteditor/navigation \
+    ../../source/language/presentation \
     ../../source/language/semantic \
     ../../source/language/parser \
     ../../source/language/lexer \
@@ -33,7 +39,25 @@ SOURCES += \
     ../../source/settings/EditorPreferences.cpp \
     ../../source/settings/TSettings.cpp \
     ../../source/recovery/RecoveryStore.cpp \
+    ../../source/recovery/RecoveryCoordinator.cpp \
     ../../source/recovery/TRecoveryDialog.cpp \
+    ../../source/texteditor/autocomplete/AutoComplete.cpp \
+    ../../source/texteditor/autocomplete/AutoCompleteUI.cpp \
+    ../../source/texteditor/highlighter/TLexer.cpp \
+    ../../source/language/lexer/TaifLexer.cpp \
+    ../../source/language/parser/TaifParser.cpp \
+    ../../source/language/semantic/SymbolTable.cpp \
+    ../../source/language/presentation/SemanticPresentationAdapter.cpp \
+    ../../source/language/presentation/DiagnosticPresentationAdapter.cpp \
+    ../../source/texteditor/analysis/EditorAnalysisController.cpp \
+    ../../source/texteditor/analysis/SemanticCompletionProvider.cpp \
+    ../../source/texteditor/analysis/SemanticHoverProvider.cpp \
+    ../../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
+    ../../source/texteditor/hover/HoverPopup.cpp \
+    ../../source/texteditor/highlighter/TSyntaxDefinition.cpp \
+    ../../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
+    ../../source/texteditor/TEditor.cpp \
+    ../../source/components/TMinimap.cpp \
     ../../source/run/AlifRunController.cpp \
     ../../source/texteditor/navigation/TBreadcrumbBar.cpp \
     ../../taif/ApplicationBootstrap.cpp
@@ -49,7 +73,19 @@ HEADERS += \
     ../../source/settings/EditorPreferences.h \
     ../../source/settings/TSettings.h \
     ../../source/recovery/RecoveryStore.h \
+    ../../source/recovery/RecoveryCoordinator.h \
     ../../source/recovery/TRecoveryDialog.h \
+    ../../source/texteditor/TEditor.h \
+    ../../source/texteditor/autocomplete/AutoComplete.h \
+    ../../source/texteditor/autocomplete/AutoCompleteUI.h \
+    ../../source/texteditor/analysis/EditorAnalysisController.h \
+    ../../source/texteditor/analysis/SemanticCompletionProvider.h \
+    ../../source/texteditor/analysis/SemanticHoverProvider.h \
+    ../../source/texteditor/analysis/SemanticDefinitionProvider.h \
+    ../../source/texteditor/hover/HoverPopup.h \
+    ../../source/texteditor/highlighter/TSyntaxDefinition.h \
+    ../../source/texteditor/highlighter/TSyntaxHighlighter.h \
+    ../../source/components/TMinimap.h \
     ../../source/run/AlifRunController.h \
     ../../source/texteditor/navigation/BreadcrumbTypes.h \
     ../../source/texteditor/navigation/TBreadcrumbBar.h \

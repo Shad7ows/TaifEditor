@@ -12,6 +12,7 @@
 
 class RecoveryCoordinator;
 struct RecoveryEntry;
+struct RecoveryWriteResult;
 
 #include "TSyntaxHighlighter.h"
 #include "AutoComplete.h"
@@ -51,6 +52,11 @@ public:
     void removeBackupFile();
     void setRecoveryCoordinator(RecoveryCoordinator* coordinator);
     [[nodiscard]] QString recoveryDocumentId() const;
+    [[nodiscard]] bool hasPendingRecoveryPersistence() const;
+    [[nodiscard]] bool isRecoveryRetryScheduled() const;
+    [[nodiscard]] quint64 lastRequestedRecoveryRevision() const;
+    [[nodiscard]] quint64 lastPersistedRecoveryRevision() const;
+    [[nodiscard]] quint64 currentDirtyRecoveryRevision() const;
     void flushRecoverySnapshot();
     void adoptRecoveryEntry(const RecoveryEntry& entry);
 
@@ -129,13 +135,20 @@ private:
     void toggleFold(int blockNum);
     void scheduleRecoveryCapture();
     void clearRecoverySnapshot();
+    void acknowledgeRecoverySnapshot(RecoveryWriteResult result);
+    void scheduleRecoveryRetry();
 
 
     QTimer *autoSaveTimer{};
     QTimer *recoveryMaximumTimer{};
+    QTimer *recoveryRetryTimer{};
     RecoveryCoordinator* recoveryCoordinator{};
     QString m_recoveryDocumentId;
-    quint64 m_recoveryRevision = 0;
+    quint64 m_currentDirtyRevision = 0;
+    quint64 m_lastRequestedRecoveryRevision = 0;
+    quint64 m_lastPersistedRecoveryRevision = 0;
+    int m_recoveryRetryCount = 0;
+    bool m_recoverySnapshotAwaitingAcknowledgement = false;
     bool m_recoveryDirty = false;
     EditorPreferences preferences{};
 

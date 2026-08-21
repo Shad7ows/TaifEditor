@@ -28,7 +28,9 @@
 #include "EditorPreferences.h"
 #include "TSettings.h"
 #include "RecoveryStore.h"
+#include "RecoveryCoordinator.h"
 #include "TRecoveryDialog.h"
+#include "TEditor.h"
 #include "AlifRunController.h"
 
 #include <QTemporaryDir>
@@ -55,6 +57,9 @@ private slots:
     void editorPreferencesNormalizeInvalidValues();
     void settingsWindowUsesRtlDraftApplyCancelWorkflow();
     void recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots();
+    void recoveryCoordinatorReportsRemovalFailureAndAsynchronousFlushOutcome();
+    void editorRecoveryClearsDirtyOnlyAfterLatestSnapshotAcknowledgement();
+    void editorRecoveryFailureKeepsDirtyAndSchedulesBoundedRetry();
     void recoveryDialogUsesRtlAndSelectsEntriesByDefault();
     void alifRunControllerValidatesRunsAndCancels();
 };
@@ -137,6 +142,92 @@ void DockableToolsTest::recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots(
     unsafeEntry.id = QStringLiteral("../outside-recovery-root");
     unsafeEntry.untitled = true;
     QVERIFY(!store.writeSnapshot(unsafeEntry, QStringLiteral("لا يجب حفظ هذه النسخة")));
+}
+
+void DockableToolsTest::recoveryCoordinatorReportsRemovalFailureAndAsynchronousFlushOutcome()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString recoveryRoot = temporaryDirectory.filePath(QStringLiteral("recovery"));
+    QVERIFY(QDir().mkpath(recoveryRoot));
+
+    const QString entryId = QStringLiteral("recovery-remove-failure-01");
+    // A directory at the metadata-file path deterministically makes QFile::remove()
+    // fail on every supported desktop platform.
+    QVERIFY(QDir().mkpath(QDir(recoveryRoot).filePath(entryId + QStringLiteral(".json"))));
+
+    RecoveryCoordinator coordinator(recoveryRoot);
+    QSignalSpy removalFailureSpy(&coordinator, &RecoveryCoordinator::removalFailed);
+    QSignalSpy flushSpy(&coordinator, &RecoveryCoordinator::flushCompleted);
+
+    bool queuedCallbackRan = false;
+    QTimer::singleShot(0, &coordinator, [&queuedCallbackRan]() { queuedCallbackRan = true; });
+    coordinator.removeEntry(entryId);
+    coordinator.requestFlush(500);
+
+    // requestFlush() must return without nested event processing or re-entry.
+    QVERIFY(!queuedCallbackRan);
+    QVERIFY(flushSpy.isEmpty());
+    QTRY_COMPARE_WITH_TIMEOUT(removalFailureSpy.count(), 1, 2000);
+    QTRY_COMPARE_WITH_TIMEOUT(flushSpy.count(), 1, 2000);
+    QCOMPARE(flushSpy.constFirst().constFirst().toBool(), false);
+    QVERIFY(!removalFailureSpy.constFirst().at(1).toString().isEmpty());
+}
+
+void DockableToolsTest::editorRecoveryClearsDirtyOnlyAfterLatestSnapshotAcknowledgement()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    RecoveryCoordinator coordinator(temporaryDirectory.filePath(QStringLiteral("recovery")));
+
+    TEditor editor;
+    EditorPreferences preferences;
+    preferences.autoSaveEnabled = true;
+    editor.applyPreferences(preferences);
+    editor.setRecoveryCoordinator(&coordinator);
+
+    QSignalSpy persistedSpy(&coordinator, &RecoveryCoordinator::snapshotPersisted);
+    editor.setPlainText(QStringLiteral("اطبع(\"لقطة مؤكدة\")"));
+    editor.flushRecoverySnapshot();
+
+    QVERIFY(editor.hasPendingRecoveryPersistence());
+    QVERIFY(editor.lastRequestedRecoveryRevision() > 0);
+    QCOMPARE(editor.lastPersistedRecoveryRevision(), quint64(0));
+    QTRY_COMPARE_WITH_TIMEOUT(persistedSpy.count(), 1, 3000);
+    QVERIFY(persistedSpy.constFirst().constFirst().value<RecoveryWriteResult>().succeeded);
+    QTRY_VERIFY_WITH_TIMEOUT(!editor.hasPendingRecoveryPersistence(), 1000);
+    QCOMPARE(editor.lastPersistedRecoveryRevision(), editor.lastRequestedRecoveryRevision());
+    QCOMPARE(editor.lastPersistedRecoveryRevision(), editor.currentDirtyRecoveryRevision());
+}
+
+void DockableToolsTest::editorRecoveryFailureKeepsDirtyAndSchedulesBoundedRetry()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString blockedRecoveryRoot = temporaryDirectory.filePath(QStringLiteral("blocked-recovery"));
+    QFile rootBlocker(blockedRecoveryRoot);
+    QVERIFY(rootBlocker.open(QIODevice::WriteOnly));
+    rootBlocker.close();
+
+    RecoveryCoordinator coordinator(blockedRecoveryRoot);
+    TEditor editor;
+    EditorPreferences preferences;
+    preferences.autoSaveEnabled = true;
+    editor.applyPreferences(preferences);
+    editor.setRecoveryCoordinator(&coordinator);
+
+    QSignalSpy persistedSpy(&coordinator, &RecoveryCoordinator::snapshotPersisted);
+    editor.setPlainText(QStringLiteral("اطبع(\"لقطة ستفشل\")"));
+    editor.flushRecoverySnapshot();
+
+    QTRY_COMPARE_WITH_TIMEOUT(persistedSpy.count(), 1, 3000);
+    const RecoveryWriteResult result =
+        persistedSpy.constFirst().constFirst().value<RecoveryWriteResult>();
+    QVERIFY(!result.succeeded);
+    QTRY_VERIFY_WITH_TIMEOUT(editor.hasPendingRecoveryPersistence(), 1000);
+    QVERIFY(editor.isRecoveryRetryScheduled());
+    QCOMPARE(editor.lastPersistedRecoveryRevision(), quint64(0));
+    QCOMPARE(editor.lastRequestedRecoveryRevision(), editor.currentDirtyRecoveryRevision());
 }
 
 void DockableToolsTest::recoveryDialogUsesRtlAndSelectsEntriesByDefault()
