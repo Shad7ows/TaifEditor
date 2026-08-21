@@ -1,0 +1,41 @@
+name: Windows Qt MSVC Validation
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    name: Qt 6.11.1 / MSVC 2022
+    runs-on: windows-2022
+    env:
+      QT_VERSION: "6.11.1"
+      QT_ARCH: win64_msvc2022_64
+      QT_ROOT: ${{ github.workspace }}\Qt\6.11.1\msvc2022_64
+      VSDEVCMD: C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ env.QT_ARCH }}
+          dir: ${{ github.workspace }}\Qt
+          cache: true
+
+      - name: Validate application, tests, and repository hygiene
+        shell: cmd
+        run: scripts\validate_windows.cmd --ci
+
+      - name: Upload failed test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: taif-windows-validation-logs
+          if-no-files-found: ignore
+          path: |
+            tests\**\*.log
+            tests\**\*.txt
+            taif\build\analysis_validation\*.log
