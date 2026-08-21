@@ -31,6 +31,7 @@ INCLUDEPATH += \
 
 SOURCES += \
     tst_DockableTools.cpp \
+    ../../source/console/OutputBuffer.cpp \
     ../../source/console/TConsole.cpp \
     ../../source/console/DockableConsoleTool.cpp \
     ../../source/menubar/TMenu.cpp \
@@ -73,6 +74,7 @@ SOURCES += \
     ../../taif/Taif.cpp
 
 HEADERS += \
+    ../../source/console/OutputBuffer.h \
     ../../source/console/TConsole.h \
     ../../source/console/DockableConsoleTool.h \
     ../../source/menubar/TMenu.h \

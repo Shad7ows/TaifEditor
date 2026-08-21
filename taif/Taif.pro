@@ -66,6 +66,7 @@ SOURCES += \
     ../source/components/SearchReplaceEngine.cpp \
     ../source/session/SessionStore.cpp \
     ../source/session/SessionEditorDialog.cpp \
+    ../source/console/OutputBuffer.cpp \
     ../source/console/TConsole.cpp \
     ../source/console/DockableConsoleTool.cpp \
     ../source/console/ProcessWorker.cpp \
@@ -113,6 +114,7 @@ HEADERS += \
     ../source/components/SearchReplaceEngine.h \
     ../source/session/SessionStore.h \
     ../source/session/SessionEditorDialog.h \
+    ../source/console/OutputBuffer.h \
     ../source/console/TConsole.h \
     ../source/console/DockableConsoleTool.h \
     ../source/console/ProcessWorker.h \

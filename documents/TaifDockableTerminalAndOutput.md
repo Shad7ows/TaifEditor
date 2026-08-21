@@ -27,16 +27,31 @@ The system terminal is created once during `Taif::setupUI()` and begins its plat
 
 `runAlif()` no longer searches a splitter-hosted tab collection or manipulates central splitter geometry. It uses the persistent `alifOutputConsole`, clears/updates it for the next program run, and calls `showAndRaiseDock(alifOutputDock)`.
 
-The existing worker connections remain intact:
+The managed execution connections remain intentionally narrow:
 
 | Signal or action | Destination | Behavior preserved |
 |---|---|---|
-| `ProcessWorker::outputReady` | `TConsole::appendPlainTextThreadSafe` | Standard output is streamed to `مخرجات ألف`. |
-| `ProcessWorker::errorReady` | `TConsole::appendPlainTextThreadSafe` | Standard error is streamed to `مخرجات ألف`. |
-| `TConsole::commandEntered` | `ProcessWorker::sendInput` | Program input entered in the output dock is delivered to the active Alif process. |
-| `ProcessWorker::finished` | Output console and worker thread cleanup | Exit status is printed and the worker thread is stopped. |
+| `AlifRunController::standardOutput` | `TConsole::appendPlainTextThreadSafe` | Standard output is streamed to `مخرجات ألف`. |
+| `AlifRunController::standardError` | `TConsole::appendPlainTextThreadSafe` | Standard error is streamed to `مخرجات ألف`. |
+| `TConsole::commandEntered` | `AlifRunController::sendInput` | Program input entered in the output dock is delivered to the active managed Alif process. |
+| `AlifRunController::finished` | Output console and run-controller state transition | Exit outcome is rendered and active-run controls are restored exactly once. |
 
-The system terminal is intentionally independent of `ProcessWorker`; showing, hiding, floating, or tabifying the output dock never affects the native shell process.
+The system terminal is intentionally independent of `AlifRunController`; showing, hiding, floating, or tabifying the output dock never affects the native shell process.
+
+## Output buffering and rendering policy
+
+Both console docks use the shared `OutputBuffer` contract before rendering through `TConsole`. Producers may append decoded `QString` chunks from any thread. The GUI consumer drains one bounded batch on demand and appends text blocks to the existing `QTextDocument`; it does not rebuild the entire console text with `setPlainText()` on a fixed timer.
+
+| Boundary | Policy |
+|---|---|
+| Pending output | At most 1 MiB of UTF-16 chunk data is staged. Individual chunks are capped at 256 KiB. When a burst exceeds either bound, oldest pending content is discarded and a localized truncation notice is appended. |
+| Rendered output | The document is capped at 2,000 blocks and 512 Ki UTF-16 characters. Oldest rendered text is trimmed incrementally; a localized notice marks rendered-history trimming. |
+| Flush cadence | The single-shot 16 ms timer is dormant while idle and coalesces only active bursts. It performs append/trim work rather than a full-document reset. |
+| CR/LF handling | `\r`, `\n`, and CRLF pairs are statefully interpreted across chunk boundaries. A standalone carriage return overwrites the current line, while a split CRLF still creates exactly one new line. |
+| Encoding | The interactive Windows shell uses the local Windows code page for child output/input. Unix shell paths use UTF-8. `AlifRunController` continues to own the Alif execution encoding contract before text reaches the output console. |
+| Failure reporting | Terminal `QProcess::errorOccurred` appends a localized diagnostic to the same terminal surface. |
+
+> **Lifecycle invariant:** Hiding a dock never stops its console. Destruction invokes the existing bounded terminal terminate/kill policy, drains already queued text once, and cannot leave a repeating idle flush timer active.
 
 ## Dock visibility and selected-tab policy
 
@@ -78,13 +93,13 @@ Future docks should reuse these selectors or a later shared dock-theme service r
 
 ## Validation
 
-A dedicated UI regression target, `tests/ui/ui_tests.pro`, validates the reusable dock factory without starting a real system shell. It confirms bottom-area registration, standard dock features, widget ownership, stable object names, tabification with Problems, widget persistence after hide/show, rendered-tab selection after activating Alif output and the system terminal, plus the `عرض` menu’s ordered actions and semantic request signals.
+The focused UI regression target `tests/ui/ui_tests.pro` validates the reusable dock factory without starting a real system shell. It also validates bounded pending output, truncation accounting, split CRLF behavior, carriage-return overwrite behavior, append-only rendering, rendered line/character limits, and preservation of the latest output during a large burst.
 
 | Validation target | Result |
 |---|---|
-| `TaifDockableToolsTests` widget regression | Passed: 5 tests, including selected-tab activation plus `عرض` menu contents, request signals, and multiple-open-tool check-state behavior. |
+| `TaifDockableToolsTests` widget and console regression | Phase 6: 28 passed, 0 failed. |
 | Full TaifEditor Qt 6.11.1 / MSVC 2022 application build | Passed. |
-| Existing lexer, parser, semantic, and analysis suites | Previously green and unaffected; this change does not modify language/editor-analysis code. |
+| Existing lexer, parser, semantic, and analysis suites | Must remain green in the full phase validation matrix. |
 
 ## Future extension
 

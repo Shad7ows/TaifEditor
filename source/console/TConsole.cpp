@@ -1,274 +1,369 @@
 #include "TConsole.h"
-#include <QVBoxLayout>
+
+#include <QApplication>
+#include <QFontDatabase>
+#include <QKeyEvent>
 #include <QScrollBar>
 #include <QTextCursor>
-#include <QTextCharFormat>
-#include <QKeyEvent>
-#include <QRegularExpression>
-#include <QTextBlockFormat>
-#include <QApplication>
-#include <QTextBlock>
+#include <QTextDocument>
+#include <QTextOption>
+#include <QThread>
+#include <QVBoxLayout>
 
+namespace {
 
-TConsole::TConsole(QWidget *parent)
-    : QWidget(parent),
-    m_output(new QPlainTextEdit(this)),
-    m_input(new QLineEdit(this)),
-    m_process(new QProcess(this)),
-    m_flushTimer(new QTimer(this)),
-    m_historyIndex(-1),
-    m_autoscroll(true)
+const QString kPendingTruncationNotice =
+    QStringLiteral("\n[تم اختصار جزء من المخرجات بسبب حد المخزن المؤقت]\n");
+const QString kRenderedTruncationNotice =
+    QStringLiteral("[تم حذف مخرجات أقدم للحفاظ على أداء الطرفية]\n");
+
+} // namespace
+
+TConsole::TConsole(QWidget* const parent)
+    : QWidget(parent)
+    , m_output(new QPlainTextEdit(this))
+    , m_input(new QLineEdit(this))
+    , m_process(new QProcess(this))
+    , m_flushTimer(new QTimer(this))
 {
-    // UI
+    m_output->setObjectName(QStringLiteral("ConsoleOutput"));
+    m_input->setObjectName(QStringLiteral("ConsoleInput"));
     m_output->setReadOnly(true);
     m_output->setUndoRedoEnabled(false);
     m_output->setWordWrapMode(QTextOption::WordWrap);
-    // simple monospace font
-    QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    f.setPixelSize(15);
-    m_output->setFont(f);
-    m_input->setFont(f);
+    m_output->document()->setMaximumBlockCount(kMaximumRenderedLines);
+
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    font.setPixelSize(15);
+    m_output->setFont(font);
+    m_input->setFont(font);
 
     setStyleSheet(R"(
         QWidget {
             background-color: #03091A;
             color: #DEE8FF;
         }
-)");
+    )");
 
-    auto *lay = new QVBoxLayout(this);
-    lay->setContentsMargins(0,0,0,0);
-    lay->addWidget(m_output);
-    lay->addWidget(m_input);
-    setLayout(lay);
+    auto* const layout = new QVBoxLayout(this);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->addWidget(m_output);
+    layout->addWidget(m_input);
+    setLayout(layout);
 
-    setLayoutDirection(Qt::RightToLeft);
-    m_input->setLayoutDirection(Qt::RightToLeft);
+    setConsoleRTL();
 
     connect(m_process, &QProcess::readyReadStandardOutput, this, &TConsole::processStdout);
     connect(m_process, &QProcess::readyReadStandardError, this, &TConsole::processStderr);
     connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
             this, &TConsole::processFinished);
-
+    connect(m_process, &QProcess::errorOccurred, this, &TConsole::processError);
     connect(m_input, &QLineEdit::returnPressed, this, &TConsole::onInputReturn);
 
     m_input->installEventFilter(this);
 
-    m_flushTimer->setInterval(10);
+    // The timer stays dormant until output arrives. It coalesces bursts without
+    // rebuilding the full QTextDocument every 10 ms while idle.
+    m_flushTimer->setSingleShot(true);
+    m_flushTimer->setInterval(16);
     connect(m_flushTimer, &QTimer::timeout, this, &TConsole::flushPending);
-    m_flushTimer->start();
 }
 
 TConsole::~TConsole()
 {
     stopCmd();
+    flushPending();
 }
 
 void TConsole::startCmd()
 {
-    if (m_process->state() != QProcess::NotRunning) return;
+    if (m_process->state() != QProcess::NotRunning) {
+        return;
+    }
 
 #if defined(Q_OS_WIN)
-    m_process->start("cmd.exe");
+    m_process->start(QStringLiteral("cmd.exe"));
 #elif defined(Q_OS_MACOS)
-    QStringList args{};
-    args << "-i" << "-l"; // mean (interactive)
-    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-    env.insert("PROMPT_EOL_MARK", ""); // لإزاله علامة "٪" من نهاية السطر الجديد في الطرفية
-    m_process->setProcessEnvironment(env);
-    m_process->start("zsh", args);
+    const QStringList arguments{QStringLiteral("-i"), QStringLiteral("-l")};
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("PROMPT_EOL_MARK"), QString());
+    m_process->setProcessEnvironment(environment);
+    m_process->start(QStringLiteral("zsh"), arguments);
 #elif defined(Q_OS_LINUX)
-    QStringList args{};
-    args << "-q" << "-c" << "bash" << "/dev/null"; // mean (interactive)
-    m_process->start("script", args);
+    const QStringList arguments{QStringLiteral("-q"), QStringLiteral("-c"),
+                               QStringLiteral("bash"), QStringLiteral("/dev/null")};
+    m_process->start(QStringLiteral("script"), arguments);
 #endif
 }
 
 void TConsole::stopCmd()
 {
-    if (m_process->state() != QProcess::NotRunning) {
-        m_process->terminate();
-        if (!m_process->waitForFinished(500)) {
-            m_process->kill();
-            m_process->waitForFinished(200);
-        }
+    if (m_process->state() == QProcess::NotRunning) {
+        return;
+    }
+
+    // This method is only used for terminal teardown. Keep the established
+    // bounded policy so a console dock can never indefinitely block shutdown.
+    m_process->terminate();
+    if (!m_process->waitForFinished(500)) {
+        m_process->kill();
+        m_process->waitForFinished(200);
     }
 }
 
 void TConsole::clear()
 {
+    m_flushTimer->stop();
+    m_pendingOutput.clear();
+    m_carriageReturnPending = false;
+    m_renderedTruncationNoticeVisible = false;
     m_output->clear();
-    m_pending.clear();
-    m_buffer.clear();
 }
 
 void TConsole::setConsoleRTL()
 {
     setLayoutDirection(Qt::RightToLeft);
+    m_input->setLayoutDirection(Qt::RightToLeft);
 
-    QTextOption opt = m_output->document()->defaultTextOption();
-    opt.setTextDirection(Qt::RightToLeft);
-    opt.setAlignment(Qt::AlignRight);
-    m_output->document()->setDefaultTextOption(opt);
+    QTextOption option = m_output->document()->defaultTextOption();
+    option.setTextDirection(Qt::RightToLeft);
+    option.setAlignment(Qt::AlignRight);
+    m_output->document()->setDefaultTextOption(option);
 }
 
-void TConsole::appendPlainTextThreadSafe(const QString &text)
+void TConsole::appendPlainTextThreadSafe(const QString& text)
 {
-    QMutexLocker locker(&m_pendingMutex);
-    m_pending.append(text);
+    m_pendingOutput.append(text);
+    scheduleFlush();
+}
+
+qsizetype TConsole::pendingOutputBytes() const
+{
+    return m_pendingOutput.pendingBytes();
+}
+
+int TConsole::renderedLineCount() const
+{
+    return m_output->document()->blockCount();
+}
+
+qsizetype TConsole::renderedCharacterCount() const
+{
+    return m_output->document()->characterCount() - 1;
 }
 
 void TConsole::processStdout()
 {
-    QByteArray d = m_process->readAllStandardOutput();
-    QString s;
-#if defined(Q_OS_WIN)
-    s = QString::fromLocal8Bit(d);
-#else
-    s = QString::fromUtf8(d);
-#endif
-    appendPlainTextThreadSafe(s);
+    appendPlainTextThreadSafe(decodeProcessBytes(m_process->readAllStandardOutput()));
 }
 
 void TConsole::processStderr()
 {
-    QByteArray d = m_process->readAllStandardError();
-    QString s = QString::fromLocal8Bit(d);
-    appendPlainTextThreadSafe(s);
+    appendPlainTextThreadSafe(decodeProcessBytes(m_process->readAllStandardError()));
 }
 
-void TConsole::processFinished(int code, QProcess::ExitStatus status)
+void TConsole::processFinished(const int code, const QProcess::ExitStatus status)
 {
-    Q_UNUSED(status);
-    appendPlainTextThreadSafe(QString("\n[العملية إنتهت بالرمز %1]\n").arg(code));
+    const QString outcome = status == QProcess::NormalExit
+        ? QStringLiteral("انتهت العملية بالرمز %1").arg(code)
+        : QStringLiteral("انتهت العملية بشكل غير طبيعي (الرمز %1)").arg(code);
+    appendPlainTextThreadSafe(QStringLiteral("\n[%1]\n").arg(outcome));
+}
+
+void TConsole::processError(const QProcess::ProcessError error)
+{
+    if (error == QProcess::UnknownError) {
+        return;
+    }
+    appendPlainTextThreadSafe(
+        QStringLiteral("\n[خطأ في الطرفية: %1]\n").arg(m_process->errorString()));
 }
 
 void TConsole::onInputReturn()
 {
-    QString cmd = m_input->text();
-
-    if (m_history.isEmpty() || m_history.last() != cmd) {
-        m_history.append(cmd);
+    const QString command = m_input->text();
+    if (m_history.isEmpty() || m_history.last() != command) {
+        m_history.append(command);
     }
     m_historyIndex = -1;
 
-// echo the command locally (like terminal)
 #if defined(Q_OS_WIN)
-    appendPlainTextThreadSafe(cmd + "\n");
-#endif
-
-    // send to process (CRLF on Windows)
-#if defined(Q_OS_WIN)
+    appendPlainTextThreadSafe(command + QStringLiteral("\n"));
     if (m_process->state() != QProcess::NotRunning) {
-        m_process->write((cmd + "\r\n").toLocal8Bit());
+        m_process->write((command + QStringLiteral("\r\n")).toLocal8Bit());
     }
 #else
     if (m_process->state() != QProcess::NotRunning) {
-        m_process->write((cmd + "\n").toLocal8Bit());
+        m_process->write((command + QStringLiteral("\n")).toUtf8());
     }
 #endif
 
-    emit commandEntered(cmd);
+    emit commandEntered(command);
     m_input->clear();
 }
 
-void TConsole::flushPending() {
-    QStringList items;
-    {
-        QMutexLocker locker(&m_pendingMutex);
-        if (m_pending.isEmpty()) return;
-        items = m_pending;
-        m_pending.clear();
+void TConsole::flushPending()
+{
+    const OutputBuffer::DrainResult result = m_pendingOutput.drain();
+    if (result.text.isEmpty() && !result.truncated) {
+        return;
     }
 
-    // Ensure we have a starting point
-    if (m_buffer.isEmpty()) m_buffer.append("");
+    if (result.truncated) {
+        emit outputTruncated(result.droppedBytes);
+        appendRenderedText(kPendingTruncationNotice);
+    }
+    appendRenderedText(result.text);
+}
 
-    // Merge all chunks into one processing string
-    QString incomingData = items.join("");
+void TConsole::scheduleFlush()
+{
+    if (QThread::currentThread() == thread()) {
+        if (!m_flushTimer->isActive()) {
+            m_flushTimer->start();
+        }
+        return;
+    }
 
-    // Process character by character with state awareness
-    for (int i = 0; i < incomingData.length(); ++i) {
-        QChar c = incomingData[i];
+    QMetaObject::invokeMethod(this, [this]() {
+        if (!m_flushTimer->isActive()) {
+            m_flushTimer->start();
+        }
+    }, Qt::QueuedConnection);
+}
 
-        // Handle \n (Line Feed)
-        if (c == '\n') {
-            m_buffer.append("");
-            m_carriageReturnPending = false; // \n resets any \r state
-            continue;
+void TConsole::appendRenderedText(const QString& text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+
+    const bool followOutput = isAtBottom();
+    QTextCursor cursor(m_output->document());
+    cursor.movePosition(QTextCursor::End);
+
+    qsizetype position = 0;
+    while (position < text.size()) {
+        const qsizetype carriageReturn = text.indexOf(QLatin1Char('\r'), position);
+        const qsizetype lineFeed = text.indexOf(QLatin1Char('\n'), position);
+        qsizetype control = -1;
+        if (carriageReturn >= 0 && lineFeed >= 0) {
+            control = qMin(carriageReturn, lineFeed);
+        } else if (carriageReturn >= 0) {
+            control = carriageReturn;
+        } else {
+            control = lineFeed;
         }
 
-        // Handle \r (Carriage Return)
-        if (c == '\r') {
-            // Check if \n follows immediately in this same chunk
-            if (i + 1 < incomingData.length() && incomingData[i + 1] == '\n') {
-                // It's a CRLF pair; let the next iteration (\n) handle it
-                continue;
+        const qsizetype textEnd = control >= 0 ? control : text.size();
+        if (textEnd > position) {
+            if (m_carriageReturnPending) {
+                cursor.movePosition(QTextCursor::EndOfBlock);
+                cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+                cursor.removeSelectedText();
+                m_carriageReturnPending = false;
             }
-            // Otherwise, it's a standalone \r (potentially a CRLF split across chunks)
-            m_carriageReturnPending = true;
-            continue;
+            cursor.movePosition(QTextCursor::End);
+            cursor.insertText(text.mid(position, textEnd - position));
+        }
+        if (control < 0) {
+            break;
         }
 
-        // Handle normal characters
-        if (m_carriageReturnPending) {
-            // If we have a pending \r and the next char isn't \n,
-            // it's a true "overwrite" command (like a progress bar).
-            m_buffer.last().clear();
+        if (text.at(control) == QLatin1Char('\r')) {
+            m_carriageReturnPending = true;
+        } else {
+            cursor.movePosition(QTextCursor::End);
+            cursor.insertBlock();
             m_carriageReturnPending = false;
         }
-
-        m_buffer.last().append(c);
+        position = control + 1;
     }
 
-    // Keep buffer within memory limits
-    while (m_buffer.size() > m_maxLines) {
-        m_buffer.pop_front();
-    }
-
-    // Atomic UI Update
-    // Optimization: Only update if the text actually changed
-    QString newText = m_buffer.join("\n");
-    if (m_output->toPlainText() != newText) {
-        m_output->setPlainText(newText);
-
-        if (m_autoscroll) {
-            QScrollBar *sb = m_output->verticalScrollBar();
-            sb->setValue(sb->maximum());
-        }
+    trimRenderedOutput();
+    if (followOutput) {
+        m_output->verticalScrollBar()->setValue(m_output->verticalScrollBar()->maximum());
     }
 }
 
-bool TConsole::eventFilter(QObject *obj, QEvent *ev)
+void TConsole::trimRenderedOutput()
 {
-    if (obj == m_input && ev->type() == QEvent::KeyPress) {
-        QKeyEvent *ke = static_cast<QKeyEvent*>(ev);
-        if (ke->key() == Qt::Key_Up) {
-            if (m_history.isEmpty()) return true;
-            if (m_historyIndex == -1) m_historyIndex = m_history.size() - 1;
-            else m_historyIndex = qMax(0, m_historyIndex - 1);
-            m_input->setText(m_history[m_historyIndex]);
+    QTextDocument* const document = m_output->document();
+    const qsizetype renderedCharacters = document->characterCount() - 1;
+    if (renderedCharacters <= kMaximumRenderedCharacters) {
+        return;
+    }
+
+    const qsizetype excess = renderedCharacters - kMaximumRenderedCharacters;
+    QTextCursor cursor(document);
+    cursor.setPosition(0);
+    cursor.setPosition(static_cast<int>(qMin<qsizetype>(excess, renderedCharacters)),
+                       QTextCursor::KeepAnchor);
+    cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+
+    if (!m_renderedTruncationNoticeVisible) {
+        cursor.setPosition(0);
+        cursor.insertText(kRenderedTruncationNotice);
+        m_renderedTruncationNoticeVisible = true;
+    }
+}
+
+QString TConsole::decodeProcessBytes(const QByteArray& bytes) const
+{
+    // Child shells follow the native Windows code page; Unix shells and Alif
+    // tools use UTF-8. Decoding is intentionally performed before chunks reach
+    // OutputBuffer so the buffer never stores partial byte sequences.
+#if defined(Q_OS_WIN)
+    return QString::fromLocal8Bit(bytes);
+#else
+    return QString::fromUtf8(bytes);
+#endif
+}
+
+bool TConsole::isAtBottom() const
+{
+    const QScrollBar* const scrollBar = m_output->verticalScrollBar();
+    return scrollBar->value() >= scrollBar->maximum();
+}
+
+bool TConsole::eventFilter(QObject* const watched, QEvent* const event)
+{
+    if (watched == m_input && event->type() == QEvent::KeyPress) {
+        auto* const keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Up) {
+            if (m_history.isEmpty()) {
+                return true;
+            }
+            if (m_historyIndex == -1) {
+                m_historyIndex = m_history.size() - 1;
+            } else {
+                m_historyIndex = qMax(0, m_historyIndex - 1);
+            }
+            m_input->setText(m_history.at(m_historyIndex));
             return true;
-        } else if (ke->key() == Qt::Key_Down) {
-            if (m_history.isEmpty()) return true;
-            if (m_historyIndex == -1) return true;
+        }
+        if (keyEvent->key() == Qt::Key_Down) {
+            if (m_history.isEmpty() || m_historyIndex == -1) {
+                return true;
+            }
             m_historyIndex = qMin(m_history.size() - 1, m_historyIndex + 1);
-            if (m_historyIndex >= 0 && m_historyIndex < m_history.size())
-                m_input->setText(m_history[m_historyIndex]);
-            else
-                m_input->clear();
+            m_input->setText(m_history.at(m_historyIndex));
             return true;
-        } else if (ke->matches(QKeySequence::Copy)) {
-            return QWidget::eventFilter(obj, ev);
-        } else if (ke->key() == Qt::Key_C && (ke->modifiers() & Qt::ControlModifier)) {
+        }
+        if (keyEvent->matches(QKeySequence::Copy)) {
+            return QWidget::eventFilter(watched, event);
+        }
+        if (keyEvent->key() == Qt::Key_C && (keyEvent->modifiers() & Qt::ControlModifier)) {
             return false;
-        } else if (ke->key() == Qt::Key_L && (ke->modifiers() & Qt::ControlModifier)) {
+        }
+        if (keyEvent->key() == Qt::Key_L && (keyEvent->modifiers() & Qt::ControlModifier)) {
             clear();
             return true;
-        } else if (ke->key() == Qt::Key_Tab) {
+        }
+        if (keyEvent->key() == Qt::Key_Tab) {
             return true;
         }
     }
-    return QWidget::eventFilter(obj, ev);
+    return QWidget::eventFilter(watched, event);
 }
-

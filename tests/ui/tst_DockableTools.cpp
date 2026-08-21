@@ -17,6 +17,7 @@
 #include <QtWidgets/QApplication>
 
 #include "DockableConsoleTool.h"
+#include "OutputBuffer.h"
 #include "TConsole.h"
 #include "TMenu.h"
 #include "TSearchPanel.h"
@@ -72,7 +73,60 @@ private slots:
     void editorServiceBindingsHaveIdempotentShutdown();
     void recoveryDialogUsesRtlAndSelectsEntriesByDefault();
     void alifRunControllerValidatesRunsAndCancels();
+    void outputBufferBoundsPendingChunksAndReportsTruncation();
+    void consoleAppendsSplitCrLfAndBoundsRenderedOutput();
 };
+
+void DockableToolsTest::outputBufferBoundsPendingChunksAndReportsTruncation()
+{
+    OutputBuffer::Limits limits;
+    limits.maximumPendingBytes = 64;
+    limits.maximumChunkBytes = 32;
+    OutputBuffer buffer(limits);
+
+    buffer.append(QString(16, QLatin1Char('A')));
+    buffer.append(QString(16, QLatin1Char('B')));
+    buffer.append(QString(16, QLatin1Char('C')));
+
+    const OutputBuffer::DrainResult result = buffer.drain();
+    QVERIFY(result.truncated);
+    QCOMPARE(result.droppedBytes, qsizetype(32));
+    QCOMPARE(result.text, QString(16, QLatin1Char('B')) + QString(16, QLatin1Char('C')));
+    QCOMPARE(buffer.pendingBytes(), qsizetype(0));
+}
+
+void DockableToolsTest::consoleAppendsSplitCrLfAndBoundsRenderedOutput()
+{
+    TConsole console;
+    console.show();
+    auto* const output = console.findChild<QPlainTextEdit*>(QStringLiteral("ConsoleOutput"));
+    QVERIFY(output != nullptr);
+
+    console.appendPlainTextThreadSafe(QStringLiteral("مرحلة أولى\r"));
+    console.appendPlainTextThreadSafe(QStringLiteral("\nمرحلة ثانية\n"));
+    QTRY_VERIFY_WITH_TIMEOUT(output->toPlainText().contains(QStringLiteral("مرحلة أولى\nمرحلة ثانية")),
+                             1000);
+
+    console.appendPlainTextThreadSafe(QStringLiteral("10%\r"));
+    console.appendPlainTextThreadSafe(QStringLiteral("20%"));
+    QTRY_VERIFY_WITH_TIMEOUT(output->toPlainText().contains(QStringLiteral("20%")), 1000);
+    QVERIFY(!output->toPlainText().contains(QStringLiteral("10%")));
+
+    QString burst;
+    for (int index = 0; index < TConsole::kMaximumRenderedLines + 300; ++index) {
+        burst += QStringLiteral("سطر %1\n").arg(index);
+    }
+    console.appendPlainTextThreadSafe(burst);
+    QTRY_VERIFY_WITH_TIMEOUT(output->toPlainText().contains(QStringLiteral("سطر %1")
+                                                                 .arg(TConsole::kMaximumRenderedLines + 299)),
+                             3000);
+    QVERIFY(console.renderedLineCount() <= TConsole::kMaximumRenderedLines);
+
+    console.appendPlainTextThreadSafe(QString(TConsole::kMaximumRenderedCharacters + 2048,
+                                               QChar(0x0633)));
+    QTRY_VERIFY_WITH_TIMEOUT(output->toPlainText().contains(QString(128, QChar(0x0633))), 3000);
+    QVERIFY(console.renderedCharacterCount() <= TConsole::kMaximumRenderedCharacters + 128);
+}
 
 void DockableToolsTest::alifRunControllerValidatesRunsAndCancels()
 {
