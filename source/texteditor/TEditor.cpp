@@ -1,6 +1,9 @@
 #include "TEditor.h"
 #include "TMinimap.h"
 #include "RecoveryCoordinator.h"
+#include "EditorAnalysisBinding.h"
+#include "EditorRecoveryBinding.h"
+#include "EditorInteractionBinding.h"
 
 #include <QPainter>
 #include <QTextBlock>
@@ -46,17 +49,31 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     editorDocument->setDefaultTextOption(option);
 
 
-    highlighter = new TSyntaxHighlighter(editorDocument);
-    analysisController = new EditorAnalysisController(this);
+        highlighter = new TSyntaxHighlighter(editorDocument);
+    analysisBinding = new EditorAnalysisBinding(editorDocument, this);
+    analysisController = analysisBinding->controller();
+    analysisBinding->setSourceSnapshotProvider([this]() { return toPlainText(); });
+    recoveryBinding = new EditorRecoveryBinding(editorDocument, this);
+    recoveryBinding->setSnapshotFactory([this](const quint64 documentRevision) {
+        const QString sourcePath = property("filePath").toString();
+        RecoveryEntry entry;
+        entry.id = recoveryBinding != nullptr ? recoveryBinding->documentId() : QString();
+        entry.sourcePath = sourcePath;
+        entry.displayName = sourcePath.isEmpty() ? QStringLiteral("غير معنون")
+                                                  : QFileInfo(sourcePath).fileName();
+        entry.documentRevision = documentRevision;
+        entry.sourceFingerprint = RecoveryStore::fingerprintForPath(sourcePath);
+        entry.untitled = sourcePath.isEmpty();
+        return RecoverySnapshot{entry, toPlainText()};
+    });
     semanticCompletionProvider = std::make_unique<SemanticCompletionProvider>();
+
     hoverPopup = new THoverPopup(this);
-    hoverTimer.setSingleShot(true);
-    hoverTimer.setInterval(350);
-    connect(&hoverTimer, &QTimer::timeout, this, &TEditor::showPendingHover);
+    interactionBinding = new EditorInteractionBinding(this);
+    interactionBinding->initialize([this]() { showPendingHover(); }, 350);
     setMouseTracking(true);
-    viewport()->setMouseTracking(true);
-    connect(editorDocument, &QTextDocument::contentsChange,
-            analysisController, &EditorAnalysisController::documentChanged);
+        viewport()->setMouseTracking(true);
+
     connect(editorDocument, &QTextDocument::contentsChange,
             this, [this](int, int, int) {
                 clearActiveCompletionContext();
@@ -76,13 +93,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                     highlighter->runFastPass(revision, dirty);
                 }
             });
-    connect(analysisController, &EditorAnalysisController::semanticSnapshotRequested,
-            this, [this](const quint64 revision) {
-                if (analysisController && revision == analysisController->currentRevision()) {
-                    // Snapshotting QTextDocument occurs only in the GUI thread.
-                    analysisController->submitSourceSnapshot(revision, toPlainText());
-                }
-            });
+
     connect(analysisController, &EditorAnalysisController::analysisApplied,
             this, [this](LanguageAnalysisSnapshotPtr snapshot) {
                 if (!snapshot) {
@@ -123,21 +134,6 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     updateLineNumberAreaWidth();
     highlightCurrentLine();
 
-    autoSaveTimer = new QTimer(this);
-    autoSaveTimer->setSingleShot(true);
-    autoSaveTimer->setInterval(750);
-    recoveryMaximumTimer = new QTimer(this);
-    recoveryMaximumTimer->setSingleShot(false);
-    recoveryRetryTimer = new QTimer(this);
-    recoveryRetryTimer->setSingleShot(true);
-    recoveryRetryTimer->setInterval(30000);
-
-    connect(autoSaveTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
-    connect(recoveryMaximumTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
-    connect(recoveryRetryTimer, &QTimer::timeout, this, &TEditor::performAutoSave);
-    connect(this->document(), &QTextDocument::contentsChanged,
-            this, &TEditor::scheduleRecoveryCapture);
-
     applyPreferences(PreferencesStore::load());
     if (setting != nullptr) {
         const QVector<std::shared_ptr<SyntaxTheme>> themes = setting->getAvailableThemes();
@@ -149,8 +145,11 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
 
     installEventFilter(this);
 
-    // Schedule analysis for an initially empty or just-loaded document.
-    analysisController->documentChanged(0, 0, 0);
+        // Service initialization is explicit and ordered after all widget-side
+    // presentation connections have been installed.
+    analysisBinding->initialize();
+    recoveryBinding->initialize();
+
 }
 
 EditorBreadcrumbContext TEditor::breadcrumbContextAtCursor() const
@@ -176,9 +175,16 @@ void TEditor::notifyBreadcrumbContextChanged()
 }
 
 TEditor::~TEditor() {
-
-    if (analysisController) {
-        analysisController->shutdown();
+    // Stop non-visual services before QObject child destruction can tear down
+    // their timers/controllers in an unspecified order.
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->shutdown();
+    }
+    if (interactionBinding != nullptr) {
+        interactionBinding->shutdown();
+    }
+    if (analysisBinding != nullptr) {
+        analysisBinding->shutdown();
     }
 }
 
@@ -519,14 +525,13 @@ void TEditor::scheduleHover(const QPoint& viewportPosition) {
         dismissHover();
         return;
     }
-    if (hoverPopup && hoverPopup->isVisible()
-        && pendingHoverOffset == offset && pendingHoverRevision == revision) {
+    if (hoverPopup && hoverPopup->isVisible() && interactionBinding != nullptr
+        && interactionBinding->matches(offset, revision)) {
         return;
     }
-    pendingHoverViewportPosition = viewportPosition;
-    pendingHoverOffset = offset;
-    pendingHoverRevision = revision;
-    hoverTimer.start();
+    if (interactionBinding != nullptr) {
+        interactionBinding->scheduleHover(viewportPosition, offset, revision);
+    }
 }
 
 void TEditor::showPendingHover() {
@@ -537,18 +542,21 @@ void TEditor::showPendingHover() {
     }
     const quint64 revision = analysisController->currentRevision();
     const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
-    if (!snapshot || pendingHoverOffset < 0 || pendingHoverRevision != revision
+    if (interactionBinding == nullptr || !snapshot
+        || interactionBinding->pendingOffset() < 0
+        || interactionBinding->pendingRevision() != revision
         || snapshot->revision != revision) {
         dismissHover();
         return;
     }
-    const QTextCursor currentCursor = cursorForPosition(pendingHoverViewportPosition);
-    if (currentCursor.position() != pendingHoverOffset) {
+    const QTextCursor currentCursor =
+        cursorForPosition(interactionBinding->pendingViewportPosition());
+    if (currentCursor.position() != interactionBinding->pendingOffset()) {
         dismissHover();
         return;
     }
     const std::optional<HoverInfo> info = semanticHoverProvider.infoAt(
-        pendingHoverOffset, toPlainText(), snapshot);
+        interactionBinding->pendingOffset(), toPlainText(), snapshot);
     if (!info.has_value()) {
         dismissHover();
         return;
@@ -558,7 +566,8 @@ void TEditor::showPendingHover() {
     hoverPopup->adjustSize();
     const QSize popupSize = hoverPopup->size();
     constexpr int pointerGap = 12;
-    const QPoint pointerPosition = viewport()->mapToGlobal(pendingHoverViewportPosition);
+    const QPoint pointerPosition =
+        viewport()->mapToGlobal(interactionBinding->pendingViewportPosition());
     QScreen* screen = QGuiApplication::screenAt(pointerPosition);
     if (screen == nullptr) {
         screen = QGuiApplication::primaryScreen();
@@ -586,9 +595,9 @@ void TEditor::showPendingHover() {
 }
 
 void TEditor::dismissHover() {
-    hoverTimer.stop();
-    pendingHoverOffset = -1;
-    pendingHoverRevision = 0;
+    if (interactionBinding != nullptr) {
+        interactionBinding->dismissHover();
+    }
     if (hoverPopup) {
         hoverPopup->hide();
     }
@@ -1179,173 +1188,71 @@ QString TEditor::getCurrentLineIndentation(const QTextCursor &cursor) const {
 
 void TEditor::setRecoveryCoordinator(RecoveryCoordinator* const coordinator)
 {
-    if (recoveryCoordinator == coordinator) {
-        return;
-    }
-    if (recoveryCoordinator != nullptr) {
-        disconnect(recoveryCoordinator, &RecoveryCoordinator::snapshotPersisted,
-                   this, &TEditor::acknowledgeRecoverySnapshot);
-    }
-
-    recoveryCoordinator = coordinator;
-    if (recoveryCoordinator != nullptr) {
-        connect(recoveryCoordinator, &RecoveryCoordinator::snapshotPersisted,
-                this, &TEditor::acknowledgeRecoverySnapshot);
-        if (m_recoveryDocumentId.isEmpty()) {
-            m_recoveryDocumentId = recoveryCoordinator->createDocumentId();
-        }
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->setCoordinator(coordinator);
     }
 }
 
 QString TEditor::recoveryDocumentId() const
 {
-    return m_recoveryDocumentId;
+    return recoveryBinding != nullptr ? recoveryBinding->documentId() : QString();
 }
 
 bool TEditor::hasPendingRecoveryPersistence() const
 {
-    return m_recoveryDirty || m_recoverySnapshotAwaitingAcknowledgement
-        || m_lastPersistedRecoveryRevision < m_lastRequestedRecoveryRevision;
+    return recoveryBinding != nullptr && recoveryBinding->hasPendingPersistence();
 }
 
 bool TEditor::isRecoveryRetryScheduled() const
 {
-    return recoveryRetryTimer != nullptr && recoveryRetryTimer->isActive();
+    return recoveryBinding != nullptr && recoveryBinding->isRetryScheduled();
 }
 
 quint64 TEditor::lastRequestedRecoveryRevision() const
 {
-    return m_lastRequestedRecoveryRevision;
+    return recoveryBinding != nullptr ? recoveryBinding->lastRequestedRevision() : 0;
 }
 
 quint64 TEditor::lastPersistedRecoveryRevision() const
 {
-    return m_lastPersistedRecoveryRevision;
+    return recoveryBinding != nullptr ? recoveryBinding->lastPersistedRevision() : 0;
 }
 
 quint64 TEditor::currentDirtyRecoveryRevision() const
 {
-    return m_currentDirtyRevision;
+    return recoveryBinding != nullptr ? recoveryBinding->currentDirtyRevision() : 0;
 }
 
 void TEditor::adoptRecoveryEntry(const RecoveryEntry& entry)
 {
-    if (!entry.id.isEmpty()) {
-        m_recoveryDocumentId = entry.id;
-        m_currentDirtyRevision = entry.documentRevision;
-        m_lastRequestedRecoveryRevision = entry.documentRevision;
-        m_lastPersistedRecoveryRevision = entry.documentRevision;
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->adoptRecoveryEntry(entry);
     }
 }
 
 void TEditor::startAutoSave()
 {
-    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr) {
-        return;
-    }
-    if (m_currentDirtyRevision == 0) {
-        m_currentDirtyRevision = 1;
-    }
-    m_recoveryDirty = true;
-    autoSaveTimer->start();
-    if (!recoveryMaximumTimer->isActive()) {
-        recoveryMaximumTimer->start();
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->startAutoSave();
     }
 }
 
 void TEditor::stopAutoSave()
 {
-    if (autoSaveTimer != nullptr) {
-        autoSaveTimer->stop();
-    }
-    if (recoveryMaximumTimer != nullptr) {
-        recoveryMaximumTimer->stop();
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->stopAutoSave();
     }
 }
 
 void TEditor::scheduleRecoveryCapture()
 {
-    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr) {
-        return;
-    }
-    ++m_currentDirtyRevision;
-    m_recoveryRetryCount = 0;
-    if (recoveryRetryTimer != nullptr) {
-        recoveryRetryTimer->stop();
-    }
     startAutoSave();
 }
 
 void TEditor::flushRecoverySnapshot()
 {
-    if (!preferences.autoSaveEnabled || recoveryCoordinator == nullptr || !m_recoveryDirty
-        || m_recoverySnapshotAwaitingAcknowledgement) {
-        return;
-    }
-    if (m_recoveryDocumentId.isEmpty()) {
-        m_recoveryDocumentId = recoveryCoordinator->createDocumentId();
-    }
-
-    const QString sourcePath = property("filePath").toString();
-    RecoveryEntry entry;
-    entry.id = m_recoveryDocumentId;
-    entry.sourcePath = sourcePath;
-    entry.displayName = sourcePath.isEmpty() ? QStringLiteral("غير معنون")
-                                              : QFileInfo(sourcePath).fileName();
-    entry.documentRevision = m_currentDirtyRevision;
-    entry.sourceFingerprint = RecoveryStore::fingerprintForPath(sourcePath);
-    entry.untitled = sourcePath.isEmpty();
-
-    m_lastRequestedRecoveryRevision = entry.documentRevision;
-    m_recoverySnapshotAwaitingAcknowledgement = true;
-    recoveryCoordinator->submitSnapshot({entry, toPlainText()});
-}
-
-void TEditor::acknowledgeRecoverySnapshot(RecoveryWriteResult result)
-{
-    if (result.entryId != m_recoveryDocumentId
-        || result.documentRevision != m_lastRequestedRecoveryRevision) {
-        return;
-    }
-
-    m_recoverySnapshotAwaitingAcknowledgement = false;
-    if (!result.succeeded) {
-        m_recoveryDirty = true;
-        scheduleRecoveryRetry();
-        return;
-    }
-
-    m_lastPersistedRecoveryRevision = result.documentRevision;
-    m_recoveryRetryCount = 0;
-    if (recoveryRetryTimer != nullptr) {
-        recoveryRetryTimer->stop();
-    }
-    if (m_currentDirtyRevision == m_lastPersistedRecoveryRevision) {
-        m_recoveryDirty = false;
-        stopAutoSave();
-        return;
-    }
-
-    // The document changed while its previous snapshot was being written.
-    // Preserve the dirty state and capture the newer revision after its debounce.
-    m_recoveryDirty = true;
-    startAutoSave();
-}
-
-void TEditor::scheduleRecoveryRetry()
-{
-    constexpr int maximumRetries = 3;
-    if (m_recoveryRetryCount >= maximumRetries) {
-        // Keep the document visibly/persistently dirty. A later edit or the
-        // close-path flush can make another explicit persistence attempt.
-        stopAutoSave();
-        return;
-    }
-
-    ++m_recoveryRetryCount;
-    stopAutoSave();
-    if (recoveryRetryTimer != nullptr) {
-        recoveryRetryTimer->start();
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->flushSnapshot();
     }
 }
 
@@ -1356,19 +1263,8 @@ void TEditor::performAutoSave()
 
 void TEditor::clearRecoverySnapshot()
 {
-    stopAutoSave();
-    if (recoveryRetryTimer != nullptr) {
-        recoveryRetryTimer->stop();
-    }
-    m_recoveryDirty = false;
-    m_recoverySnapshotAwaitingAcknowledgement = false;
-    m_recoveryRetryCount = 0;
-    // A successful normal save is itself durable. Ignore any older in-flight
-    // recovery acknowledgement and keep the public pending state consistent.
-    m_lastRequestedRecoveryRevision = m_currentDirtyRevision;
-    m_lastPersistedRecoveryRevision = m_currentDirtyRevision;
-    if (recoveryCoordinator != nullptr && !m_recoveryDocumentId.isEmpty()) {
-        recoveryCoordinator->removeEntry(m_recoveryDocumentId);
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->clearSnapshot();
     }
 }
 
@@ -1405,16 +1301,12 @@ void TEditor::applyPreferences(const EditorPreferences& requestedPreferences)
     if (minimap != nullptr) {
         minimap->setVisible(preferences.minimapVisible);
     }
-    if (recoveryMaximumTimer != nullptr) {
-        recoveryMaximumTimer->setInterval(preferences.autoSaveIntervalMilliseconds);
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->setConfiguration(preferences);
     }
-    if (!preferences.autoSaveEnabled) {
-        stopAutoSave();
-        if (recoveryRetryTimer != nullptr) {
-            recoveryRetryTimer->stop();
-        }
+    if (interactionBinding != nullptr) {
+        interactionBinding->setHoverDelay(preferences.hoverDelayMilliseconds);
     }
-    hoverTimer.setInterval(preferences.hoverDelayMilliseconds);
     if (!preferences.hoverInformationEnabled) {
         dismissHover();
     }

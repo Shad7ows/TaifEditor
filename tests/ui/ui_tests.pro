@@ -15,6 +15,7 @@ INCLUDEPATH += \
     ../../source/texteditor \
     ../../source/texteditor/autocomplete \
     ../../source/texteditor/analysis \
+    ../../source/texteditor/services \
     ../../source/texteditor/hover \
     ../../source/texteditor/diagnostics \
     ../../source/texteditor/navigation \
@@ -52,6 +53,9 @@ SOURCES += \
     ../../source/language/presentation/SemanticPresentationAdapter.cpp \
     ../../source/language/presentation/DiagnosticPresentationAdapter.cpp \
     ../../source/texteditor/analysis/EditorAnalysisController.cpp \
+    ../../source/texteditor/services/EditorAnalysisBinding.cpp \
+    ../../source/texteditor/services/EditorRecoveryBinding.cpp \
+    ../../source/texteditor/services/EditorInteractionBinding.cpp \
     ../../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../../source/texteditor/analysis/SemanticHoverProvider.cpp \
     ../../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
@@ -85,6 +89,9 @@ HEADERS += \
     ../../source/texteditor/autocomplete/AutoComplete.h \
     ../../source/texteditor/autocomplete/AutoCompleteUI.h \
     ../../source/texteditor/analysis/EditorAnalysisController.h \
+    ../../source/texteditor/services/EditorAnalysisBinding.h \
+    ../../source/texteditor/services/EditorRecoveryBinding.h \
+    ../../source/texteditor/services/EditorInteractionBinding.h \
     ../../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../../source/texteditor/analysis/SemanticHoverProvider.h \
     ../../source/texteditor/analysis/SemanticDefinitionProvider.h \

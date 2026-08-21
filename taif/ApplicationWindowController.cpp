@@ -65,7 +65,7 @@ Taif* ApplicationWindowController::createEditorWindow(const QString& filePath,
     connect(editor, &Taif::closeRejected, this,
             [this, editor]() { m_returnToWelcomeWindows.remove(editor); });
     connect(editor, &QObject::destroyed, this, [this, editor]() {
-        const bool shouldShowWelcome = m_returnToWelcomeWindows.remove(editor) > 0;
+        const bool shouldShowWelcome = m_returnToWelcomeWindows.remove(editor);
         m_editorWindows.remove(editor);
         if (shouldShowWelcome) {
             showWelcome();

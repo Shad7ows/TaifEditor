@@ -32,6 +32,9 @@
 #include "TSettings.h"
 #include "RecoveryStore.h"
 #include "RecoveryCoordinator.h"
+#include "EditorAnalysisBinding.h"
+#include "EditorRecoveryBinding.h"
+#include "EditorInteractionBinding.h"
 #include "TRecoveryDialog.h"
 #include "TEditor.h"
 #include "AlifRunController.h"
@@ -64,6 +67,7 @@ private slots:
     void recoveryCoordinatorReportsRemovalFailureAndAsynchronousFlushOutcome();
     void editorRecoveryClearsDirtyOnlyAfterLatestSnapshotAcknowledgement();
     void editorRecoveryFailureKeepsDirtyAndSchedulesBoundedRetry();
+    void editorServiceBindingsHaveIdempotentShutdown();
     void recoveryDialogUsesRtlAndSelectsEntriesByDefault();
     void alifRunControllerValidatesRunsAndCancels();
 };
@@ -267,6 +271,32 @@ void DockableToolsTest::editorRecoveryFailureKeepsDirtyAndSchedulesBoundedRetry(
     QVERIFY(editor.isRecoveryRetryScheduled());
     QCOMPARE(editor.lastPersistedRecoveryRevision(), quint64(0));
     QCOMPARE(editor.lastRequestedRecoveryRevision(), editor.currentDirtyRecoveryRevision());
+}
+
+void DockableToolsTest::editorServiceBindingsHaveIdempotentShutdown()
+{
+    QTextDocument document;
+    EditorAnalysisBinding analysisBinding(&document);
+    analysisBinding.initialize();
+    QVERIFY(analysisBinding.controller() != nullptr);
+    analysisBinding.shutdown();
+    analysisBinding.shutdown();
+
+    EditorInteractionBinding interactionBinding;
+    int hoverTimeouts = 0;
+    interactionBinding.initialize([&hoverTimeouts]() { ++hoverTimeouts; }, 1);
+    interactionBinding.scheduleHover({}, 3, 7);
+    QTRY_COMPARE_WITH_TIMEOUT(hoverTimeouts, 1, 1000);
+    QVERIFY(interactionBinding.matches(3, 7));
+    interactionBinding.dismissHover();
+    QCOMPARE(interactionBinding.pendingOffset(), qsizetype(-1));
+    interactionBinding.shutdown();
+    interactionBinding.shutdown();
+
+    EditorRecoveryBinding recoveryBinding(&document);
+    recoveryBinding.initialize();
+    recoveryBinding.shutdown();
+    recoveryBinding.shutdown();
 }
 
 void DockableToolsTest::recoveryDialogUsesRtlAndSelectsEntriesByDefault()
