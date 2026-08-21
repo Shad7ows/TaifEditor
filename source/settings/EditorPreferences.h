@@ -37,8 +37,10 @@ public:
     [[nodiscard]] static EditorPreferences defaults();
     [[nodiscard]] static EditorPreferences load();
     [[nodiscard]] static EditorPreferences normalize(EditorPreferences preferences);
-    static void save(const EditorPreferences& preferences);
-    static void clearRecentFiles();
+    /** Persists normalized preferences and optional draft-local recent-file removal. */
+    static bool save(const EditorPreferences& preferences, bool clearRecentFiles = false,
+                     QString* errorMessage = nullptr);
+    static bool clearRecentFiles(QString* errorMessage = nullptr);
 
 private:
     PreferencesStore() = delete;

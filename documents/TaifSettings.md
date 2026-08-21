@@ -14,8 +14,8 @@ The settings UI changes a draft snapshot first. It previews valid values in open
 | Component | Ownership and responsibility | Must not do |
 |---|---|---|
 | `EditorPreferences` | Holds typed editor and workspace values with safe defaults. | Read widgets or access `QSettings` directly. |
-| `PreferencesStore` | Loads, normalizes, migrates current font/theme keys, persists values, and clears recent files. | Update editor widgets or display dialogs. |
-| `TSettings` | Presents Arabic/RTL controls, maintains baseline and draft snapshots, emits preview/apply signals. | Write raw settings keys from controls or directly manipulate editors. |
+| `PreferencesStore` | Loads, normalizes, reads the existing schema keys, and persists a complete preference snapshot with an explicit success/error result. | Update editor widgets or display dialogs. |
+| `TSettings` | Presents Arabic/RTL controls, maintains baseline and draft snapshots, emits preview/apply signals, and surfaces persistence failures. | Write raw settings keys from controls or directly manipulate editors. |
 | `Taif` | Connects settings once and forwards complete preference snapshots to all live editors. | Create duplicate per-control connections whenever the settings window opens. |
 | `TEditor` | Applies a complete normalized snapshot to typography, wrapping, editor aids, autosave, hover, completion, and inline diagnostics. | Persist user preferences. |
 | `TSyntaxHighlighter` | Shows or hides diagnostic wave underlines while retaining lexical and semantic colors. | Change semantic diagnostic data or revision safety. |
@@ -47,8 +47,10 @@ The settings window follows this sequence.
 |---|---|---|---|
 | Open settings | Reloads current persisted snapshot as baseline and draft. | Unchanged. | Unchanged. |
 | Change a control | Updates and normalizes the draft. | Previewed immediately across current editors. | Unchanged. |
-| Click `تطبيق` | Draft becomes new baseline. | Already previewed. | Persisted through `PreferencesStore`. |
-| Click `إلغاء` | Draft is replaced by baseline. | Baseline reapplied. | Unchanged. |
+| Click `مسح سجل الملفات الأخيرة` | Records a pending clear action and disables the button with an Arabic pending label. | Unchanged. | Unchanged. |
+| Click `تطبيق` | Draft becomes new baseline only after a successful store result. | Already previewed. | Preferences and any pending recent-file clear are committed together. |
+| Failed `تطبيق` | Draft and preview remain active. | Unchanged. | Unchanged; an Arabic error is displayed. |
+| Click `إلغاء` | Draft and any pending clear action are discarded; baseline is restored. | Baseline reapplied. | Unchanged. |
 | Close the settings window | Equivalent to cancel. | Baseline reapplied. | Unchanged. |
 | Click `استعادة الافتراضيات` | Draft becomes defaults. | Defaults previewed. | Unchanged until Apply. |
 
@@ -67,7 +69,7 @@ Stable object names are part of the regression surface. New settings controls us
 | Hover | Disabling hover must dismiss a visible tooltip and stop future scheduling; it must not change symbol resolution. |
 | Diagnostics | Hiding inline underlines is presentation-only; the Problems panel and diagnostic model retain their current data. |
 | File safety | Autosave controls govern recovery backups only. They do not weaken atomic source-file saves through `QSaveFile`. |
-| Recent files | A zero limit clears/avoids history but must not affect explicitly opened files, saved sessions, or command-line launch behavior. |
+| Recent files | A zero limit clears/avoids history but must not affect explicitly opened files, saved sessions, or command-line launch behavior. The explicit clear button is draft-local and cannot remove history until Apply succeeds. |
 | Font catalog | No settings consumer may use positional `QFontDatabase::applicationFontFamilies(index)` lookups. |
 
 ## Extension Procedure
@@ -78,6 +80,6 @@ Settings that need a missing backend, such as formatter-on-save, external-file w
 
 ## Regression Requirements
 
-The focused UI target covers preference normalization and the settings window’s RTL draft workflow, including preview, cancel restoration, reset behavior, and stable action controls. The full application build validates `TSettings`, preference propagation, minimap font catalog integration, highlighter diagnostics visibility, and main-window recent-file behavior.
+The focused UI target covers preference normalization and the settings window’s RTL draft workflow, including preview, cancel restoration, reset behavior, stable action controls, and draft-local recent-file clearing. The full application build validates `TSettings`, preference propagation, minimap font catalog integration, highlighter diagnostics visibility, and main-window recent-file behavior.
 
 Before delivery, run the full application build plus lexer, parser, semantic, analysis, and UI suites. Remove generated qmake files, release/debug outputs, temporary scripts, and build logs. Finally run `git diff --check`.

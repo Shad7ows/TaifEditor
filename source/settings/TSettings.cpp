@@ -2,6 +2,7 @@
 
 #include "ApplicationBootstrap.h"
 
+#include <QMessageBox>
 #include <QStyledItemDelegate>
 
 TSettings::TSettings(QWidget* const parent)
@@ -27,7 +28,12 @@ void TSettings::beginEditing()
 {
     baselinePreferences = PreferencesStore::load();
     draftPreferences = baselinePreferences;
+    clearRecentFilesOnApply = false;
     setControlsFromPreferences(draftPreferences);
+    if (clearRecentFilesButton != nullptr) {
+        clearRecentFilesButton->setEnabled(true);
+        clearRecentFilesButton->setText(QStringLiteral("مسح سجل الملفات الأخيرة"));
+    }
 }
 
 void TSettings::setupLayout()
@@ -251,9 +257,8 @@ void TSettings::createWorkspacePage(QVBoxLayout* const layout)
 
     connect(recentFilesLimitSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &TSettings::synchronizeDraftFromControls);
-    connect(clearRecentFilesButton, &QPushButton::clicked, this, [] {
-        PreferencesStore::clearRecentFiles();
-    });
+    connect(clearRecentFilesButton, &QPushButton::clicked,
+            this, &TSettings::markRecentFilesForClearing);
 }
 
 void TSettings::createActionBar(QVBoxLayout* const layout)
@@ -342,8 +347,14 @@ void TSettings::applyDraftPreview()
 void TSettings::applyDraft()
 {
     draftPreferences = PreferencesStore::normalize(draftPreferences);
-    PreferencesStore::save(draftPreferences);
+    QString errorMessage;
+    if (!PreferencesStore::save(draftPreferences, clearRecentFilesOnApply, &errorMessage)) {
+        QMessageBox::warning(this, QStringLiteral("تعذر حفظ الإعدادات"), errorMessage);
+        return;
+    }
+
     baselinePreferences = draftPreferences;
+    clearRecentFilesOnApply = false;
     emit preferencesApplied(draftPreferences);
     hide();
 }
@@ -351,9 +362,23 @@ void TSettings::applyDraft()
 void TSettings::cancelDraft()
 {
     draftPreferences = baselinePreferences;
+    clearRecentFilesOnApply = false;
     setControlsFromPreferences(baselinePreferences);
+    if (clearRecentFilesButton != nullptr) {
+        clearRecentFilesButton->setEnabled(true);
+        clearRecentFilesButton->setText(QStringLiteral("مسح سجل الملفات الأخيرة"));
+    }
     applyDraftPreview();
     hide();
+}
+
+void TSettings::markRecentFilesForClearing()
+{
+    clearRecentFilesOnApply = true;
+    if (clearRecentFilesButton != nullptr) {
+        clearRecentFilesButton->setEnabled(false);
+        clearRecentFilesButton->setText(QStringLiteral("سيُمسح عند تطبيق الإعدادات"));
+    }
 }
 
 void TSettings::restorePageDefaults()

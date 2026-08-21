@@ -27,8 +27,18 @@ public:
 
     explicit SessionStore(SettingsScope scope = {});
 
-    [[nodiscard]] QVector<SavedSession> loadAll() const;
+    /**
+     * Loads the versioned atomic repository. If it is absent, legacy QSettings
+     * sessions are validated, returned, and migrated without deleting the
+     * legacy source. A corrupt primary repository falls back to its last-good
+     * backup before reporting a read error.
+     */
+    [[nodiscard]] QVector<SavedSession> loadAll(QString* errorMessage = nullptr) const;
     bool saveAll(const QVector<SavedSession>& sessions, QString* errorMessage = nullptr) const;
+
+    /** Exposed for diagnostics and isolated tests; not a UI-facing setting. */
+    [[nodiscard]] QString repositoryFilePath() const;
+    [[nodiscard]] QString backupRepositoryFilePath() const;
 
     bool create(SavedSession session, QString* errorMessage = nullptr) const;
     bool update(SavedSession session, QString* errorMessage = nullptr) const;
@@ -41,6 +51,14 @@ public:
                                                      const QString& excludedId = {});
 
 private:
+    [[nodiscard]] QVector<SavedSession> loadLegacySessions() const;
+    [[nodiscard]] bool readRepository(const QString& path, QVector<SavedSession>* sessions,
+                                      QString* errorMessage) const;
+    [[nodiscard]] bool writeRepositoryAtomically(const QVector<SavedSession>& sessions,
+                                                  QString* errorMessage) const;
+    [[nodiscard]] static bool validateAndNormalize(const QVector<SavedSession>& source,
+                                                   QVector<SavedSession>* normalized,
+                                                   QString* errorMessage);
     [[nodiscard]] QString settingsGroup() const;
     [[nodiscard]] QSettings makeSettings() const;
 

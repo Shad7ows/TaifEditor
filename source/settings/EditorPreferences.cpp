@@ -33,6 +33,13 @@ int readInt(const QSettings& settings, const char* key, const int fallback)
     return converted ? value : fallback;
 }
 
+void assignError(QString* const errorMessage, const QString& message)
+{
+    if (errorMessage != nullptr) {
+        *errorMessage = message;
+    }
+}
+
 } // namespace
 
 bool EditorPreferences::operator==(const EditorPreferences& other) const
@@ -115,8 +122,13 @@ EditorPreferences PreferencesStore::load()
     return normalize(preferences);
 }
 
-void PreferencesStore::save(const EditorPreferences& requestedPreferences)
+bool PreferencesStore::save(const EditorPreferences& requestedPreferences,
+                            const bool clearRecentFiles,
+                            QString* const errorMessage)
 {
+    if (errorMessage != nullptr) {
+        errorMessage->clear();
+    }
     const EditorPreferences preferences = normalize(requestedPreferences);
     QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
     settings.setValue(QLatin1String(kSchemaVersionKey), kCurrentSchemaVersion);
@@ -136,12 +148,18 @@ void PreferencesStore::save(const EditorPreferences& requestedPreferences)
     settings.setValue(QLatin1String(kHoverDelayKey), preferences.hoverDelayMilliseconds);
     settings.setValue(QLatin1String(kInlineDiagnosticsKey), preferences.inlineDiagnosticsVisible);
     settings.setValue(QLatin1String(kRecentFilesLimitKey), preferences.recentFilesLimit);
+    if (clearRecentFiles) {
+        settings.remove(QStringLiteral("RecentFiles"));
+    }
     settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        assignError(errorMessage, QStringLiteral("تعذر حفظ الإعدادات."));
+        return false;
+    }
+    return true;
 }
 
-void PreferencesStore::clearRecentFiles()
+bool PreferencesStore::clearRecentFiles(QString* const errorMessage)
 {
-    QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
-    settings.remove(QStringLiteral("RecentFiles"));
-    settings.sync();
+    return save(load(), true, errorMessage);
 }

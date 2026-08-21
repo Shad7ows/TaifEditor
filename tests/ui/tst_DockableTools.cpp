@@ -55,6 +55,7 @@ private slots:
     void searchPanelProvidesReplaceSurface();
     void searchReplaceEnginePreservesMatchAndUndoSemantics();
     void sessionStorePersistsNormalizedSessions();
+    void sessionStoreMigratesLegacyDataAndRecoversFromBackup();
     void sessionEditorPreservesOrderedFilesInRtl();
     void breadcrumbBarUsesRtlAndRepresentsUntitledFile();
     void breadcrumbBarRendersOrderedFileAndSemanticSegments();
@@ -63,6 +64,7 @@ private slots:
     void applicationWindowControllerOwnsTopLevelWindowRouting();
     void editorPreferencesNormalizeInvalidValues();
     void settingsWindowUsesRtlDraftApplyCancelWorkflow();
+    void settingsRecentFileClearRemainsDraftLocalUntilApply();
     void recoveryStoreAtomicallyPersistsReadsAndRemovesSnapshots();
     void recoveryCoordinatorReportsRemovalFailureAndAsynchronousFlushOutcome();
     void editorRecoveryClearsDirtyOnlyAfterLatestSnapshotAcknowledgement();
@@ -347,6 +349,38 @@ void DockableToolsTest::settingsWindowUsesRtlDraftApplyCancelWorkflow()
 
     resetButton->click();
     QVERIFY(settings.currentPreferences() == PreferencesStore::defaults());
+}
+
+void DockableToolsTest::settingsRecentFileClearRemainsDraftLocalUntilApply()
+{
+    auto* const application = qobject_cast<QApplication*>(QCoreApplication::instance());
+    QVERIFY(application != nullptr);
+    ApplicationBootstrap::initialize(*application);
+
+    QSettings persisted(QStringLiteral("Alif"), QStringLiteral("Taif"));
+    const bool hadRecentFiles = persisted.contains(QStringLiteral("RecentFiles"));
+    const QVariant originalRecentFiles = persisted.value(QStringLiteral("RecentFiles"));
+
+    TSettings settings;
+    auto* const clearButton = settings.findChild<QPushButton*>(
+        QStringLiteral("SettingsClearRecentFilesButton"));
+    auto* const cancelButton = settings.findChild<QPushButton*>(
+        QStringLiteral("SettingsCancelButton"));
+    QVERIFY(clearButton != nullptr);
+    QVERIFY(cancelButton != nullptr);
+
+    clearButton->click();
+    QVERIFY(!clearButton->isEnabled());
+    QCOMPARE(persisted.contains(QStringLiteral("RecentFiles")), hadRecentFiles);
+    cancelButton->click();
+    QVERIFY(persisted.contains(QStringLiteral("RecentFiles")) == hadRecentFiles);
+
+    if (hadRecentFiles) {
+        persisted.setValue(QStringLiteral("RecentFiles"), originalRecentFiles);
+    } else {
+        persisted.remove(QStringLiteral("RecentFiles"));
+    }
+    persisted.sync();
 }
 
 void DockableToolsTest::editorPreferencesNormalizeInvalidValues()
@@ -757,6 +791,65 @@ void DockableToolsTest::sessionStorePersistsNormalizedSessions()
     QVERIFY(store.remove(updated.id, &errorMessage));
     QVERIFY(store.loadAll().isEmpty());
     QFile::remove(settingsFile);
+}
+
+void DockableToolsTest::sessionStoreMigratesLegacyDataAndRecoversFromBackup()
+{
+    const QString settingsFile = QDir(QDir::tempPath()).filePath(
+        QStringLiteral("taif-session-migration-%1.ini")
+            .arg(QUuid::createUuid().toString(QUuid::WithoutBraces)));
+    const SessionStore::SettingsScope scope{
+        QStringLiteral("TaifEditorSessionStoreTests"),
+        QStringLiteral("MigrationScope"), settingsFile};
+
+    SavedSession legacySession;
+    legacySession.id = QStringLiteral("legacy-session-01");
+    legacySession.displayName = QStringLiteral("جلسة قديمة");
+    legacySession.filePaths = {QDir::tempPath() + QStringLiteral("/legacy-session.alif")};
+    legacySession.activeFilePath = legacySession.filePaths.first();
+    legacySession.updatedAt = QDateTime::currentDateTimeUtc();
+
+    QSettings legacySettings(settingsFile, QSettings::IniFormat);
+    legacySettings.beginGroup(QStringLiteral("SavedSessions"));
+    QVariantMap legacyEntry;
+    legacyEntry.insert(QStringLiteral("id"), legacySession.id);
+    legacyEntry.insert(QStringLiteral("displayName"), legacySession.displayName);
+    legacyEntry.insert(QStringLiteral("filePaths"), legacySession.filePaths);
+    legacyEntry.insert(QStringLiteral("activeFilePath"), legacySession.activeFilePath);
+    legacyEntry.insert(QStringLiteral("updatedAt"), legacySession.updatedAt.toString(Qt::ISODateWithMs));
+    legacySettings.setValue(QStringLiteral("schemaVersion"), 1);
+    legacySettings.setValue(QStringLiteral("entries"), QVariantList{legacyEntry});
+    legacySettings.endGroup();
+    legacySettings.sync();
+
+    SessionStore store(scope);
+    QString errorMessage;
+    const QVector<SavedSession> migrated = store.loadAll(&errorMessage);
+    QVERIFY(errorMessage.isEmpty());
+    QCOMPARE(migrated.size(), 1);
+    QCOMPARE(migrated.first().id, legacySession.id);
+    QVERIFY(QFileInfo::exists(store.repositoryFilePath()));
+    QVERIFY(QFileInfo::exists(settingsFile));
+
+    SavedSession updated = migrated.first();
+    updated.displayName = QStringLiteral("جلسة محدثة");
+    QVERIFY(store.update(updated, &errorMessage));
+    QVERIFY(errorMessage.isEmpty());
+    QVERIFY(QFileInfo::exists(store.backupRepositoryFilePath()));
+
+    QFile corruptPrimary(store.repositoryFilePath());
+    QVERIFY(corruptPrimary.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QCOMPARE(corruptPrimary.write("not-json"), qint64(8));
+    corruptPrimary.close();
+
+    const QVector<SavedSession> recovered = store.loadAll(&errorMessage);
+    QVERIFY(errorMessage.isEmpty());
+    QCOMPARE(recovered.size(), 1);
+    QCOMPARE(recovered.first().displayName, legacySession.displayName);
+
+    QFile::remove(settingsFile);
+    QFile::remove(store.repositoryFilePath());
+    QFile::remove(store.backupRepositoryFilePath());
 }
 
 void DockableToolsTest::breadcrumbBarUsesRtlAndRepresentsUntitledFile()
