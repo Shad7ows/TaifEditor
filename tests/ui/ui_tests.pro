@@ -44,6 +44,7 @@ SOURCES += \
     ../../source/menubar/TMenu.cpp \
     ../../source/components/TSearchPanel.cpp \
     ../../source/components/SearchReplaceEngine.cpp \
+    ../../source/components/EditorInfoBar.cpp \
     ../../source/components/TFlatButton.cpp \
     ../../source/session/SessionStore.cpp \
     ../../source/session/SessionEditorDialog.cpp \
@@ -108,6 +109,7 @@ HEADERS += \
     ../../source/recovery/RecoveryCoordinator.h \
     ../../source/recovery/TRecoveryDialog.h \
     ../../source/texteditor/TEditor.h \
+    ../../source/texteditor/EditorInfoSnapshot.h \
     ../../source/texteditor/autocomplete/AutoComplete.h \
     ../../source/texteditor/autocomplete/AutoCompleteUI.h \
     ../../source/texteditor/analysis/EditorAnalysisController.h \
@@ -122,6 +124,7 @@ HEADERS += \
     ../../source/texteditor/highlighter/TSyntaxDefinition.h \
     ../../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../../source/components/TMinimap.h \
+    ../../source/components/EditorInfoBar.h \
     ../../source/components/TFlatButton.h \
     ../../source/pages/TWelcomeWindow.h \
     ../../source/run/AlifRunController.h \

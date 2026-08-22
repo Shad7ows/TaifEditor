@@ -62,6 +62,7 @@ SOURCES += \
     main.cpp \
     ../source/texteditor/TEditor.cpp \
     ../source/components/TMinimap.cpp \
+    ../source/components/EditorInfoBar.cpp \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
     ../source/components/SearchReplaceEngine.cpp \
@@ -115,7 +116,9 @@ HEADERS += \
     ApplicationWindowController.h \
     Taif.h \
     ../source/texteditor/TEditor.h \
+    ../source/texteditor/EditorInfoSnapshot.h \
     ../source/components/TMinimap.h \
+    ../source/components/EditorInfoBar.h \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
     ../source/components/SearchReplaceEngine.h \

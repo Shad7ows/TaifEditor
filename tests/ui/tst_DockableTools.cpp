@@ -44,6 +44,7 @@
 #include "EditorInteractionBinding.h"
 #include "TRecoveryDialog.h"
 #include "TEditor.h"
+#include "EditorInfoBar.h"
 #include "AlifRunController.h"
 
 #include <QTemporaryDir>
@@ -67,6 +68,9 @@ private slots:
     void breadcrumbBarUsesRtlAndRepresentsUntitledFile();
     void breadcrumbBarRendersOrderedFileAndSemanticSegments();
     void breadcrumbBarClearsSemanticSegmentsAndEmitsNavigationSignals();
+    void editorInfoBarPresentsSnapshotAndAdaptsToWidth();
+    void editorInfoBarEmitsDiagnosticsActivation();
+    void mainWindowInformationBarTracksActiveEditor();
     void applicationBootstrapProvidesStableFontRolesAndLaunchValidation();
     void applicationWindowControllerOwnsTopLevelWindowRouting();
     void editorPreferencesNormalizeInvalidValues();
@@ -368,6 +372,98 @@ void DockableToolsTest::alifRunControllerValidatesRunsAndCancels()
     controller.cancel();
     QTRY_VERIFY_WITH_TIMEOUT(cancelledFinishedSpy.count() == 1, 4000);
     QVERIFY(!controller.isActive());
+}
+
+void DockableToolsTest::editorInfoBarPresentsSnapshotAndAdaptsToWidth()
+{
+    EditorInfoBar infoBar;
+    infoBar.resize(1240, 34);
+    infoBar.show();
+
+    EditorInfoSnapshot snapshot;
+    snapshot.hasEditor = true;
+    snapshot.documentName = QStringLiteral("حالة.alif");
+    snapshot.documentPath = QStringLiteral("C:/work/حالة.alif");
+    snapshot.modified = true;
+    snapshot.line = 12;
+    snapshot.column = 7;
+    snapshot.selectedCharacters = 18;
+    snapshot.selectedLines = 2;
+    snapshot.documentLines = 250;
+    snapshot.documentCharacters = 9200;
+    snapshot.lineEnding = EditorInfoSnapshot::LineEnding::Crlf;
+    snapshot.indentationWidth = 8;
+    snapshot.errorCount = 2;
+    snapshot.warningCount = 1;
+    snapshot.analysisState = EditorInfoSnapshot::AnalysisState::Ready;
+    snapshot.analysisDurationMilliseconds = 14;
+    snapshot.analysisSnapshotCharacters = 9200;
+    snapshot.analysisTokenCount = 640;
+    snapshot.recoveryState = EditorInfoSnapshot::RecoveryState::PendingPersistence;
+    snapshot.recoveryWriteDurationMilliseconds = 5;
+    infoBar.setSnapshot(snapshot);
+
+    QCOMPARE(infoBar.layoutDirection(), Qt::RightToLeft);
+    auto* const documentLabel = infoBar.findChild<QLabel*>(QStringLiteral("InfoDocumentSegmentLabel"));
+    auto* const cursorLabel = infoBar.findChild<QLabel*>(QStringLiteral("InfoCursorSegmentLabel"));
+    auto* const formatLabel = infoBar.findChild<QLabel*>(QStringLiteral("InfoFormatSegmentLabel"));
+    auto* const diagnosticsButton = infoBar.findChild<QToolButton*>(QStringLiteral("InformationDiagnosticsButton"));
+    QVERIFY(documentLabel != nullptr);
+    QVERIFY(cursorLabel != nullptr);
+    QVERIFY(formatLabel != nullptr);
+    QVERIFY(diagnosticsButton != nullptr);
+    QVERIFY(documentLabel->text().contains(QStringLiteral("حالة.alif")));
+    QVERIFY(cursorLabel->text().contains(QStringLiteral("12")));
+    QVERIFY(formatLabel->text().contains(QStringLiteral("CRLF")));
+    QCOMPARE(cursorLabel->layoutDirection(), Qt::LeftToRight);
+    QCOMPARE(formatLabel->layoutDirection(), Qt::LeftToRight);
+    QVERIFY(diagnosticsButton->text().contains(QStringLiteral("2")));
+    QVERIFY(!documentLabel->toolTip().isEmpty());
+
+    infoBar.resize(720, 34);
+    QTRY_VERIFY_WITH_TIMEOUT(!infoBar.findChild<QWidget*>(QStringLiteral("InfoDocumentSegment"))->isVisible(), 500);
+    QVERIFY(!infoBar.findChild<QWidget*>(QStringLiteral("InfoAnalysisSegment"))->isVisible());
+    QVERIFY(!infoBar.findChild<QWidget*>(QStringLiteral("InfoRecoverySegment"))->isVisible());
+    QVERIFY(infoBar.findChild<QWidget*>(QStringLiteral("InfoDiagnosticsSegment"))->isVisible());
+    QVERIFY(infoBar.findChild<QWidget*>(QStringLiteral("InfoCursorSegment"))->isVisible());
+}
+
+void DockableToolsTest::editorInfoBarEmitsDiagnosticsActivation()
+{
+    EditorInfoBar infoBar;
+    infoBar.resize(900, 34);
+    infoBar.show();
+    QSignalSpy activationSpy(&infoBar, &EditorInfoBar::diagnosticsActivated);
+
+    auto* const diagnosticsButton = infoBar.findChild<QToolButton*>(QStringLiteral("InformationDiagnosticsButton"));
+    QVERIFY(diagnosticsButton != nullptr);
+    QTest::mouseClick(diagnosticsButton, Qt::LeftButton);
+    QCOMPARE(activationSpy.count(), 1);
+}
+
+void DockableToolsTest::mainWindowInformationBarTracksActiveEditor()
+{
+    Taif window({}, nullptr, true);
+    window.resize(960, 680);
+    window.show();
+
+    auto* const infoBar = window.findChild<EditorInfoBar*>();
+    auto* const editor = window.findChild<TEditor*>();
+    QVERIFY(infoBar != nullptr);
+    QVERIFY(editor != nullptr);
+
+    editor->setPlainText(QStringLiteral("أول\nثانٍ"));
+    QTextCursor cursor(editor->document());
+    cursor.movePosition(QTextCursor::End);
+    editor->setTextCursor(cursor);
+    editor->insertPlainText(QStringLiteral("!"));
+
+    QTRY_COMPARE_WITH_TIMEOUT(infoBar->snapshot().line, 2, 1000);
+    QCOMPARE(infoBar->snapshot().column, 6);
+    QCOMPARE(infoBar->snapshot().documentLines, qsizetype(2));
+    QVERIFY(infoBar->snapshot().modified);
+    QVERIFY(infoBar->findChild<QLabel*>(QStringLiteral("InfoCursorSegmentLabel"))->text().contains(
+        QStringLiteral("2")));
 }
 
 void DockableToolsTest::applicationWindowControllerOwnsTopLevelWindowRouting()

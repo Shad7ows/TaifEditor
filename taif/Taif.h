@@ -20,6 +20,7 @@ class QDockWidget;
 class DiagnosticsPanel;
 class TConsole;
 class TBreadcrumbBar;
+class EditorInfoBar;
 
 struct SessionRestoreResult final {
     QStringList openedFilePaths;
@@ -121,6 +122,8 @@ private:
     void connectEditorActionState(TEditor* editor);
     void updateEditActionState();
     void refreshBreadcrumbs();
+    void bindInformationBarToEditor(TEditor* editor);
+    void refreshEditorInfoBar();
     void bindBreadcrumbsToEditor(TEditor* editor);
     void revealBreadcrumbPath(const QString& path);
     bool openDocumentFile(const QString& filePath, bool promptForBackupRecovery,
@@ -150,6 +153,7 @@ private:
     TBreadcrumbBar* breadcrumbBar{};
     QMetaObject::Connection breadcrumbConnection{};
     QMetaObject::Connection cursorPositionConnection{};
+    QMetaObject::Connection editorInformationConnection{};
     QDockWidget* terminalDock{};
     QDockWidget* alifOutputDock{};
     TConsole* systemTerminal{};
@@ -157,7 +161,8 @@ private:
     AlifRunController* runController{};
     QAction* runToolbarAction{};
 
-    QLabel *cursorPositionLabel{};
+        EditorInfoBar* editorInfoBar{};
+
     // QLabel *encodingLabel{};
     // QProcess *alifProcess{};
     // QProcess *currentAlifProcess{};

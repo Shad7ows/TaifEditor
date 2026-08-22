@@ -26,6 +26,7 @@
 
 TEditor::TEditor(TSettings* setting, QWidget* parent) {
     qRegisterMetaType<EditorBreadcrumbContext>("EditorBreadcrumbContext");
+    qRegisterMetaType<EditorInfoSnapshot>("EditorInfoSnapshot");
     setAcceptDrops(true);
 
     this->setStyleSheet(R"(
@@ -74,6 +75,8 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     setMouseTracking(true);
         viewport()->setMouseTracking(true);
 
+    connect(editorDocument, &QTextDocument::modificationChanged,
+            this, [this](const bool) { notifyEditorInformationChanged(); });
     connect(editorDocument, &QTextDocument::contentsChange,
             this, [this](int, int, int) {
                 clearActiveCompletionContext();
@@ -85,6 +88,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                 emit diagnosticsChanged(m_currentDiagnostics, m_diagnosticsRevision);
                 dismissHover();
                 notifyBreadcrumbContextChanged();
+                notifyEditorInformationChanged();
             });
     connect(analysisController, &EditorAnalysisController::fastPassRequested,
             this, [this](const quint64 revision, const DirtyRange& dirty) {
@@ -110,8 +114,21 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
                                 if (canRefreshActiveCompletion()) {
                     performCompletion();
                 }
-                notifyBreadcrumbContextChanged();
+                                notifyBreadcrumbContextChanged();
+                notifyEditorInformationChanged();
             });
+    connect(analysisController, &EditorAnalysisController::revisionChanged,
+            this, &TEditor::notifyEditorInformationChanged);
+    connect(analysisBinding, &EditorAnalysisBinding::sourceSnapshotMeasured,
+            this, [this](quint64, qsizetype, qint64, bool) { notifyEditorInformationChanged(); });
+    connect(analysisBinding, &EditorAnalysisBinding::analysisMetricsAvailable,
+            this, [this](AnalysisMetrics) { notifyEditorInformationChanged(); });
+    connect(recoveryBinding, &EditorRecoveryBinding::persistenceStateChanged,
+            this, &TEditor::notifyEditorInformationChanged);
+    connect(recoveryBinding, &EditorRecoveryBinding::payloadCaptured,
+            this, [this](qsizetype, qint64) { notifyEditorInformationChanged(); });
+        connect(recoveryBinding, &EditorRecoveryBinding::snapshotWriteFinished,
+            this, [this](quint64, qint64, bool) { notifyEditorInformationChanged(); });
 
     lineNumberArea = new LineNumberArea(this);
     minimap = new TMinimap(this, this);
@@ -128,6 +145,8 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
         connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightCurrentLine);
     connect(this, &TEditor::cursorPositionChanged,
             this, &TEditor::notifyBreadcrumbContextChanged);
+    connect(this, &TEditor::cursorPositionChanged,
+            this, &TEditor::notifyEditorInformationChanged);
 
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
@@ -149,7 +168,81 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     // presentation connections have been installed.
     analysisBinding->initialize();
     recoveryBinding->initialize();
+    notifyEditorInformationChanged();
 
+}
+
+EditorInfoSnapshot TEditor::informationSnapshot() const
+{
+    EditorInfoSnapshot snapshot;
+    snapshot.hasEditor = true;
+    snapshot.documentPath = filePath;
+    snapshot.documentName = filePath.isEmpty() ? QStringLiteral("بدون عنوان")
+                                                : QFileInfo(filePath).fileName();
+    snapshot.modified = document()->isModified();
+
+    const QTextCursor cursor = textCursor();
+    snapshot.line = cursor.blockNumber() + 1;
+    snapshot.column = cursor.positionInBlock() + 1;
+    snapshot.documentLines = blockCount();
+    snapshot.documentCharacters = qMax<qsizetype>(0, document()->characterCount() - 1);
+    snapshot.selectedCharacters = cursor.hasSelection()
+        ? cursor.selectionEnd() - cursor.selectionStart() : 0;
+    if (cursor.hasSelection()) {
+        const QTextBlock selectionStart = document()->findBlock(cursor.selectionStart());
+        const QTextBlock selectionEnd = document()->findBlock(cursor.selectionEnd());
+        snapshot.selectedLines = qMax(1, selectionEnd.blockNumber() - selectionStart.blockNumber() + 1);
+    }
+
+    snapshot.lineEnding = documentLineEnding;
+    snapshot.indentationWidth = preferences.tabWidth;
+    snapshot.usesSpaces = !cursor.block().text().startsWith(QLatin1Char('\t'));
+
+    for (const EditorDiagnostic& diagnostic : m_currentDiagnostics) {
+        if (diagnostic.severity == SemanticDiagnosticSeverity::Error) {
+            ++snapshot.errorCount;
+        } else if (diagnostic.severity == SemanticDiagnosticSeverity::Warning) {
+            ++snapshot.warningCount;
+        }
+    }
+
+    if (analysisBinding != nullptr) {
+        snapshot.analysisSnapshotCharacters = analysisBinding->lastSnapshotCharacterCount();
+        const AnalysisMetrics metrics = analysisBinding->lastAnalysisMetrics();
+        snapshot.analysisDurationMilliseconds = metrics.totalMilliseconds;
+        snapshot.analysisTokenCount = metrics.tokenCount;
+    }
+    if (analysisController != nullptr) {
+        snapshot.analysisRevision = analysisController->currentRevision();
+        const LanguageAnalysisSnapshotPtr appliedSnapshot = analysisController->currentSnapshot();
+        if (snapshot.analysisSnapshotCharacters >= EditorAnalysisBinding::LargeDocumentCharacterThreshold) {
+            snapshot.analysisState = EditorInfoSnapshot::AnalysisState::LargeDocument;
+        } else if (appliedSnapshot != nullptr
+                   && appliedSnapshot->revision == analysisController->currentRevision()) {
+            snapshot.analysisState = EditorInfoSnapshot::AnalysisState::Ready;
+        } else {
+            snapshot.analysisState = EditorInfoSnapshot::AnalysisState::Pending;
+        }
+    }
+
+    if (recoveryBinding != nullptr) {
+        snapshot.recoveryWriteDurationMilliseconds = recoveryBinding->lastWriteDurationMilliseconds();
+        if (recoveryBinding->isRetryScheduled()) {
+            snapshot.recoveryState = EditorInfoSnapshot::RecoveryState::RetryScheduled;
+        } else if (recoveryBinding->hasPendingPersistence()) {
+            snapshot.recoveryState = EditorInfoSnapshot::RecoveryState::PendingPersistence;
+        }
+    }
+    return snapshot;
+}
+
+void TEditor::setDocumentLineEnding(const EditorInfoSnapshot::LineEnding lineEnding)
+{
+    if (documentLineEnding == lineEnding) {
+        return;
+    }
+    documentLineEnding = lineEnding;
+    notifyEditorInformationChanged();
 }
 
 EditorBreadcrumbContext TEditor::breadcrumbContextAtCursor() const
@@ -172,6 +265,11 @@ EditorBreadcrumbContext TEditor::breadcrumbContextAtCursor() const
 void TEditor::notifyBreadcrumbContextChanged()
 {
     emit breadcrumbContextChanged(breadcrumbContextAtCursor());
+}
+
+void TEditor::notifyEditorInformationChanged()
+{
+    emit editorInformationChanged(informationSnapshot());
 }
 
 TEditor::~TEditor() {
@@ -1319,6 +1417,7 @@ void TEditor::applyPreferences(const EditorPreferences& requestedPreferences)
     updateLineNumberAreaWidth();
     highlightCurrentLine();
     viewport()->update();
+    notifyEditorInformationChanged();
 }
 
 

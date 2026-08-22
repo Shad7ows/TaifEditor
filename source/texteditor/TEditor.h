@@ -9,6 +9,7 @@
 
 #include "TSettings.h"
 #include "EditorPreferences.h"
+#include "EditorInfoSnapshot.h"
 
 class RecoveryCoordinator;
 class EditorAnalysisBinding;
@@ -68,6 +69,8 @@ public:
         return m_currentDiagnostics;
     }
     [[nodiscard]] EditorBreadcrumbContext breadcrumbContextAtCursor() const;
+    [[nodiscard]] EditorInfoSnapshot informationSnapshot() const;
+    void setDocumentLineEnding(EditorInfoSnapshot::LineEnding lineEnding);
 
 public slots:
     void UpdateTabStopDistance(QFont);
@@ -143,6 +146,7 @@ private:
     EditorRecoveryBinding* recoveryBinding{};
 
     EditorPreferences preferences{};
+    EditorInfoSnapshot::LineEnding documentLineEnding = EditorInfoSnapshot::LineEnding::Unknown;
 
     friend class LineNumberArea;
     friend class TMinimap;
@@ -168,6 +172,7 @@ private:
     bool navigateToDefinition(qsizetype offset);
     bool navigateBackFromDefinition();
     void notifyBreadcrumbContextChanged();
+    void notifyEditorInformationChanged();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
@@ -191,6 +196,7 @@ signals:
     void openRequest(QString filePath);
     void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
     void breadcrumbContextChanged(EditorBreadcrumbContext context);
+    void editorInformationChanged(EditorInfoSnapshot snapshot);
 };
 
 
