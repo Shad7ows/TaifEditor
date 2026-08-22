@@ -19,10 +19,41 @@
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTextBrowser>
+#include <QTextDocument>
 #include <QVBoxLayout>
 
 namespace {
 QString htmlEscaped(const QString& text) { return text.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br/>")); }
+
+QString markdownHtml(const QString& markdown)
+{
+    // Escape any supplied HTML before conversion: Markdown formatting is supported,
+    // while model output cannot inject active markup into the transcript.
+    QTextDocument document;
+    document.setMarkdown(markdown.toHtmlEscaped(), QTextDocument::MarkdownDialectGitHub);
+    const QString fullHtml = document.toHtml();
+    const qsizetype bodyTag = fullHtml.indexOf(QStringLiteral("<body"));
+    if (bodyTag < 0) {
+        return htmlEscaped(markdown);
+    }
+    const qsizetype bodyStart = fullHtml.indexOf(QLatin1Char('>'), bodyTag);
+    const qsizetype bodyEnd = fullHtml.lastIndexOf(QStringLiteral("</body>"));
+    if (bodyStart < 0 || bodyEnd <= bodyStart) {
+        return htmlEscaped(markdown);
+    }
+    return fullHtml.mid(bodyStart + 1, bodyEnd - bodyStart - 1);
+}
+
+QString assistantMarkdownBody(const QString& markdown)
+{
+    return QStringLiteral("<style>"
+                          "p, li, h1, h2, h3, h4, h5, h6, blockquote { direction:rtl; text-align:right; }"
+                          "pre { direction:ltr; text-align:left; background:#0b1628; border:1px solid #263a57; padding:7px; }"
+                          "code { direction:ltr; }"
+                          "a { color:#93c5fd; }"
+                          "</style>%1").arg(markdownHtml(markdown));
+}
+
 QString roleLabel(const AiChatRole role)
 {
     switch (role) {
@@ -95,6 +126,8 @@ AiChatPanel::AiChatPanel(QWidget* const parent)
 
     m_transcript = new QTextBrowser(this);
     m_transcript->setObjectName(QStringLiteral("AiChatTranscript"));
+    m_transcript->setLayoutDirection(Qt::RightToLeft);
+    m_transcript->document()->setDefaultTextOption(QTextOption(Qt::AlignRight));
     m_transcript->setReadOnly(true);
     m_transcript->setOpenExternalLinks(false);
     layout->addWidget(m_transcript, 4);
@@ -230,25 +263,47 @@ void AiChatPanel::appendTranscript(const AiChatMessage& message)
                                            "<b style='color:#93c5fd'>%1</b><br/>"
                                            "يظهر ملخص التنفيذ في سجل النشاط. تفاصيل الأداة لا تُعرض داخل المحادثة.</div>")
             .arg(htmlEscaped(title));
-        m_transcript->setHtml(m_transcriptHtml);
+        replaceTranscriptDocument(m_transcriptHtml);
         return;
     }
     const QString role = roleLabel(message.role);
-    const QString direction = message.role == AiChatRole::Assistant || message.role == AiChatRole::Tool
-        ? QStringLiteral("ltr") : QStringLiteral("rtl");
-    m_transcriptHtml += QStringLiteral("<div dir='%1' style='margin:8px 2px;padding:7px;border:1px solid #263a57;border-radius:6px;'>"
-        "<b style='color:#93c5fd'>%2</b><br/>%3</div>").arg(direction, htmlEscaped(role), htmlEscaped(message.content));
+    const bool assistantResponse = message.role == AiChatRole::Assistant;
+    const QString body = assistantResponse ? assistantMarkdownBody(message.content) : htmlEscaped(message.content);
+    m_transcriptHtml += QStringLiteral("<div dir='rtl' align='right' style='direction:rtl;text-align:right;margin:8px 2px;padding:7px;border:1px solid #263a57;border-radius:6px;'>"
+        "<b style='color:#93c5fd'>%1</b><br/>%2</div>").arg(htmlEscaped(role), body);
     m_streamingHtml.clear();
-    m_transcript->setHtml(m_transcriptHtml);
-    m_transcript->verticalScrollBar()->setValue(m_transcript->verticalScrollBar()->maximum());
+    replaceTranscriptDocument(m_transcriptHtml);
 }
 
 void AiChatPanel::refreshStreamingTranscript(const QString& text)
 {
-    m_streamingHtml = QStringLiteral("<div dir='ltr' style='margin:8px 2px;padding:7px;border:1px solid #31547f;border-radius:6px;'>"
-        "<b style='color:#60a5fa'>المساعد</b><br/>%1</div>").arg(htmlEscaped(text));
-    m_transcript->setHtml(m_transcriptHtml + m_streamingHtml);
-    m_transcript->verticalScrollBar()->setValue(m_transcript->verticalScrollBar()->maximum());
+    m_streamingHtml = QStringLiteral("<div dir='rtl' align='right' style='direction:rtl;text-align:right;margin:8px 2px;padding:7px;border:1px solid #31547f;border-radius:6px;'>"
+        "<b style='color:#60a5fa'>المساعد</b><br/>%1</div>").arg(assistantMarkdownBody(text));
+    replaceTranscriptDocument(m_transcriptHtml + m_streamingHtml);
+}
+
+void AiChatPanel::replaceTranscriptDocument(const QString& html)
+{
+    QScrollBar* const scrollBar = m_transcript->verticalScrollBar();
+    const bool followLatest = scrollBar->value() >= scrollBar->maximum() - 2;
+    m_transcript->setUpdatesEnabled(false);
+    m_transcript->setHtml(html);
+    m_transcript->document()->setDefaultTextOption(QTextOption(Qt::AlignRight));
+    if (followLatest) {
+        QTextCursor cursor = m_transcript->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        m_transcript->setTextCursor(cursor);
+        scrollBar->setValue(scrollBar->maximum());
+    }
+    m_transcript->setUpdatesEnabled(true);
+    if (followLatest) {
+        QTimer::singleShot(0, m_transcript, [browser = m_transcript]() {
+            if (browser == nullptr) {
+                return;
+            }
+            browser->verticalScrollBar()->setValue(browser->verticalScrollBar()->maximum());
+        });
+    }
 }
 
 void AiChatPanel::addApprovalCard(const AiToolApprovalRequest& request)

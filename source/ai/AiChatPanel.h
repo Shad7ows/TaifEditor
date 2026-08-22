@@ -35,6 +35,7 @@ signals:
 private:
     void appendTranscript(const AiChatMessage& message);
     void refreshStreamingTranscript(const QString& text);
+    void replaceTranscriptDocument(const QString& html);
     void addApprovalCard(const AiToolApprovalRequest& request);
     void addActivity(const AiActivityEntry& activity);
     void showActivityDetails(const AiActivityEntry& activity);

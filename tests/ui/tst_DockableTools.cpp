@@ -983,6 +983,36 @@ void DockableToolsTest::aiPanelPresentsWorkspaceAutoControlsAndHidesRawToolPaylo
                                       Q_ARG(AiChatMessage, toolMessage)));
     QTRY_VERIFY(transcript->toPlainText().contains(QStringLiteral("اكتملت خطوة")));
     QVERIFY(!transcript->toPlainText().contains(QStringLiteral("internalSource")));
+
+    AiChatMessage assistantMessage;
+    assistantMessage.role = AiChatRole::Assistant;
+    assistantMessage.content = QStringLiteral("# عنوان الاستجابة\n\n**ملخص مهم**\n\n```cpp\nint value = 1;\n```\n\n<script>unsafe</script>");
+    QVERIFY(QMetaObject::invokeMethod(panel.controller(), "messageAdded", Qt::DirectConnection,
+                                      Q_ARG(AiChatMessage, assistantMessage)));
+    QTRY_VERIFY(transcript->toPlainText().contains(QStringLiteral("عنوان الاستجابة")));
+    QVERIFY(transcript->toHtml().contains(QStringLiteral("<h1")));
+    QVERIFY(transcript->toHtml().contains(QStringLiteral("int value = 1;")));
+    QVERIFY(!transcript->toPlainText().contains(QStringLiteral("**ملخص مهم**")));
+    QVERIFY(!transcript->toHtml().contains(QStringLiteral("<script>unsafe</script>")));
+    QCOMPARE(transcript->layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(transcript->document()->defaultTextOption().alignment() & Qt::AlignHorizontal_Mask,
+             Qt::AlignRight);
+
+    panel.resize(420, 480);
+    panel.show();
+    QString streamed;
+    for (int index = 0; index < 80; ++index) {
+        streamed += QStringLiteral("فقرة بث رقم %1 تعرض نصاً متصلاً للمراجعة.\n\n").arg(index);
+    }
+    QVERIFY(QMetaObject::invokeMethod(panel.controller(), "assistantTextUpdated", Qt::DirectConnection,
+                                      Q_ARG(QString, streamed)));
+    auto* const scrollBar = transcript->verticalScrollBar();
+    QTRY_VERIFY(scrollBar->maximum() > 0);
+    QTRY_COMPARE(scrollBar->value(), scrollBar->maximum());
+    streamed += QStringLiteral("\n\nفقرة أخيرة أثناء البث.");
+    QVERIFY(QMetaObject::invokeMethod(panel.controller(), "assistantTextUpdated", Qt::DirectConnection,
+                                      Q_ARG(QString, streamed)));
+    QTRY_COMPARE(scrollBar->value(), scrollBar->maximum());
 }
 
 void DockableToolsTest::aiChatPanelUsesLeftDockRtlSurface()
