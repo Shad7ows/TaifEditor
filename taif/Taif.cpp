@@ -1,6 +1,7 @@
 #include "Taif.h"
 #include "TWelcomeWindow.h"
 #include "TConsole.h"
+#include "InlinePromptConsole.h"
 #include "DockableConsoleTool.h"
 
 #include "TSearchPanel.h"
@@ -13,7 +14,10 @@
 #include <QDockWidget>
 #include <QVBoxLayout>
 #include <QMessageBox>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
+
 #include <QShortcut>
 #include <QGuiApplication>
 #include <QScreen>
@@ -70,6 +74,9 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
             : QStringLiteral("انتهى التنفيذ بشكل غير طبيعي.\n");
         alifOutputConsole->appendPlainTextThreadSafe(
             QStringLiteral("\n──────────────────────────────\n%1").arg(outcome));
+        if (auto* const inlineConsole = qobject_cast<InlinePromptConsole*>(alifOutputConsole)) {
+            inlineConsole->endInput();
+        }
     });
     connect(runController, &AlifRunController::stateChanged, this,
             [this](const AlifRunController::State state) {
@@ -78,6 +85,13 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
             || state == AlifRunController::State::Stopping;
         const QString label = active ? QStringLiteral("إيقاف التنفيذ")
                                      : QStringLiteral("تشغيل");
+        if (auto* const inlineConsole = qobject_cast<InlinePromptConsole*>(alifOutputConsole)) {
+            if (active) {
+                inlineConsole->beginInput();
+            } else {
+                inlineConsole->endInput();
+            }
+        }
         if (menuBar != nullptr && menuBar->runAction != nullptr) {
             menuBar->runAction->setText(label);
         }
@@ -894,6 +908,15 @@ void Taif::showAndRaiseDock(QDockWidget* const dock)
     if (dock == terminalDock || dock == alifOutputDock) {
         DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, dock);
     }
+    if (dock == terminalDock && systemTerminal != nullptr) {
+        QString workingDirectory = folderPath;
+        if (!QDir(workingDirectory).exists()) {
+            if (TEditor* const editor = currentEditor(); editor != nullptr && !editor->filePath.isEmpty()) {
+                workingDirectory = QFileInfo(editor->filePath).absolutePath();
+            }
+        }
+        systemTerminal->setTerminalWorkingDirectory(workingDirectory);
+    }
     DockableConsoleToolFactory::showAndActivate(dock);
     QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
 }
@@ -977,11 +1000,12 @@ void Taif::newFile() {
     connect(newEditor, &TEditor::openRequest, this, [this](QString filePath){this->openFile(filePath);});
     connectEditorDiagnostics(newEditor);
     connectEditorActionState(newEditor);
-    connect(newEditor->document(), &QTextDocument::modificationChanged, this,
+        connect(newEditor->document(), &QTextDocument::modificationChanged, this,
             [this, newEditor](const bool modified) {
                 onEditorModificationChanged(newEditor, modified);
             });
     updateWindowTitle();
+
 }
 
 void Taif::openFile(QString filePath)

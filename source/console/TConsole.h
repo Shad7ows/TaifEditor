@@ -1,15 +1,16 @@
 #pragma once
 
-#include "OutputBuffer.h"
-
-#include <QLineEdit>
 #include <QPlainTextEdit>
-#include <QProcess>
-#include <QTimer>
-#include <QVector>
-#include <QWidget>
 
-class TConsole : public QWidget {
+class TerminalSessionController;
+class TerminalView;
+
+/**
+ * Stable dock-facing console widget. In system-terminal mode it hosts a direct
+ * ConPTY terminal viewport; InlinePromptConsole derives from it for Alif I/O.
+ * Neither role uses a separate QLineEdit.
+ */
+class TConsole : public QPlainTextEdit {
     Q_OBJECT
 public:
     static constexpr int kMaximumRenderedLines = 2000;
@@ -18,48 +19,32 @@ public:
     explicit TConsole(QWidget* parent = nullptr);
     ~TConsole() override;
 
-    // Interactive system-shell actions. Alif execution is deliberately handled
-    // by AlifRunController and only streams its output into another TConsole.
-    void startCmd();
-    void stopCmd();
-    void clear();
-    void setConsoleRTL();
-    void appendPlainTextThreadSafe(const QString& text);
+    void enableNativeTerminal();
+    [[nodiscard]] bool isNativeTerminal() const;
+    void focusNativeTerminal(Qt::FocusReason reason = Qt::OtherFocusReason);
+    void setTerminalWorkingDirectory(const QString& directory);
+    [[nodiscard]] QString terminalWorkingDirectory() const;
 
-    [[nodiscard]] qsizetype pendingOutputBytes() const;
-    [[nodiscard]] int renderedLineCount() const;
-    [[nodiscard]] qsizetype renderedCharacterCount() const;
+    virtual void startCmd();
+    virtual void stopCmd();
+    virtual void clear();
+    virtual void setConsoleRTL();
+    virtual void appendPlainTextThreadSafe(const QString& text);
+
+    [[nodiscard]] virtual qsizetype pendingOutputBytes() const;
+    [[nodiscard]] virtual int renderedLineCount() const;
+    [[nodiscard]] virtual qsizetype renderedCharacterCount() const;
 
 signals:
     void commandEntered(const QString& command);
     void outputTruncated(qsizetype droppedPendingBytes);
+    void terminalError(const QString& message);
 
-private slots:
-    void processStdout();
-    void processStderr();
-    void processFinished(int code, QProcess::ExitStatus status);
-    void processError(QProcess::ProcessError error);
-    void onInputReturn();
-    void flushPending();
+protected:
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
-    void scheduleFlush();
-    void appendRenderedText(const QString& text);
-    void trimRenderedOutput();
-    [[nodiscard]] QString decodeProcessBytes(const QByteArray& bytes) const;
-    [[nodiscard]] bool isAtBottom() const;
-    bool eventFilter(QObject* watched, QEvent* event) override;
-
-    QPlainTextEdit* m_output{};
-    QLineEdit* m_input{};
-    QProcess* m_process{};
-    QTimer* m_flushTimer{};
-    bool m_carriageReturnPending = false;
-
-    OutputBuffer m_pendingOutput;
-
-    QVector<QString> m_history;
-    int m_historyIndex = -1;
-    bool m_autoscroll = true;
-    bool m_renderedTruncationNoticeVisible = false;
+    TerminalView* m_terminalView = nullptr;
+    TerminalSessionController* m_terminalController = nullptr;
+    QString m_terminalWorkingDirectory;
 };

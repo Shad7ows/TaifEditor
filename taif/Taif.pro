@@ -28,6 +28,7 @@ INCLUDEPATH += \
     ../source/components \
     ../source/session \
     ../source/console \
+    ../source/console/terminal \
     ../source/menubar \
     ../source/pages \
     ../source/settings \
@@ -67,6 +68,12 @@ SOURCES += \
     ../source/session/SessionStore.cpp \
     ../source/session/SessionEditorDialog.cpp \
     ../source/console/OutputBuffer.cpp \
+    ../source/console/InlinePromptConsole.cpp \
+    ../source/console/terminal/TerminalScreenModel.cpp \
+    ../source/console/terminal/VtStreamParser.cpp \
+    ../source/console/terminal/WindowsConPtyBackend.cpp \
+    ../source/console/terminal/TerminalSessionController.cpp \
+    ../source/console/terminal/TerminalView.cpp \
     ../source/console/TConsole.cpp \
     ../source/console/DockableConsoleTool.cpp \
     ../source/console/ProcessWorker.cpp \
@@ -115,6 +122,13 @@ HEADERS += \
     ../source/session/SessionStore.h \
     ../source/session/SessionEditorDialog.h \
     ../source/console/OutputBuffer.h \
+    ../source/console/InlinePromptConsole.h \
+    ../source/console/terminal/ITerminalBackend.h \
+    ../source/console/terminal/TerminalScreenModel.h \
+    ../source/console/terminal/VtStreamParser.h \
+    ../source/console/terminal/WindowsConPtyBackend.h \
+    ../source/console/terminal/TerminalSessionController.h \
+    ../source/console/terminal/TerminalView.h \
     ../source/console/TConsole.h \
     ../source/console/DockableConsoleTool.h \
     ../source/console/ProcessWorker.h \
@@ -126,6 +140,12 @@ HEADERS += \
     ../source/recovery/TRecoveryDialog.h \
     ../source/run/AlifRunController.h \
     ../source/settings/TSettings.h
+
+unix {
+    SOURCES += ../source/console/terminal/PosixPtyBackend.cpp
+    HEADERS += ../source/console/terminal/PosixPtyBackend.h
+    !macx:LIBS += -lutil
+}
 
 # Add the application icon (Windows)
 win32:RC_ICONS += resources/TaifLogo.ico

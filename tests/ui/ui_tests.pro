@@ -8,6 +8,7 @@ RESOURCES += ../../taif/resources.qrc
 
 INCLUDEPATH += \
     ../../source/console \
+    ../../source/console/terminal \
     ../../source/menubar \
     ../../source/components \
     ../../source/pages \
@@ -32,6 +33,12 @@ INCLUDEPATH += \
 SOURCES += \
     tst_DockableTools.cpp \
     ../../source/console/OutputBuffer.cpp \
+    ../../source/console/InlinePromptConsole.cpp \
+    ../../source/console/terminal/TerminalScreenModel.cpp \
+    ../../source/console/terminal/VtStreamParser.cpp \
+    ../../source/console/terminal/WindowsConPtyBackend.cpp \
+    ../../source/console/terminal/TerminalSessionController.cpp \
+    ../../source/console/terminal/TerminalView.cpp \
     ../../source/console/TConsole.cpp \
     ../../source/console/DockableConsoleTool.cpp \
     ../../source/menubar/TMenu.cpp \
@@ -73,8 +80,21 @@ SOURCES += \
     ../../taif/ApplicationWindowController.cpp \
     ../../taif/Taif.cpp
 
+unix {
+    SOURCES += ../../source/console/terminal/PosixPtyBackend.cpp
+    HEADERS += ../../source/console/terminal/PosixPtyBackend.h
+    !macx:LIBS += -lutil
+}
+
 HEADERS += \
     ../../source/console/OutputBuffer.h \
+    ../../source/console/InlinePromptConsole.h \
+    ../../source/console/terminal/ITerminalBackend.h \
+    ../../source/console/terminal/TerminalScreenModel.h \
+    ../../source/console/terminal/VtStreamParser.h \
+    ../../source/console/terminal/WindowsConPtyBackend.h \
+    ../../source/console/terminal/TerminalSessionController.h \
+    ../../source/console/terminal/TerminalView.h \
     ../../source/console/TConsole.h \
     ../../source/console/DockableConsoleTool.h \
     ../../source/menubar/TMenu.h \

@@ -6,6 +6,7 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPlainTextEdit>
+#include <QtGui/QImage>
 #include <QtGui/QTextDocument>
 #include <QtCore/QDir>
 #include <QtCore/QFile>
@@ -19,6 +20,11 @@
 #include "DockableConsoleTool.h"
 #include "OutputBuffer.h"
 #include "TConsole.h"
+#include "InlinePromptConsole.h"
+#include "TerminalScreenModel.h"
+#include "TerminalSessionController.h"
+#include "TerminalView.h"
+#include "VtStreamParser.h"
 #include "TMenu.h"
 #include "TSearchPanel.h"
 #include "SearchReplaceEngine.h"
@@ -75,6 +81,11 @@ private slots:
     void alifRunControllerValidatesRunsAndCancels();
     void outputBufferBoundsPendingChunksAndReportsTruncation();
     void consoleAppendsSplitCrLfAndBoundsRenderedOutput();
+    void vtParserHandlesSplitSequencesAndAlternateScreen();
+    void terminalViewRetainsAndSelectsScrolledHistory();
+    void terminalSessionControllerCompletesOneShotCommand();
+    void inlinePromptProtectsTranscriptAndPreservesHistory();
+    void nativeTerminalDockActivationFocusesViewport();
 };
 
 void DockableToolsTest::outputBufferBoundsPendingChunksAndReportsTruncation()
@@ -97,10 +108,9 @@ void DockableToolsTest::outputBufferBoundsPendingChunksAndReportsTruncation()
 
 void DockableToolsTest::consoleAppendsSplitCrLfAndBoundsRenderedOutput()
 {
-    TConsole console;
+    InlinePromptConsole console;
     console.show();
-    auto* const output = console.findChild<QPlainTextEdit*>(QStringLiteral("ConsoleOutput"));
-    QVERIFY(output != nullptr);
+    auto* const output = static_cast<QPlainTextEdit*>(&console);
 
     console.appendPlainTextThreadSafe(QStringLiteral("مرحلة أولى\r"));
     console.appendPlainTextThreadSafe(QStringLiteral("\nمرحلة ثانية\n"));
@@ -126,6 +136,188 @@ void DockableToolsTest::consoleAppendsSplitCrLfAndBoundsRenderedOutput()
                                                QChar(0x0633)));
     QTRY_VERIFY_WITH_TIMEOUT(output->toPlainText().contains(QString(128, QChar(0x0633))), 3000);
     QVERIFY(console.renderedCharacterCount() <= TConsole::kMaximumRenderedCharacters + 128);
+}
+
+void DockableToolsTest::vtParserHandlesSplitSequencesAndAlternateScreen()
+{
+    TerminalScreenModel screen(12, 3);
+    VtStreamParser parser(screen);
+
+    parser.feed("A\x1b[3");
+    parser.feed("1mB");
+    QCOMPARE(screen.grid().at(0).at(0).text, QStringLiteral("A"));
+    QCOMPARE(screen.grid().at(0).at(1).text, QStringLiteral("B"));
+    QVERIFY(screen.grid().at(0).at(1).attributes.foreground.isValid());
+
+    parser.feed("\x1b[2DZ");
+    QCOMPARE(screen.grid().at(0).at(0).text, QStringLiteral("Z"));
+    parser.feed("\x1b]2;Taif Native Terminal\x07");
+    QCOMPARE(screen.title(), QStringLiteral("Taif Native Terminal"));
+
+    parser.feed("\x1b[?1049hALT");
+    QVERIFY(screen.usingAlternateScreen());
+    QCOMPARE(screen.grid().at(0).at(0).text, QStringLiteral("A"));
+    QCOMPARE(screen.grid().at(0).at(1).text, QStringLiteral("L"));
+    parser.feed("\x1b[?1049l");
+    QVERIFY(!screen.usingAlternateScreen());
+    QCOMPARE(screen.grid().at(0).at(0).text, QStringLiteral("Z"));
+    QCOMPARE(parser.ignoredSequenceCount(), 0);
+}
+
+void DockableToolsTest::terminalViewRetainsAndSelectsScrolledHistory()
+{
+    TerminalView view;
+    view.resize(220, 64);
+    view.show();
+    QTest::qWait(20);
+
+    QByteArray transcript;
+    for (int index = 0; index < 16; ++index) {
+        transcript += QByteArrayLiteral("history-") + QByteArray::number(index) + QByteArrayLiteral("\r\n");
+    }
+    view.appendOutput(transcript);
+    QVERIFY(view.screen().scrollback().size() > 0);
+
+    QScrollBar* const scrollBar = view.verticalScrollBar();
+    QVERIFY(scrollBar->maximum() > 0);
+    scrollBar->setValue(scrollBar->minimum());
+    QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(2, 8));
+    QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(152, 8));
+    QVERIFY2(view.selectedText().startsWith(QStringLiteral("history-0")),
+             qPrintable(view.selectedText()));
+
+    scrollBar->setValue(scrollBar->maximum());
+    QTest::mousePress(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(2, 8));
+    QTest::mouseRelease(view.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(152, 8));
+    QVERIFY2(view.selectedText().startsWith(QStringLiteral("history-")),
+             qPrintable(view.selectedText()));
+}
+
+void DockableToolsTest::terminalSessionControllerCompletesOneShotCommand()
+{
+    TerminalSessionController controller;
+    QSignalSpy stateSpy(&controller, &TerminalSessionController::stateChanged);
+    QSignalSpy outputSpy(&controller, &TerminalSessionController::outputReady);
+    QSignalSpy finishedSpy(&controller, &TerminalSessionController::finished);
+
+    TerminalSessionController::Request request;
+    request.workingDirectory = QDir::tempPath();
+    request.initialGrid = QSize(80, 24);
+
+#if defined(Q_OS_WIN)
+    request.program = qEnvironmentVariable("COMSPEC", QStringLiteral("C:\\Windows\\System32\\cmd.exe"));
+    request.arguments = {QStringLiteral("/Q"), QStringLiteral("/K")};
+    const QByteArray expectedOutput = QDir::toNativeSeparators(QDir::tempPath()).toLocal8Bit();
+    const QByteArray command = QByteArrayLiteral("cd\r");
+#elif defined(Q_OS_UNIX)
+    request.program = QStringLiteral("/bin/sh");
+    request.arguments = {QStringLiteral("-i")};
+    const QByteArray expectedOutput = QByteArrayLiteral("TAIF_POSIX_PTY_READY");
+    const QByteArray command = QByteArrayLiteral("printf 'TAIF_POSIX_PTY_READY\\n'\rexit\r");
+#else
+    QSKIP("No native terminal transport is available on this platform.");
+#endif
+
+    QString error;
+    QVERIFY2(controller.start(request, &error), qPrintable(error));
+    QTRY_COMPARE_WITH_TIMEOUT(controller.state(), TerminalSessionController::State::Running, 1000);
+    controller.sendInput(command);
+
+    QByteArray capturedOutput;
+    QTRY_VERIFY_WITH_TIMEOUT(([&outputSpy, &capturedOutput, &expectedOutput]() {
+        for (const QList<QVariant>& arguments : std::as_const(outputSpy)) {
+            capturedOutput.append(arguments.constFirst().toByteArray());
+        }
+        outputSpy.clear();
+        return capturedOutput.contains(expectedOutput);
+    })(), 5000);
+    QVERIFY2(capturedOutput.contains(expectedOutput),
+             qPrintable(QStringLiteral("Captured terminal bytes: %1")
+                            .arg(QString::fromUtf8(capturedOutput).toHtmlEscaped())));
+
+#if defined(Q_OS_WIN)
+    controller.shutdown();
+#endif
+    QTRY_COMPARE_WITH_TIMEOUT(finishedSpy.count(), 1, 3000);
+    QVERIFY(!controller.isActive());
+    QVERIFY(stateSpy.count() >= 3);
+}
+
+void DockableToolsTest::nativeTerminalDockActivationFocusesViewport()
+{
+    QTemporaryDir projectDirectory;
+    QVERIFY(projectDirectory.isValid());
+
+    QMainWindow host;
+    host.resize(900, 600);
+    host.show();
+
+    DockableConsoleTool terminal = DockableConsoleToolFactory::create(
+        &host, QStringLiteral("اختبار الطرفية"), QStringLiteral("TerminalFocusDock"),
+        QStringLiteral("TerminalFocusConsole"), true);
+    QVERIFY(terminal.dock != nullptr);
+    QVERIFY(terminal.console != nullptr);
+    QVERIFY(terminal.console->isNativeTerminal());
+
+    auto* const view = terminal.console->findChild<TerminalView*>();
+    QVERIFY(view != nullptr);
+    terminal.console->setTerminalWorkingDirectory(projectDirectory.path());
+    QCOMPARE(terminal.console->terminalWorkingDirectory(), QDir(projectDirectory.path()).absolutePath());
+    DockableConsoleToolFactory::showAndActivate(terminal.dock);
+    QTRY_VERIFY_WITH_TIMEOUT(view->isVisible(), 1000);
+    QTRY_COMPARE_WITH_TIMEOUT(QApplication::focusWidget(), static_cast<QWidget*>(view), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(view->gridSize().height() > 1, 1000);
+    const QImage beforeRender = view->grab().toImage();
+    terminal.console->appendPlainTextThreadSafe(QStringLiteral("terminal-grid-rendered"));
+    QTRY_VERIFY_WITH_TIMEOUT(view->screen().text().contains(QStringLiteral("terminal-grid-rendered")),
+                             1000);
+    QTRY_VERIFY_WITH_TIMEOUT(([view, &beforeRender]() {
+        const QImage afterRender = view->grab().toImage();
+        if (afterRender.size() != beforeRender.size()) {
+            return false;
+        }
+        int changedPixels = 0;
+        for (int y = 0; y < afterRender.height(); ++y) {
+            for (int x = 0; x < afterRender.width(); ++x) {
+                if (afterRender.pixelColor(x, y) != beforeRender.pixelColor(x, y)
+                    && ++changedPixels >= 20) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    })(), 1000);
+
+    terminal.console->stopCmd();
+}
+
+void DockableToolsTest::inlinePromptProtectsTranscriptAndPreservesHistory()
+{
+    InlinePromptConsole console;
+    console.show();
+    console.setFocus(Qt::OtherFocusReason);
+    console.beginInput();
+    QVERIFY(console.acceptsInput());
+
+    QTest::keyClicks(&console, QStringLiteral("draft"));
+    console.appendPlainTextThreadSafe(QStringLiteral("نتيجة التنفيذ\n"));
+    QTRY_VERIFY_WITH_TIMEOUT(console.toPlainText().contains(
+                                 QStringLiteral("نتيجة التنفيذ\nألف › draft")), 1000);
+
+    QTextCursor transcriptCursor(console.document());
+    transcriptCursor.setPosition(0);
+    console.setTextCursor(transcriptCursor);
+    QTest::keyClick(&console, Qt::Key_Backspace);
+    QVERIFY(console.toPlainText().contains(QStringLiteral("نتيجة التنفيذ")));
+    QVERIFY(console.toPlainText().endsWith(QStringLiteral("ألف › draft")));
+
+    QSignalSpy commandSpy(&console, &TConsole::commandEntered);
+    QTest::keyClick(&console, Qt::Key_Return);
+    QTRY_COMPARE_WITH_TIMEOUT(commandSpy.count(), 1, 1000);
+    QCOMPARE(commandSpy.constFirst().constFirst().toString(), QStringLiteral("draft"));
+
+    QTest::keyClick(&console, Qt::Key_Up);
+    QVERIFY(console.toPlainText().endsWith(QStringLiteral("ألف › draft")));
 }
 
 void DockableToolsTest::alifRunControllerValidatesRunsAndCancels()

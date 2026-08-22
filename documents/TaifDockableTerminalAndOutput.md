@@ -1,108 +1,95 @@
 # Dockable Alif Output and System Terminal
 
-**Status:** Implemented and validated  
-**Applies to:** Qt 6 / C++17 TaifEditor main window, tool docks, terminal console, and Alif process output
+**Status:** Implemented and validated in Phase 8
+**Applies to:** Qt 6 / C++17 TaifEditor bottom-tool docks, native System Terminal, and managed Alif execution input/output
 
 ## Purpose
 
-TaifEditor now exposes the two existing console experiences as independent, persistent Qt tool docks:
+TaifEditor exposes three persistent bottom-area tools. The two console roles deliberately use different interaction models: the System Terminal is a full native terminal grid, while Alif Output is a right-to-left transcript with one protected, inline input range. Neither role uses a separate `QLineEdit`.
 
-| Dock title | Object name | Console object name | Purpose |
+| Dock title | Dock object name | Widget type | Interaction model |
 |---|---|---|---|
-| `المشكلات` | `DiagnosticsDock` | `DiagnosticsPanel` | Current-document errors and warnings. |
-| `مخرجات ألف` | `AlifOutputDock` | `AlifOutputConsole` | Alif execution output, errors, completion status, and interactive stdin. |
-| `طرفية النظام (CMD/Bash/Zsh)` | `TerminalDock` | `SystemTerminalConsole` | Persistent platform shell terminal. |
+| `المشكلات` | `DiagnosticsDock` | `DiagnosticsPanel` | Read-only diagnostics browser. |
+| `مخرجات ألف` | `AlifOutputDock` | `InlinePromptConsole` as `TConsole*` | RTL transcript with a protected inline `ألف › ` prompt. |
+| `طرفية النظام (CMD/Bash/Zsh)` | `TerminalDock` | native-enabled `TConsole` | LTR VT cell grid backed by a platform terminal transport. |
 
-All three are real `QDockWidget` tools in the bottom dock area. They are movable, floatable, closable/hideable, and initially tabified together. Users can drag them into a different dock area or float them through normal Qt docking behavior.
+All tools are `QDockWidget` instances in the bottom docking area. They are movable, floatable, closable, and initially tabified. Hiding a dock only changes visibility; it does not reconstruct the console, discard the transcript, or terminate an active shell.
 
-## Ownership and lifecycle
+## Construction and ownership
 
-`DockableConsoleToolFactory` is the single construction boundary for terminal/output tool widgets. It creates the dock, applies the standard allowed areas/features, creates a child `TConsole`, applies RTL console configuration, installs the console as the dock widget, and adds the dock to the bottom of the supplied `QMainWindow`.
+`DockableConsoleToolFactory` is the sole construction boundary for console docks. It produces a `TConsole` with `enableNativeTerminal()` for the System Terminal and an `InlinePromptConsole` for Alif Output. `Taif` continues to store both pointers as `TConsole*`, preserving the existing `setupUI()` construction path. Prompt-specific lifecycle calls use `qobject_cast<InlinePromptConsole*>`, so no unrelated UI construction was changed.
 
-> **Persistence invariant:** Hiding or closing a console dock changes visibility only. It does not recreate its `TConsole`, erase buffered text, terminate the system shell, or duplicate process signal connections.
+> **Ownership invariant:** `TConsole` owns the `TerminalSessionController` only when native-terminal mode is enabled. `InlinePromptConsole` never enables that mode and owns only its buffered transcript state.
 
-The system terminal is created once during `Taif::setupUI()` and begins its platform shell session immediately. The Alif output console is also created once, but its dock remains hidden until `runAlif()` begins. Output history survives later runs unless the run logic explicitly clears it at the start of the next execution, as it does today.
+The System Terminal starts its platform-default interactive shell on the post-show event turn, after the dock owns a real multi-row grid. Windows uses `COMSPEC` with a `cmd.exe` fallback; macOS uses interactive `zsh`; other supported Unix builds use interactive `bash`. The Alif console is created once and accepts inline program input only while `AlifRunController` is in a starting, running, or stopping state.
 
-## Execution-output behavior
+## Native System Terminal
 
-`runAlif()` no longer searches a splitter-hosted tab collection or manipulates central splitter geometry. It uses the persistent `alifOutputConsole`, clears/updates it for the next program run, and calls `showAndRaiseDock(alifOutputDock)`.
+The native System Terminal has a strict layering boundary that keeps GUI rendering, VT interpretation, and operating-system process transport independently testable.
 
-The managed execution connections remain intentionally narrow:
-
-| Signal or action | Destination | Behavior preserved |
+| Layer | Responsibility | Main types |
 |---|---|---|
-| `AlifRunController::standardOutput` | `TConsole::appendPlainTextThreadSafe` | Standard output is streamed to `مخرجات ألف`. |
-| `AlifRunController::standardError` | `TConsole::appendPlainTextThreadSafe` | Standard error is streamed to `مخرجات ألف`. |
-| `TConsole::commandEntered` | `AlifRunController::sendInput` | Program input entered in the output dock is delivered to the active managed Alif process. |
-| `AlifRunController::finished` | Output console and run-controller state transition | Exit outcome is rendered and active-run controls are restored exactly once. |
+| Dock-facing host | Preserves the existing Qt dock contract and embeds the viewport in `QPlainTextEdit::viewport()`. | `TConsole` |
+| Viewport | Draws the LTR grid, tracks selection and scrollback, encodes keyboard input, and reports debounced grid size changes. | `TerminalView` |
+| Session lifecycle | Owns explicit `Idle`, `Starting`, `Running`, `Stopping`, `Finished`, and `Failed` transitions on the GUI thread. | `TerminalSessionController` |
+| Transport | Starts, resizes, writes to, and shuts down a platform terminal session. | `ITerminalBackend`, `WindowsConPtyBackend`, `PosixPtyBackend` |
+| Rendering model | Maintains cells, attributes, cursor, scroll regions, scrollback, and alternate-screen state. | `TerminalScreenModel` |
+| Stream decoder | Incrementally decodes UTF-8 and applies supported terminal controls. | `VtStreamParser` |
 
-The system terminal is intentionally independent of `AlifRunController`; showing, hiding, floating, or tabifying the output dock never affects the native shell process.
+On Windows, `WindowsConPtyBackend` uses `CreatePseudoConsole`, `ResizePseudoConsole`, `ClosePseudoConsole`, and a `STARTUPINFOEXW` attribute list carrying `PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE`. It owns Win32 handles with RAII-style cleanup and routes terminal output to the GUI thread through queued Qt signal delivery. Its reader polls available pipe data and exits when the child is complete and output is drained, which prevents one-shot shells from remaining active indefinitely and makes shutdown bounded.
 
-## Output buffering and rendering policy
+On Linux and macOS, `PosixPtyBackend` creates a native pseudoterminal with `forkpty`, changes into the requested working directory before `execvp`, and reads the master file descriptor from a dedicated thread. Direct input writes to that master; `TIOCSWINSZ` propagates terminal geometry; graceful cancellation signals the child process group before bounded escalation. Both native transports deliver output and completion back to the GUI thread through the same `ITerminalBackend` contract.
 
-Both console docks use the shared `OutputBuffer` contract before rendering through `TConsole`. Producers may append decoded `QString` chunks from any thread. The GUI consumer drains one bounded batch on demand and appends text blocks to the existing `QTextDocument`; it does not rebuild the entire console text with `setPlainText()` on a fixed timer.
+> **Terminal lifecycle invariant:** A stop request first sends Ctrl+C while the transport remains active. If the child does not exit within the bounded timeout, the backend terminates it, marks transport inactive, closes pipe handles, joins the reader, and closes the pseudoconsole.
 
-| Boundary | Policy |
+The terminal viewport is intentionally `Qt::LeftToRight`, even when the surrounding Arabic application uses RTL layout. This preserves conventional terminal cell ordering, cursor motion, selection, and escape-sequence fidelity. Its scrollbar spans a single logical row sequence—retained primary-screen scrollback followed by the current grid—so later commands never replace earlier output in the viewport. At the tail it renders the complete active screen; at the top it renders the oldest retained rows. Mouse selection uses that same mapping through the `QAbstractScrollArea` viewport event path.
+
+## VT compatibility contract
+
+`VtStreamParser` is incremental: byte chunks may split a UTF-8 character, escape introducer, CSI parameter list, OSC title sequence, or CRLF pair without resetting parser state. Unsupported sequences are counted rather than causing a parse failure.
+
+| Control family | Supported behavior |
 |---|---|
-| Pending output | At most 1 MiB of UTF-16 chunk data is staged. Individual chunks are capped at 256 KiB. When a burst exceeds either bound, oldest pending content is discarded and a localized truncation notice is appended. |
-| Rendered output | The document is capped at 2,000 blocks and 512 Ki UTF-16 characters. Oldest rendered text is trimmed incrementally; a localized notice marks rendered-history trimming. |
-| Flush cadence | The single-shot 16 ms timer is dormant while idle and coalesces only active bursts. It performs append/trim work rather than a full-document reset. |
-| CR/LF handling | `\r`, `\n`, and CRLF pairs are statefully interpreted across chunk boundaries. A standalone carriage return overwrites the current line, while a split CRLF still creates exactly one new line. |
-| Encoding | The interactive Windows shell uses the local Windows code page for child output/input. Unix shell paths use UTF-8. `AlifRunController` continues to own the Alif execution encoding contract before text reaches the output console. |
-| Failure reporting | Terminal `QProcess::errorOccurred` appends a localized diagnostic to the same terminal surface. |
+| Text and C0 controls | UTF-8 text, CR, LF, backspace, and tab update the screen model incrementally. |
+| Cursor and editing CSI | Relative and absolute cursor moves; display and line erase; character erase/delete; line insert/delete; scrolling; and scroll regions. |
+| SGR | Reset, bold, underline, inverse, standard/bright ANSI colors, indexed colors, and RGB foreground/background colors. |
+| Private modes | Cursor visibility plus alternate-screen modes `?47`, `?1047`, and `?1049`. |
+| OSC | Window title codes `0` and `2`, terminated by BEL or `ESC \\`. |
 
-> **Lifecycle invariant:** Hiding a dock never stops its console. Destruction invokes the existing bounded terminal terminate/kill policy, drains already queued text once, and cannot leave a repeating idle flush timer active.
+## Inline Alif Output
 
-## Dock visibility and selected-tab policy
+`InlinePromptConsole` derives from `TConsole` and retains an editable range only after the prompt marker. Keyboard, mouse, paste, cut, delete, and backspace paths enforce the transcript boundary. Destructive edits initiated in historical output are consumed instead of deleting current input; non-destructive text entry is redirected to the prompt. Submitting with Enter emits the inherited `TConsole::commandEntered(const QString&)` signal, records de-duplicated history, and opens a new prompt. Up and Down traverse that history.
 
-The existing F6 console action now toggles `TerminalDock`. If the dock is hidden **or is an inactive tab**, it is selected in the shared bottom tab group and focused. It is hidden only when it is already the rendered terminal tab; focus then returns to the active editor. Running a Taif file always selects `AlifOutputDock` beside `المشكلات`.
+Incoming Alif output is staged in `OutputBuffer` and coalesced by a 16 ms single-shot timer. The GUI thread inserts each drained chunk before the live prompt, preserves the user’s cursor and selection offset in the active input, and follows the bottom only when the user was already following output. Carriage-return state is preserved across chunk boundaries: a split `\r\n` yields one new line, whereas a standalone `\r` replaces the last output line without corrupting the prompt.
 
-`DockableConsoleToolFactory::isRenderedTab()` uses the dock’s rendered visible region rather than `isVisible()` alone, because an inactive dock in a Qt tab group can remain logically visible. This gives F6 a reliable distinction between “select the terminal tab” and “hide the currently selected terminal.”
+| Boundary | Enforced policy |
+|---|---|
+| Pending output | `OutputBuffer` bounds staged chunks and reports dropped content through one localized truncation notice. |
+| Rendered transcript | The document is bounded at 2,000 blocks and 512 Ki UTF-16 characters; old content is incrementally trimmed and identified with a localized notice. |
+| Prompt | Only text after the current marker is editable while input is enabled. Output is always inserted before the marker. |
+| Alif process lifecycle | `Taif` calls `beginInput()` for active run states and `endInput()` on inactive states and completion. |
 
-`showAndRaiseDock()` is the main-window policy boundary. When it receives either console dock, it first asks `DockableConsoleToolFactory::ensureTabifiedWith()` to restore that dock to the Problems tab group **only while both docks remain non-floating in the bottom area**. It then calls `showAndActivate()`, which shows the dock, raises it immediately, and schedules one deferred raise after Qt completes pending dock-layout work. The deferred activation is necessary because `show()` alone makes a dock logically visible without necessarily selecting its tab.
+`AlifRunController::standardOutput` and `standardError` remain connected to `TConsole::appendPlainTextThreadSafe`, and `TConsole::commandEntered` remains connected to `AlifRunController::sendInput`. The base-class connection stays type-safe because `InlinePromptConsole` is a `TConsole` subclass. Final output draining now checks whether the underlying `QProcess` device remains open, avoiding benign shutdown-time `QIODevice::read` warnings.
 
-> **Selected-tab invariant:** Starting Alif makes `مخرجات ألف` the rendered tab in the bottom group. Opening the system terminal makes `طرفية النظام` the rendered tab in that same group. The Problems dock remains a peer tab, not a displaced dock or a separate splitter surface.
+## Dock behavior and appearance
 
-A dock that the user deliberately floats or moves to a different dock area is not forcibly re-tabified. This preserves intentional workspace customization while guaranteeing the expected shared tab behavior for the standard bottom-tool layout.
+`showAndRaiseDock()` and `DockableConsoleToolFactory::showAndActivate()` retain the existing bottom-tab policy. The Alif Output, System Terminal, and Problems docks are re-tabified only when both relevant docks remain non-floating in the bottom area. A deliberate float or move by the user is preserved. The `عرض` menu action state continues to represent each dock’s open state rather than only the selected tab.
 
-The splitter now contains only the editor tabs and the pre-existing search surface.
-
-## View-menu commands
-
-`TMenuBar` now provides the Arabic **`عرض`** menu, which is a command-only surface: it emits semantic requests to `Taif` and never owns or manipulates dock widgets directly.
-
-| Menu item | Action object name | Target | Command behavior |
-|---|---|---|---|
-| `مخرجات ألف` | `ShowAlifOutputAction` | `AlifOutputDock` | Shows and selects the Alif output tab. |
-| `الطرفية` | `ShowTerminalAction` | `TerminalDock` | Shows and selects the persistent system-terminal tab without recreating the shell. |
-| `الأخطاء` | `ShowProblemsAction` | `DiagnosticsDock` | Shows and selects the Problems tab without modifying its diagnostics or filters. |
-
-The three actions are independently checkable. `Taif::syncBottomToolActionState()` maps every dock’s open state to its matching action after menu activation, F6 terminal handling, Alif execution activation, and dock visibility changes. A dock being open is sufficient to earn a check mark, so multiple tools can be checked simultaneously even when Qt renders only one member of their tab group. Hiding or closing a dock clears only that dock’s check mark.
-
-## Visual and RTL policy
-
-Terminal and Alif output docks reuse the Problems dock’s dark-blue visual contract:
-
-- body background `#0f172a`;
-- title surface `#1e293b`;
-- right-aligned Arabic-compatible title styling;
-- shared muted border and transparent close/float controls;
-- RTL `TConsole` input/output configuration.
-
-Future docks should reuse these selectors or a later shared dock-theme service rather than introducing independent tool-window styles.
+Both console surfaces retain the dark navy contract. The terminal grid uses its own direct painter but remains inside the existing dock presentation; the inline Alif transcript remains RTL and uses the existing dark `QPlainTextEdit` palette.
 
 ## Validation
 
-The focused UI regression target `tests/ui/ui_tests.pro` validates the reusable dock factory without starting a real system shell. It also validates bounded pending output, truncation accounting, split CRLF behavior, carriage-return overwrite behavior, append-only rendering, rendered line/character limits, and preservation of the latest output during a large burst.
+The focused UI target compiles all terminal modules and executes native Windows lifecycle coverage, retained-history viewport coverage, and platform-guarded POSIX PTY coverage in addition to existing dock, editor, and console regressions. The production application is separately built from `taif/build/analysis_validation`, then the repository-wide Windows gate is run. Linux and macOS CI runners must execute the same focused target to exercise their local PTY transport.
 
-| Validation target | Result |
+| Validation command or target | Phase 8 result |
 |---|---|
-| `TaifDockableToolsTests` widget and console regression | Phase 6: 28 passed, 0 failed. |
-| Full TaifEditor Qt 6.11.1 / MSVC 2022 application build | Passed. |
-| Existing lexer, parser, semantic, and analysis suites | Must remain green in the full phase validation matrix. |
+| `TaifDockableToolsTests` | Latest Windows gate: 33 passed, 0 failed. The Unix branch is platform-guarded and requires execution on Linux/macOS runners. |
+| Terminal parser/model regression | Passed split CSI, SGR, cursor movement, OSC title, alternate-screen restoration, and retained-history top/tail selection coverage. |
+| Terminal session lifecycle regression | Passed a Windows ConPTY interactive command round trip. Linux/macOS use a platform-guarded interactive `/bin/sh -i` PTY round trip. |
+| Inline prompt regression | Passed transcript-boundary protection, output-before-prompt insertion, submission, and history traversal coverage. |
+| `phase8_app_validate.bat` | Production `Taif.exe` built successfully with all Phase 8 sources. |
+| `scripts\\validate_windows.cmd` | Passed application, lexer, parser, semantic, analysis, controller, UI, and hygiene gates. |
 
-## Future extension
+## Maintenance rules
 
-The stable dock object names prepare the main window for a future `WorkspaceSession` implementation using `QMainWindow::saveState()` and `restoreState()`. That future work can persist user dock placement, tabification, floating state, and visibility without changing the console ownership contract.
-
-A later `DockManager` may centralize tool registration, titles, shortcuts, visibility commands, theme tokens, and layout persistence. This implementation deliberately limits itself to terminal/output migration and does not move the search panel or redesign the general main-window command architecture.
+Future changes must keep the System Terminal transport independent from `AlifRunController`, must not route terminal input through a separate line editor, and must preserve the `setupUI()` construction boundary. New VT features belong in `TerminalScreenModel` and `VtStreamParser` with parser/model tests; transport changes belong behind `ITerminalBackend`; and Alif transcript behavior belongs in `InlinePromptConsole` with prompt-boundary regressions.
