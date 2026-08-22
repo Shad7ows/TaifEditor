@@ -26,6 +26,9 @@ class ProjectExplorerWidget;
 class GitPanelWidget;
 class GitRepositoryService;
 class AiChatPanel;
+class AiPatchReviewWidget;
+class QStackedWidget;
+struct AiPatchReviewRequest;
 struct ProjectFileOperationResult;
 
 struct SessionRestoreResult final {
@@ -141,6 +144,8 @@ private:
     void clearSearchHighlights();
     void connectEditorActionState(TEditor* editor);
     void syncAiEditorContext(TEditor* activeEditor = nullptr);
+    void showAiPatchReview(const AiPatchReviewRequest& review);
+    void restoreEditorWorkspace();
     void updateEditActionState();
     void refreshBreadcrumbs();
     void bindInformationBarToEditor(TEditor* editor);
@@ -175,6 +180,8 @@ private:
     QDockWidget* aiChatDock{};
 
     QSplitter *editorSplitter{};
+    QStackedWidget* editorWorkspaceStack{};
+    AiPatchReviewWidget* aiPatchReviewWidget{};
     TBreadcrumbBar* breadcrumbBar{};
     QMetaObject::Connection breadcrumbConnection{};
     QMetaObject::Connection cursorPositionConnection{};

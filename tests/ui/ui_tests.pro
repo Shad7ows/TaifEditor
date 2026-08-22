@@ -60,10 +60,12 @@ SOURCES += \
     ../../source/settings/EditorPreferences.cpp \
     ../../source/settings/TSettings.cpp \
     ../../source/ai/AiAssistantSettings.cpp \
+    ../../source/ai/AiLineDiff.cpp \
     ../../source/ai/AiWorkspacePolicy.cpp \
     ../../source/ai/LmStudioClient.cpp \
     ../../source/ai/AiAgentController.cpp \
     ../../source/ai/AiChatPanel.cpp \
+    ../../source/ai/AiPatchReviewWidget.cpp \
     ../../source/recovery/RecoveryStore.cpp \
     ../../source/recovery/RecoveryCoordinator.cpp \
     ../../source/recovery/TRecoveryDialog.cpp \
@@ -122,10 +124,12 @@ HEADERS += \
     ../../source/settings/TSettings.h \
     ../../source/ai/AiAgentTypes.h \
     ../../source/ai/AiAssistantSettings.h \
+    ../../source/ai/AiLineDiff.h \
     ../../source/ai/AiWorkspacePolicy.h \
     ../../source/ai/LmStudioClient.h \
     ../../source/ai/AiAgentController.h \
     ../../source/ai/AiChatPanel.h \
+    ../../source/ai/AiPatchReviewWidget.h \
     ../../source/recovery/RecoveryStore.h \
     ../../source/recovery/RecoveryCoordinator.h \
     ../../source/recovery/TRecoveryDialog.h \

@@ -8,6 +8,7 @@
 #include <QtWidgets/QLineEdit>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPlainTextEdit>
+#include <QtWidgets/QStackedWidget>
 #include <QtGui/QImage>
 #include <QtGui/QTextDocument>
 #include <QtCore/QDir>
@@ -55,6 +56,8 @@
 #include "TEditor.h"
 #include "AiChatPanel.h"
 #include "AiAssistantSettings.h"
+#include "AiLineDiff.h"
+#include "AiPatchReviewWidget.h"
 #include "AiWorkspacePolicy.h"
 #include "AiAgentController.h"
 #include "LmStudioClient.h"
@@ -120,10 +123,14 @@ private slots:
     void mainWindowExposesRightSideGitPanel();
     void gitPanelUsesDarkNavySurfaces();
     void workspaceAutoCommandPolicyFailsClosed();
+    void aiLineDiffAlignsArabicAndChangedRowsDeterministically();
     void aiAssistantSettingsUseWorkspaceAutoAndBoundLongTimeouts();
     void lmStudioClientSerializesAssistantToolCallsForContinuation();
     void workspaceAutoCompletesSafeReadAndContinues();
     void workspaceAutoProtectsUnsavedOpenFile();
+    void aiPatchStagesForReviewAndWritesOnlyAfterAcceptance();
+    void aiPatchReviewWidgetPresentsReadOnlyLtrSplitAndAcceptAction();
+    void mainWindowSwitchesToAiPatchReviewWorkspace();
     void aiAgentControllerConstructsAndDestroys();
     void aiChatPanelConstructsAndDestroys();
     void aiPanelPresentsWorkspaceAutoControlsAndHidesRawToolPayload();
@@ -715,6 +722,27 @@ void DockableToolsTest::workspaceAutoCommandPolicyFailsClosed()
     }
 }
 
+void DockableToolsTest::aiLineDiffAlignsArabicAndChangedRowsDeterministically()
+{
+    const AiLineDiffResult result = AiLineDiff::compare(
+        QStringLiteral("أولاً\nثانياً\nثالثاً\n"),
+        QStringLiteral("أولاً\nثانياً المعدلة\nثالثاً\nرابعاً\n"));
+    QCOMPARE(result.summary.unchangedLines, 3);
+    QCOMPARE(result.summary.removedLines, 1);
+    QCOMPARE(result.summary.addedLines, 2);
+    QVERIFY(!result.summary.usedWholeDocumentFallback);
+    QCOMPARE(result.rows.size(), 6);
+    QCOMPARE(result.rows.at(0).kind, AiLineDiffRow::Kind::Unchanged);
+    QCOMPARE(result.rows.at(1).kind, AiLineDiffRow::Kind::Removed);
+    QCOMPARE(result.rows.at(2).kind, AiLineDiffRow::Kind::Added);
+    QCOMPARE(result.rows.last().kind, AiLineDiffRow::Kind::Unchanged);
+
+    const AiLineDiffResult unchanged = AiLineDiff::compare(QStringLiteral("سطر\n"), QStringLiteral("سطر\n"));
+    QCOMPARE(unchanged.summary.unchangedLines, 2);
+    QCOMPARE(unchanged.summary.addedLines, 0);
+    QCOMPARE(unchanged.summary.removedLines, 0);
+}
+
 void DockableToolsTest::aiAssistantSettingsUseWorkspaceAutoAndBoundLongTimeouts()
 {
     const AiAssistantSettings defaults = AiAssistantSettingsStore::defaults();
@@ -935,17 +963,160 @@ void DockableToolsTest::workspaceAutoProtectsUnsavedOpenFile()
     controller.setProjectRoot(project.path());
     controller.setModifiedOpenFiles({sourcePath});
     controller.setSelectedModel(QStringLiteral("local-model"));
-    QSignalSpy approvals(&controller, &AiAgentController::approvalRequested);
+    QSignalSpy reviews(&controller, &AiAgentController::patchReviewRequested);
+    QSignalSpy toolResults(&controller, &AiAgentController::toolResultReady);
     controller.submitPrompt(QStringLiteral("حدّث الملف."), false, false);
 
-    QTRY_COMPARE_WITH_TIMEOUT(approvals.count(), 1, 2000);
+    QTRY_COMPARE_WITH_TIMEOUT(reviews.count(), 1, 2000);
     QCOMPARE(controller.state(), AiAgentState::AwaitingApproval);
-    const AiToolApprovalRequest approval = approvals.constFirst().constFirst().value<AiToolApprovalRequest>();
-    QCOMPARE(approval.toolCall.id, QStringLiteral("patch-1"));
-    QVERIFY(approval.details.contains(QStringLiteral("تعديلات غير محفوظة")));
+    const AiPatchReviewRequest review = reviews.constFirst().constFirst().value<AiPatchReviewRequest>();
+    QCOMPARE(review.toolCall.id, QStringLiteral("patch-1"));
+    controller.acceptPatchReview(review.reviewId);
+    QTRY_COMPARE_WITH_TIMEOUT(toolResults.count(), 1, 2000);
+    QVERIFY(!toolResults.constFirst().at(2).toBool());
+    controller.stop();
     QFile unchanged(sourcePath);
     QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
     QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("اطبع(1)\n"));
+}
+
+void DockableToolsTest::aiPatchStagesForReviewAndWritesOnlyAfterAcceptance()
+{
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    const QString sourcePath = QDir(project.path()).filePath(QStringLiteral("main.alif"));
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("اطبع(1)\n");
+    source.close();
+
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    QByteArray request;
+    connect(&server, &QTcpServer::newConnection, &server, [&]() {
+        auto* const socket = server.nextPendingConnection();
+        connect(socket, &QTcpSocket::readyRead, &server, [&, socket]() {
+            request.append(socket->readAll());
+            const int separator = request.indexOf("\r\n\r\n");
+            if (separator < 0) return;
+            const QRegularExpression expression(QStringLiteral("Content-Length:\\s*(\\d+)"),
+                                                QRegularExpression::CaseInsensitiveOption);
+            const QRegularExpressionMatch match = expression.match(QString::fromLatin1(request.left(separator)));
+            QVERIFY(match.hasMatch());
+            if (request.size() < separator + 4 + match.captured(1).toInt()) return;
+            const QString arguments = QString::fromUtf8(QJsonDocument(QJsonObject{
+                {QStringLiteral("path"), QStringLiteral("main.alif")},
+                {QStringLiteral("content"), QStringLiteral("اطبع(2)\n")}}).toJson(QJsonDocument::Compact));
+            const QJsonObject function{{QStringLiteral("name"), QStringLiteral("propose_file_patch")},
+                                       {QStringLiteral("arguments"), arguments}};
+            const QJsonObject toolCall{{QStringLiteral("index"), 0}, {QStringLiteral("id"), QStringLiteral("review-patch-1")},
+                                       {QStringLiteral("type"), QStringLiteral("function")}, {QStringLiteral("function"), function}};
+            const QJsonObject choice{{QStringLiteral("delta"), QJsonObject{{QStringLiteral("tool_calls"), QJsonArray{toolCall}}}}};
+            const QJsonObject envelope{{QStringLiteral("choices"), QJsonArray{choice}}};
+            socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: ");
+            socket->write(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+            socket->write("\n\ndata: [DONE]\n\n");
+            socket->disconnectFromHost();
+        });
+    });
+
+    AiAgentController controller;
+    AiAssistantSettings settings = controller.client()->settings();
+    settings.endpointUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort());
+    settings.requestTimeoutMilliseconds = 2000;
+    settings.autonomyMode = AiAutonomyMode::Manual;
+    controller.client()->setSettings(settings);
+    controller.setProjectRoot(project.path());
+    controller.setSelectedModel(QStringLiteral("local-model"));
+    QSignalSpy reviews(&controller, &AiAgentController::patchReviewRequested);
+    controller.submitPrompt(QStringLiteral("حدّث الملف."), false, false);
+
+    QTRY_COMPARE_WITH_TIMEOUT(reviews.count(), 1, 2000);
+    const AiPatchReviewRequest review = reviews.constFirst().constFirst().value<AiPatchReviewRequest>();
+    QCOMPARE(review.relativePath, QStringLiteral("main.alif"));
+    QCOMPARE(review.originalText, QStringLiteral("اطبع(1)\r\n"));
+    QCOMPARE(review.proposedText, QStringLiteral("اطبع(2)\n"));
+    QVERIFY(review.isValid());
+    QCOMPARE(controller.state(), AiAgentState::AwaitingApproval);
+    QFile unchanged(sourcePath);
+    QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("اطبع(1)\n"));
+    unchanged.close();
+
+    controller.acceptPatchReview(review.reviewId);
+    QTRY_VERIFY(controller.state() == AiAgentState::Idle);
+    QFile updated(sourcePath);
+    QVERIFY(updated.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(updated.readAll()), QStringLiteral("اطبع(2)\n"));
+}
+
+void DockableToolsTest::aiPatchReviewWidgetPresentsReadOnlyLtrSplitAndAcceptAction()
+{
+    AiPatchReviewWidget widget;
+    widget.resize(1000, 640);
+    widget.show();
+    AiPatchReviewRequest review;
+    review.reviewId = QStringLiteral("review-1");
+    review.toolCall.id = QStringLiteral("call-1");
+    review.toolCall.kind = AiToolKind::ProposeFilePatch;
+    review.toolCall.name = QStringLiteral("propose_file_patch");
+    review.relativePath = QStringLiteral("source/main.alif");
+    review.absolutePath = QStringLiteral("C:/workspace/source/main.alif");
+    review.originalSha256 = QStringLiteral("snapshot");
+    review.originalText = QStringLiteral("اطبع(1)\n");
+    review.proposedText = QStringLiteral("اطبع(2)\n");
+    widget.setReview(review);
+
+    QCOMPARE(widget.reviewId(), review.reviewId);
+    QVERIFY(widget.originalPane()->isReadOnly());
+    QVERIFY(widget.proposedPane()->isReadOnly());
+    QCOMPARE(widget.originalPane()->layoutDirection(), Qt::LeftToRight);
+    QCOMPARE(widget.proposedPane()->layoutDirection(), Qt::LeftToRight);
+    QCOMPARE(widget.originalPane()->toPlainText(), review.originalText);
+    QCOMPARE(widget.proposedPane()->toPlainText(), review.proposedText);
+    auto* const accept = widget.findChild<QPushButton*>(QStringLiteral("AiPatchReviewAccept"));
+    auto* const reject = widget.findChild<QPushButton*>(QStringLiteral("AiPatchReviewReject"));
+    QVERIFY(accept != nullptr);
+    QVERIFY(reject != nullptr);
+    QVERIFY(accept->isEnabled());
+    QVERIFY(reject->isEnabled());
+    QSignalSpy accepted(&widget, &AiPatchReviewWidget::acceptRequested);
+    accept->click();
+    QCOMPARE(accepted.count(), 1);
+    QCOMPARE(accepted.constFirst().constFirst().toString(), review.reviewId);
+}
+
+void DockableToolsTest::mainWindowSwitchesToAiPatchReviewWorkspace()
+{
+    Taif window({}, nullptr, true);
+    window.resize(1100, 760);
+    window.show();
+    auto* const stack = window.findChild<QStackedWidget*>(QStringLiteral("EditorWorkspaceStack"));
+    auto* const reviewWidget = window.findChild<AiPatchReviewWidget*>();
+    auto* const aiPanel = window.findChild<AiChatPanel*>();
+    QVERIFY(stack != nullptr);
+    QVERIFY(reviewWidget != nullptr);
+    QVERIFY(aiPanel != nullptr);
+    QVERIFY(stack->currentWidget() != reviewWidget);
+
+    AiPatchReviewRequest review;
+    review.reviewId = QStringLiteral("window-review");
+    review.toolCall.id = QStringLiteral("window-call");
+    review.toolCall.kind = AiToolKind::ProposeFilePatch;
+    review.toolCall.name = QStringLiteral("propose_file_patch");
+    review.relativePath = QStringLiteral("main.alif");
+    review.absolutePath = QStringLiteral("C:/workspace/main.alif");
+    review.originalSha256 = QStringLiteral("snapshot");
+    review.originalText = QStringLiteral("اطبع(1)\n");
+    review.proposedText = QStringLiteral("اطبع(2)\n");
+    QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewRequested", Qt::DirectConnection,
+                                      Q_ARG(AiPatchReviewRequest, review)));
+    QTRY_COMPARE(stack->currentWidget(), static_cast<QWidget*>(reviewWidget));
+    QCOMPARE(reviewWidget->reviewId(), review.reviewId);
+
+    QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewResolved", Qt::DirectConnection,
+                                      Q_ARG(QString, review.reviewId), Q_ARG(bool, false)));
+    QTRY_VERIFY(stack->currentWidget() != reviewWidget);
 }
 
 void DockableToolsTest::aiAgentControllerConstructsAndDestroys()

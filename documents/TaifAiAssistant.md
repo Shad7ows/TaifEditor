@@ -4,7 +4,7 @@
 
 The **AI Assistant** is TaifEditor’s dockable, left-side local coding workspace. It connects to a user-managed model hosted by LM Studio through the OpenAI-compatible HTTP API and provides streaming chat, explicit context attachment, controlled project tools, and a concise engineering activity view. TaifEditor does not install, launch, or manage LM Studio; the user loads a compatible model and starts its server before refreshing the model list.
 
-The default operating model is **Workspace Auto**. It permits the agent to complete a bounded sequence of validated, project-local reads, searches, safe file writes, and narrowly allowlisted local build/test/read-only Git commands without interrupting the user for every low-risk step. It is intentionally not unrestricted shell or filesystem authority. A hard safety stop always takes precedence over autonomy.
+The default operating model is **Workspace Auto**. It permits the agent to complete a bounded sequence of validated project-local reads, searches, and narrowly allowlisted local build/test/read-only Git commands without interrupting the user for every low-risk step. Existing-file patches are deliberately **staged for visual review** rather than written automatically. It is intentionally not unrestricted shell or filesystem authority. A hard safety stop always takes precedence over autonomy.
 
 | Setting | Default | Behavior |
 |---|---:|---|
@@ -34,7 +34,7 @@ The agent can take at most **12 autonomous continuation turns** for one user req
 | `read_project_file` | Runs automatically for bounded UTF-8 text beneath the root. | Outside root, binary content, unreadable or oversized file. |
 | `search_workspace` | Runs automatically over bounded textual project files. | Empty/malformed search or missing root. |
 | `get_active_editor_context` | Runs automatically only for already available in-memory editor context. | No active context available. |
-| `propose_file_patch` | Runs automatically only after path, file size, text, and SHA-256 snapshot checks succeed. | Outside root, missing/binary/oversized file, stale snapshot, repeated request, or any matching unsaved open editor. |
+| `propose_file_patch` | Creates a staged side-by-side review after path, file size, text, and SHA-256 snapshot checks succeed. | Explicit Accept is always required; outside root, missing/binary/oversized file, stale snapshot, repeated request, or any matching unsaved open editor fail closed. |
 | `propose_create_file` | Runs automatically only for a new contained text path. | Existing target, outside root, malformed request, or repeated request. |
 | `propose_rename_path` | Never automatic. | Always requires review. |
 | `propose_delete_path` | Never automatic. | Always requires review; the underlying operation targets the OS trash. |
@@ -46,7 +46,9 @@ The command policy fails closed. Its automatic allowlist is deliberately limited
 
 Every workspace path is normalized and checked with `ProjectFileOperations::normalizedPath()` and `isInsideRoot()` before it is read, searched, changed, renamed, deleted, or emitted as a mutation notification. Text reads/searches reject binary and oversized input. Patch requests capture a SHA-256 snapshot before execution and write through `QSaveFile`, refusing the update if the target changed meanwhile. Creation refuses to overwrite an existing path.
 
-TaifEditor tracks **all** open modified editor files, not only the active tab. If an automatic patch targets any of those files, Workspace Auto creates an approval request rather than overwriting in-memory user work. When a safe agent mutation succeeds, the main window refreshes Project Explorer and Git state, refreshes diagnostics and breadcrumbs, and reloads only a matching editor that is still clean. An editor with unsaved content is never silently reloaded or replaced.
+TaifEditor tracks **all** open modified editor files, not only the active tab. Every existing-file patch opens a central VS Code–style split review: the current file and proposed revision appear in read-only LTR source panes with removed lines highlighted on the original side and added lines highlighted on the proposed side. Arabic controls remain RTL. The file remains unchanged until **قبول التعديل** is selected. Rejection never writes the file and gives the model a concise tool result so it can adapt. Multiple proposed patches are reviewed in deterministic tool-call order; continuation pauses until each staged review is resolved.
+
+On acceptance, TaifEditor repeats root, text/binary/size, SHA-256 snapshot, and all-open-unsaved-editor checks before using `QSaveFile` for an atomic commit. A stale source or unsaved matching editor therefore still fails closed even after a proposal is visible. When a safe mutation succeeds, the main window refreshes Project Explorer and Git state, refreshes diagnostics and breadcrumbs, and reloads only a matching editor that is still clean. An editor with unsaved content is never silently reloaded or replaced.
 
 Non-loopback endpoints remain subject to the existing privacy acknowledgement requirement. Endpoint/control initialization blocks widget signals so loading saved Workspace Auto mode or timeout values cannot accidentally persist a partially loaded setting. Saving a newly entered remote endpoint is refused unless the required acknowledgement is already available.
 
@@ -69,9 +71,10 @@ The panel explicitly owns and shuts down its `AiAgentController`. Shutdown abort
 | Transport | Model discovery, SSE streaming, cancellation, inactivity renewal, malformed data, response limits, and assistant `tool_calls` serialization are deterministic. |
 | Continuation | Assistant tool-call metadata precedes matching tool results; automatic safe results advance one bounded model turn; rejection gives the model an adaptation result. |
 | Command safety | The direct-launch command policy accepts only the narrow allowlist and requires approval for uncertain, shell, destructive, network, package, interpreter, or process operations. |
-| Filesystem safety | Root containment, text/binary/size rejection, stale patch rejection, atomic save, no-overwrite create, all-open-unsaved-editor protection, and mutation refresh behavior are covered. |
+| Filesystem safety | Root containment, staged patch-without-write behavior, acceptance-only atomic save, stale patch rejection, no-overwrite create, all-open-unsaved-editor protection, and mutation refresh behavior are covered. |
+| Patch review UI | The split panes are read-only/LTR, change highlights and dark-theme accept/reject controls are visible, normal tabs restore after resolution, and raw patch source remains absent from the chat transcript. |
 | Compatibility | The focused UI suite, production Windows build, repository Windows validation gate, and `git diff --check` remain green. |
 
 ## Operational limits
 
-Workspace Auto is local and intentionally conservative. It does not persist a transcript, start LM Studio, install dependencies, access credentials, elevate privileges, launch background agents, perform browser/network automation, silently delete/rename paths, or apply an automatic edit over any open unsaved document. New tool classes or command allowances must be introduced through a testable fail-closed policy, retain the project-root boundary, and add explicit regression coverage.
+Workspace Auto is local and intentionally conservative. It does not persist a transcript, start LM Studio, install dependencies, access credentials, elevate privileges, launch background agents, perform browser/network automation, silently delete/rename paths, or write an existing-file patch without the explicit staged-review acceptance action. New tool classes or command allowances must be introduced through a testable fail-closed policy, retain the project-root boundary, and add explicit regression coverage.

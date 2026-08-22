@@ -38,6 +38,8 @@ public:
     void clearConversation();
     void approvePendingAction(const QString& approvalId);
     void rejectPendingAction(const QString& approvalId);
+    void acceptPatchReview(const QString& reviewId);
+    void rejectPatchReview(const QString& reviewId);
     void shutdown();
 
 signals:
@@ -47,6 +49,8 @@ signals:
     void assistantTextUpdated(QString text);
     void approvalRequested(AiToolApprovalRequest request);
     void approvalResolved(QString approvalId, bool approved);
+    void patchReviewRequested(AiPatchReviewRequest request);
+    void patchReviewResolved(QString reviewId, bool accepted);
     void activityAdded(AiActivityEntry entry);
     void toolResultReady(QString toolCallId, QString result, bool success);
     void workspaceFileMutated(QString absolutePath);
@@ -61,6 +65,9 @@ private:
     void appendActivity(AiActivityKind kind, const QString& title, const QString& details = {});
     void finalizeToolCalls();
     void stageToolApproval(const AiToolCall& call, const QString& reason = {});
+    void stagePatchReview(const AiToolCall& call, bool automatic);
+    void presentNextPatchReview();
+    void resolvePatchReview(const QString& reviewId, bool accepted);
     void executeApprovedTool(const AiToolApprovalRequest& request);
     void executeAutomaticTool(const AiToolCall& call);
     void completeToolExecution(const AiToolCall& call, const QString& result, bool success, bool automatic);
@@ -89,6 +96,9 @@ private:
     QHash<QString, QString> m_toolNames;
     QHash<QString, QString> m_toolArguments;
     QHash<QString, AiToolApprovalRequest> m_pendingApprovals;
+    QHash<QString, AiPatchReviewRequest> m_pendingPatchReviews;
+    QStringList m_patchReviewOrder;
+    QString m_visiblePatchReviewId;
     QString m_currentAssistantText;
     QPointer<QProcess> m_commandProcess;
     QTimer m_commandTimeout;

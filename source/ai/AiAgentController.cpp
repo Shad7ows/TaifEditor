@@ -96,7 +96,7 @@ AiAgentController::AiAgentController(QObject* const parent)
         if (!hasToolCalls) {
             m_workspaceAutoTaskActive = false;
             setState(AiAgentState::Idle);
-        } else if (!m_pendingApprovals.isEmpty()) {
+        } else if (!m_pendingApprovals.isEmpty() || !m_pendingPatchReviews.isEmpty()) {
             setState(AiAgentState::AwaitingApproval);
         } else if (m_automaticOperationsInFlight > 0) {
             setState(AiAgentState::ExecutingApprovedTool);
@@ -191,6 +191,19 @@ void AiAgentController::submitPrompt(const QString& prompt, const bool includeAc
 void AiAgentController::stop()
 {
     m_workspaceAutoTaskActive = false;
+    if (!m_pendingPatchReviews.isEmpty()) {
+        const QStringList reviewIds = m_patchReviewOrder;
+        m_pendingPatchReviews.clear();
+        m_patchReviewOrder.clear();
+        m_visiblePatchReviewId.clear();
+        appendActivity(AiActivityKind::Blocked, QStringLiteral("أُلغيت مراجعات تعديلات الوكيل"),
+                       QStringLiteral("لم يُكتب أي تعديل معلق إلى الملف."));
+        for (const QString& reviewId : reviewIds) {
+            emit patchReviewResolved(reviewId, false);
+        }
+        setState(AiAgentState::Idle);
+        return;
+    }
     if (m_commandProcess != nullptr && m_commandProcess->state() != QProcess::NotRunning) {
         m_commandTimeout.stop();
         m_commandProcess->kill();
@@ -207,6 +220,9 @@ void AiAgentController::clearConversation()
     stop();
     m_messages.clear();
     m_pendingApprovals.clear();
+    m_pendingPatchReviews.clear();
+    m_patchReviewOrder.clear();
+    m_visiblePatchReviewId.clear();
     m_currentAssistantText.clear();
     m_toolNames.clear();
     m_toolArguments.clear();
@@ -310,17 +326,23 @@ void AiAgentController::appendActivity(const AiActivityKind kind, const QString&
 
 void AiAgentController::finalizeToolCalls()
 {
-    for (auto iterator = m_toolArguments.cbegin(); iterator != m_toolArguments.cend(); ++iterator) {
+    QStringList toolCallIds = m_toolArguments.keys();
+    std::sort(toolCallIds.begin(), toolCallIds.end());
+    for (const QString& toolCallId : toolCallIds) {
         AiToolCall call;
-        call.id = iterator.key();
+        call.id = toolCallId;
         call.name = m_toolNames.value(call.id);
         call.kind = aiToolKindFromName(call.name);
-        call.rawArguments = iterator.value();
+        call.rawArguments = m_toolArguments.value(call.id);
         const QJsonDocument arguments = QJsonDocument::fromJson(call.rawArguments.toUtf8());
         if (arguments.isObject()) call.arguments = arguments.object();
         if (!call.isValid() || !arguments.isObject()) {
             appendActivity(AiActivityKind::Error, QStringLiteral("استدعاء أداة غير صالح"), call.name);
             appendMessage(AiChatRole::Tool, QStringLiteral("تعذر تحليل استدعاء الأداة بأمان."), call.id, call.name);
+            continue;
+        }
+        if (call.kind == AiToolKind::ProposeFilePatch) {
+            stagePatchReview(call, m_workspaceAutoTaskActive);
             continue;
         }
         QString reason;
@@ -373,6 +395,116 @@ void AiAgentController::stageToolApproval(const AiToolCall& call, const QString&
     m_pendingApprovals.insert(request.approvalId, request);
     appendActivity(AiActivityKind::ToolRequested, QStringLiteral("يتطلب الإجراء تأكيداً"), stagedCall.name);
     emit approvalRequested(request);
+}
+
+void AiAgentController::stagePatchReview(const AiToolCall& call, const bool automatic)
+{
+    const QString signature = aiToolKindName(call.kind) + QLatin1Char(':')
+        + QString::fromUtf8(QJsonDocument(call.arguments).toJson(QJsonDocument::Compact));
+    if (m_toolSignatureCounts.value(signature) >= kMaximumRepeatedToolSignature) {
+        appendActivity(AiActivityKind::Blocked, QStringLiteral("تم إيقاف تعديل متكرر"),
+                       QStringLiteral("تكرر اقتراح التعديل نفسه عدة مرات ويحتاج تدخلاً جديداً."));
+        appendMessage(AiChatRole::Tool, QStringLiteral("تم إيقاف اقتراح تعديل متكرر لحماية المشروع."), call.id, call.name);
+        return;
+    }
+    ++m_toolSignatureCounts[signature];
+    const QString relativePath = call.arguments.value(QStringLiteral("path")).toString();
+    const QString absolutePath = canonicalProjectPath(relativePath);
+    const QString proposedText = call.arguments.value(QStringLiteral("content")).toString();
+    QFile source(absolutePath);
+    if (absolutePath.isEmpty() || relativePath.trimmed().isEmpty() || !source.open(QIODevice::ReadOnly)
+        || source.size() > kMaximumFileBytes) {
+        appendActivity(AiActivityKind::Error, QStringLiteral("تعذر إعداد مراجعة تعديل الملف"), relativePath);
+        appendMessage(AiChatRole::Tool, QStringLiteral("تعذر إعداد مراجعة آمنة للملف المطلوب."), call.id, call.name);
+        return;
+    }
+    const QByteArray originalBytes = source.read(kMaximumFileBytes + 1);
+    if (originalBytes.size() > kMaximumFileBytes || originalBytes.contains('\0')) {
+        appendActivity(AiActivityKind::Blocked, QStringLiteral("تم رفض مراجعة ملف غير نصي"), relativePath);
+        appendMessage(AiChatRole::Tool, QStringLiteral("تم رفض تعديل ملف ثنائي أو يتجاوز الحد الآمن."), call.id, call.name);
+        return;
+    }
+
+    AiPatchReviewRequest review;
+    review.reviewId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    review.toolCall = call;
+    review.toolCall.arguments.insert(QStringLiteral("_taif_snapshot_sha256"),
+                                     QString::fromLatin1(QCryptographicHash::hash(originalBytes, QCryptographicHash::Sha256).toHex()));
+    review.relativePath = QDir(m_projectRoot).relativeFilePath(absolutePath);
+    review.absolutePath = absolutePath;
+    review.originalText = QString::fromUtf8(originalBytes);
+    review.proposedText = proposedText;
+    review.originalSha256 = review.toolCall.arguments.value(QStringLiteral("_taif_snapshot_sha256")).toString();
+    review.automatic = automatic;
+    m_pendingPatchReviews.insert(review.reviewId, review);
+    m_patchReviewOrder.append(review.reviewId);
+    appendActivity(AiActivityKind::ToolRequested, QStringLiteral("فتح مراجعة تعديل الوكيل"), review.relativePath);
+    presentNextPatchReview();
+}
+
+void AiAgentController::presentNextPatchReview()
+{
+    if (!m_visiblePatchReviewId.isEmpty() && m_pendingPatchReviews.contains(m_visiblePatchReviewId)) {
+        return;
+    }
+    m_visiblePatchReviewId.clear();
+    while (!m_patchReviewOrder.isEmpty() && !m_pendingPatchReviews.contains(m_patchReviewOrder.first())) {
+        m_patchReviewOrder.removeFirst();
+    }
+    if (m_patchReviewOrder.isEmpty()) {
+        return;
+    }
+    m_visiblePatchReviewId = m_patchReviewOrder.first();
+    setState(AiAgentState::AwaitingApproval);
+    emit patchReviewRequested(m_pendingPatchReviews.value(m_visiblePatchReviewId));
+}
+
+void AiAgentController::acceptPatchReview(const QString& reviewId)
+{
+    resolvePatchReview(reviewId, true);
+}
+
+void AiAgentController::rejectPatchReview(const QString& reviewId)
+{
+    resolvePatchReview(reviewId, false);
+}
+
+void AiAgentController::resolvePatchReview(const QString& reviewId, const bool accepted)
+{
+    const auto iterator = m_pendingPatchReviews.find(reviewId);
+    if (iterator == m_pendingPatchReviews.end()) {
+        return;
+    }
+    const AiPatchReviewRequest review = iterator.value();
+    m_pendingPatchReviews.erase(iterator);
+    m_patchReviewOrder.removeAll(reviewId);
+    if (m_visiblePatchReviewId == reviewId) {
+        m_visiblePatchReviewId.clear();
+    }
+
+    if (accepted) {
+        appendActivity(AiActivityKind::ToolApproved, QStringLiteral("تم قبول تعديل الوكيل"), review.relativePath);
+        setState(AiAgentState::ExecutingApprovedTool);
+        bool success = false;
+        const QString result = executeFileMutation(review.toolCall, &success);
+        completeToolExecution(review.toolCall, result, success, false);
+    } else {
+        appendActivity(AiActivityKind::ToolRejected, QStringLiteral("تم رفض تعديل الوكيل"), review.relativePath);
+        appendMessage(AiChatRole::Tool, QStringLiteral("رفض المستخدم تطبيق تعديل الملف بعد مراجعته."),
+                      review.toolCall.id, review.toolCall.name);
+        emit toolResultReady(review.toolCall.id, QStringLiteral("رفض المستخدم تطبيق تعديل الملف بعد مراجعته."), false);
+    }
+    emit patchReviewResolved(reviewId, accepted);
+
+    if (!m_pendingPatchReviews.isEmpty()) {
+        presentNextPatchReview();
+        return;
+    }
+    if (review.automatic) {
+        continueAutonomousTask();
+    } else {
+        setState(m_pendingApprovals.isEmpty() ? AiAgentState::Idle : AiAgentState::AwaitingApproval);
+    }
 }
 
 void AiAgentController::executeApprovedTool(const AiToolApprovalRequest& request)
@@ -459,7 +591,7 @@ void AiAgentController::beginModelTurn()
 void AiAgentController::continueAutonomousTask()
 {
     if (!m_workspaceAutoTaskActive || m_finalizingToolCalls || m_client->hasActiveRequest()
-        || !m_pendingApprovals.isEmpty() || m_automaticOperationsInFlight > 0) {
+        || !m_pendingApprovals.isEmpty() || !m_pendingPatchReviews.isEmpty() || m_automaticOperationsInFlight > 0) {
         return;
     }
     if (++m_autonomousStepCount > kMaximumAutonomousSteps) {
@@ -663,6 +795,13 @@ QString AiAgentController::executeFileMutation(const AiToolCall& call, bool* con
         const QString content = call.arguments.value(QStringLiteral("content")).toString();
         QFileInfo info(path);
         if (call.kind == AiToolKind::ProposeFilePatch && !info.isFile()) return QStringLiteral("الملف المطلوب لتطبيق التعديل غير موجود.");
+        const bool activeConflict = call.kind == AiToolKind::ProposeFilePatch && m_activeFileModified
+            && ProjectFileOperations::normalizedPath(m_activeFilePath) == path;
+        const bool openConflict = call.kind == AiToolKind::ProposeFilePatch
+            && m_modifiedOpenFiles.contains(path, Qt::CaseInsensitive);
+        if (activeConflict || openConflict) {
+            return QStringLiteral("لا يمكن تطبيق التعديل لأن الملف مفتوح وفيه تعديلات غير محفوظة.");
+        }
         if (call.kind == AiToolKind::ProposeCreateFile && info.exists()) return QStringLiteral("تم رفض إنشاء الملف لأنه موجود بالفعل.");
         const QString expectedHash = call.arguments.value(QStringLiteral("_taif_snapshot_sha256")).toString();
         if (call.kind == AiToolKind::ProposeFilePatch && expectedHash.isEmpty()) {

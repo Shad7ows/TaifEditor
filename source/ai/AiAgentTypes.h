@@ -110,6 +110,25 @@ struct AiToolApprovalRequest final {
     QDateTime createdAt = QDateTime::currentDateTimeUtc();
 };
 
+/** A validated existing-file patch held for explicit side-by-side review. */
+struct AiPatchReviewRequest final {
+    QString reviewId;
+    AiToolCall toolCall;
+    QString relativePath;
+    QString absolutePath;
+    QString originalText;
+    QString proposedText;
+    QString originalSha256;
+    bool automatic = false;
+    QDateTime createdAt = QDateTime::currentDateTimeUtc();
+
+    [[nodiscard]] bool isValid() const
+    {
+        return !reviewId.isEmpty() && toolCall.kind == AiToolKind::ProposeFilePatch
+            && !absolutePath.isEmpty() && !originalSha256.isEmpty();
+    }
+};
+
 struct AiActivityEntry final {
     AiActivityKind kind = AiActivityKind::UserPrompt;
     QString title;
@@ -158,5 +177,6 @@ Q_DECLARE_METATYPE(AiModelDescriptor)
 Q_DECLARE_METATYPE(AiChatMessage)
 Q_DECLARE_METATYPE(AiToolCall)
 Q_DECLARE_METATYPE(AiToolApprovalRequest)
+Q_DECLARE_METATYPE(AiPatchReviewRequest)
 Q_DECLARE_METATYPE(AiActivityEntry)
 Q_DECLARE_METATYPE(AiTransportError)
