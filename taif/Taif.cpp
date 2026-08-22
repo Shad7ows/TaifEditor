@@ -12,6 +12,7 @@
 #include "ProjectExplorerWidget.h"
 #include "ProjectFileOperations.h"
 #include "GitPanelWidget.h"
+#include "AiChatPanel.h"
 #include "GitRepositoryService.h"
 #include "TRecoveryDialog.h"
 
@@ -253,6 +254,43 @@ void Taif::setupUI() {
     addDockWidget(Qt::RightDockWidgetArea, gitDock);
     gitDock->hide();
 
+    aiChatPanel = new AiChatPanel(this);
+    aiChatDock = new QDockWidget(QStringLiteral("مساعد الذكاء الاصطناعي"), this);
+    aiChatDock->setObjectName(QStringLiteral("AiChatDock"));
+    aiChatDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    aiChatDock->setFeatures(QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable
+                            | QDockWidget::DockWidgetClosable);
+    aiChatDock->setWidget(aiChatPanel);
+    addDockWidget(Qt::LeftDockWidgetArea, aiChatDock);
+    aiChatDock->hide();
+    connect(aiChatPanel, &AiChatPanel::workspaceFileMutated, this, [this](const QString& absolutePath) {
+        const QString targetPath = ProjectFileOperations::normalizedPath(absolutePath);
+        for (int index = 0; index < tabWidget->count(); ++index) {
+            auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+            if (editor == nullptr || editor->document()->isModified()
+                || ProjectFileOperations::normalizedPath(editor->filePath) != targetPath) {
+                continue;
+            }
+            QFile file(targetPath);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                continue;
+            }
+            QTextStream stream(&file);
+            const QString refreshedText = stream.readAll();
+            const int cursorPosition = editor->textCursor().position();
+            editor->setPlainText(refreshedText);
+            editor->document()->setModified(false);
+            QTextCursor cursor = editor->textCursor();
+            cursor.setPosition(qMin(cursorPosition, refreshedText.size()));
+            editor->setTextCursor(cursor);
+        }
+        projectExplorer->refresh();
+        gitPanel->refresh();
+        refreshDiagnosticsPanel();
+        refreshBreadcrumbs();
+        syncAiEditorContext();
+    });
+
     auto* const gitEdgeToolbar = new QToolBar(QStringLiteral("Git"), this);
     gitEdgeToolbar->setObjectName(QStringLiteral("GitEdgeToolbar"));
     gitEdgeToolbar->setOrientation(Qt::Vertical);
@@ -367,6 +405,7 @@ void Taif::setupConnections() {
             [this]() { showAndRaiseDock(terminalDock); });
     connect(menuBar, &TMenuBar::showProblemsRequested, this,
             [this]() { showAndRaiseDock(diagnosticsDock); });
+    connect(menuBar, &TMenuBar::showAiAssistantRequested, this, &Taif::showAiChatPanel);
 
     const auto scheduleBottomToolActionStateSync = [this](const bool) {
         QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
@@ -376,6 +415,8 @@ void Taif::setupConnections() {
     connect(alifOutputDock, &QDockWidget::visibilityChanged,
             this, scheduleBottomToolActionStateSync);
     connect(terminalDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    connect(aiChatDock, &QDockWidget::visibilityChanged,
             this, scheduleBottomToolActionStateSync);
     syncBottomToolActionState();
     connect(QApplication::clipboard(), &QClipboard::dataChanged,
@@ -448,7 +489,8 @@ void Taif::setupStyle() {
 
         QDockWidget#DiagnosticsDock,
         QDockWidget#TerminalDock,
-        QDockWidget#AlifOutputDock {
+        QDockWidget#AlifOutputDock,
+        QDockWidget#AiChatDock {
             background-color: #0f172a;
             color: #e2e8f0;
             font-family: "Tajawal", "Noto Kufi Arabic";
@@ -456,7 +498,8 @@ void Taif::setupStyle() {
         }
         QDockWidget#DiagnosticsDock::title,
         QDockWidget#TerminalDock::title,
-        QDockWidget#AlifOutputDock::title {
+        QDockWidget#AlifOutputDock::title,
+        QDockWidget#AiChatDock::title {
             background-color: #1e293b;
             color: #e2e8f0;
             text-align: right;
@@ -468,9 +511,117 @@ void Taif::setupStyle() {
         QDockWidget#TerminalDock::close-button,
         QDockWidget#TerminalDock::float-button,
         QDockWidget#AlifOutputDock::close-button,
-        QDockWidget#AlifOutputDock::float-button {
+        QDockWidget#AlifOutputDock::float-button,
+        QDockWidget#AiChatDock::close-button,
+        QDockWidget#AiChatDock::float-button {
             background: transparent;
             border: none;
+        }
+        QDockWidget#AiChatDock QWidget#AiChatPanel {
+            background-color: #0b1220;
+            color: #e2e8f0;
+        }
+        QDockWidget#AiChatDock QLineEdit,
+        QDockWidget#AiChatDock QComboBox,
+        QDockWidget#AiChatDock QPlainTextEdit,
+        QDockWidget#AiChatDock QTextBrowser,
+        QDockWidget#AiChatDock QListWidget {
+            background-color: #101b30;
+            color: #e5eefc;
+            border: 1px solid #263a57;
+        }
+        QDockWidget#AiChatDock QPushButton {
+            background-color: #172a46;
+            color: #dbeafe;
+            border: 1px solid #2d4a70;
+            padding: 5px 8px;
+        }
+        QDockWidget#AiChatDock QPushButton:hover {
+            background-color: #1e3a5f;
+            border-color: #60a5fa;
+        }
+        QDockWidget#AiChatDock QLabel,
+        QDockWidget#AiChatDock QCheckBox {
+            color: #dbeafe;
+        }
+        QDockWidget#AiChatDock QLabel#AiPanelTitle {
+            color: #f8fafc;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 2px 0;
+        }
+        QDockWidget#AiChatDock QLabel#AiSectionTitle {
+            color: #bfdbfe;
+            font-weight: 700;
+            padding-top: 3px;
+        }
+        QDockWidget#AiChatDock QLabel#AiConnectionLabel {
+            color: #93c5fd;
+            font-weight: 700;
+        }
+        QDockWidget#AiChatDock QLabel#AiContextLabel {
+            color: #cbd5e1;
+        }
+        QDockWidget#AiChatDock QLabel#AiAgentStatusLabel {
+            background-color: #13243d;
+            color: #bfdbfe;
+            border: 1px solid #31547f;
+            border-radius: 5px;
+            padding: 5px 7px;
+        }
+        QDockWidget#AiChatDock QListWidget#AiActivityList::item:hover {
+            background-color: #172a46;
+            color: #f8fafc;
+        }
+        QDockWidget#AiChatDock QLineEdit::placeholder,
+        QDockWidget#AiChatDock QPlainTextEdit::placeholder {
+            color: #94a3b8;
+        }
+        QDockWidget#AiChatDock QComboBox QAbstractItemView {
+            background-color: #101b30;
+            color: #f1f5f9;
+            selection-background-color: #1d4ed8;
+            selection-color: #ffffff;
+        }
+        QDockWidget#AiChatDock QListWidget::item {
+            color: #e2e8f0;
+            border-bottom: 1px solid #243551;
+            padding: 3px;
+        }
+        QDockWidget#AiChatDock QFrame#AiApprovalCard {
+            background-color: #13243d;
+            border: 1px solid #31547f;
+            border-radius: 6px;
+        }
+        QDockWidget#AiChatDock QLabel#AiApprovalTitle {
+            color: #f8fafc;
+            font-weight: 700;
+        }
+        QDockWidget#AiChatDock QLabel#AiApprovalPreview {
+            color: #cbd5e1;
+            background-color: #0b1628;
+            border: 1px solid #263a57;
+            padding: 4px;
+        }
+        QDockWidget#AiChatDock QPushButton#AiApproveApprovalButton {
+            background-color: #166534;
+            color: #f0fdf4;
+            border: 1px solid #4ade80;
+            font-weight: 700;
+        }
+        QDockWidget#AiChatDock QPushButton#AiApproveApprovalButton:hover {
+            background-color: #15803d;
+            border-color: #86efac;
+        }
+        QDockWidget#AiChatDock QPushButton#AiRejectApprovalButton {
+            background-color: #7f1d1d;
+            color: #fef2f2;
+            border: 1px solid #f87171;
+            font-weight: 700;
+        }
+        QDockWidget#AiChatDock QPushButton#AiRejectApprovalButton:hover {
+            background-color: #991b1b;
+            border-color: #fca5a5;
         }
 
         /* --- تصميم شريط القوائم --- */
@@ -939,7 +1090,8 @@ void Taif::syncBottomToolActionState()
     menuBar->setOpenViewToolActions(
         alifOutputDock != nullptr && alifOutputDock->isVisible(),
         terminalDock != nullptr && terminalDock->isVisible(),
-        diagnosticsDock != nullptr && diagnosticsDock->isVisible());
+        diagnosticsDock != nullptr && diagnosticsDock->isVisible(),
+        aiChatDock != nullptr && aiChatDock->isVisible());
 }
 
 void Taif::showAndRaiseDock(QDockWidget* const dock)
@@ -1238,12 +1390,14 @@ void Taif::loadFolder(const QString& requestedFolderPath)
         folderPath = normalizedFolderPath;
         projectExplorer->setProjectRoot(folderPath);
         gitPanel->setProjectRoot(folderPath);
+        if (aiChatPanel != nullptr) aiChatPanel->setProjectRoot(folderPath);
         projectExplorer->setVisible(true);
         toggleSidebarAction->setChecked(true);
     } else {
         folderPath.clear();
         projectExplorer->setProjectRoot({});
         gitPanel->setProjectRoot({});
+        if (aiChatPanel != nullptr) aiChatPanel->setProjectRoot({});
         projectExplorer->setVisible(false);
         toggleSidebarAction->setChecked(false);
     }
@@ -1373,6 +1527,15 @@ void Taif::deleteProjectPath(const QString& sourcePath)
 void Taif::revealProjectPath(const QString& sourcePath)
 {
     presentProjectOperationResult(ProjectFileOperations::reveal(folderPath, sourcePath));
+}
+
+void Taif::showAiChatPanel()
+{
+    if (aiChatPanel != nullptr) {
+        aiChatPanel->setProjectRoot(folderPath);
+        syncAiEditorContext();
+    }
+    showAndRaiseDock(aiChatDock);
 }
 
 void Taif::showGitPanel()
@@ -1696,6 +1859,27 @@ void Taif::onCurrentTabChanged()
     updateEditActionState();
     bindBreadcrumbsToEditor(editor);
     refreshBreadcrumbs();
+    syncAiEditorContext(editor);
+}
+
+void Taif::syncAiEditorContext(TEditor* const activeEditor)
+{
+    if (aiChatPanel == nullptr) {
+        return;
+    }
+    QStringList modifiedOpenFiles;
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor != nullptr && editor->document()->isModified() && !editor->filePath.isEmpty()) {
+            modifiedOpenFiles.append(editor->filePath);
+        }
+    }
+    aiChatPanel->setModifiedOpenFiles(modifiedOpenFiles);
+    TEditor* const editor = activeEditor != nullptr ? activeEditor : currentEditor();
+    aiChatPanel->setActiveEditorContext(editor != nullptr ? editor->filePath : QString(),
+                                        editor != nullptr ? editor->toPlainText() : QString(),
+                                        editor != nullptr ? editor->textCursor().selectedText() : QString(),
+                                        editor != nullptr && editor->document()->isModified());
 }
 
 void Taif::connectEditorActionState(TEditor* const editor)
@@ -1707,13 +1891,23 @@ void Taif::connectEditorActionState(TEditor* const editor)
     connect(editor, &QPlainTextEdit::copyAvailable, this,
             [this](const bool) { updateEditActionState(); });
     connect(editor, &QPlainTextEdit::cursorPositionChanged, this,
-            [this]() { updateEditActionState(); });
+            [this, editor]() {
+                updateEditActionState();
+                if (editor == currentEditor()) {
+                    syncAiEditorContext(editor);
+                }
+            });
     connect(editor, &QPlainTextEdit::undoAvailable, this,
             [this](const bool) { updateEditActionState(); });
     connect(editor, &QPlainTextEdit::redoAvailable, this,
             [this](const bool) { updateEditActionState(); });
     connect(editor, &QPlainTextEdit::textChanged, this,
-            [this]() { updateEditActionState(); });
+            [this, editor]() {
+                updateEditActionState();
+                if (editor == currentEditor()) {
+                    syncAiEditorContext(editor);
+                }
+            });
 }
 
 void Taif::updateEditActionState()

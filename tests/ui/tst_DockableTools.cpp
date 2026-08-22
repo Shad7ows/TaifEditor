@@ -1,6 +1,8 @@
 #include <QtTest/QTest>
 #include <QtTest/QSignalSpy>
 #include <QtWidgets/QDockWidget>
+#include <QtWidgets/QCheckBox>
+#include <QtWidgets/QComboBox>
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QLineEdit>
@@ -13,10 +15,16 @@
 #include <QtCore/QFileInfo>
 #include <QtCore/QSettings>
 #include <QtCore/QUuid>
+#include <QtWidgets/QListWidget>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QTextBrowser>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QApplication>
 #include <QtCore/QProcess>
+#include <QtNetwork/QTcpServer>
+#include <QtNetwork/QTcpSocket>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 
 #include "DockableConsoleTool.h"
 #include "OutputBuffer.h"
@@ -45,6 +53,11 @@
 #include "EditorInteractionBinding.h"
 #include "TRecoveryDialog.h"
 #include "TEditor.h"
+#include "AiChatPanel.h"
+#include "AiAssistantSettings.h"
+#include "AiWorkspacePolicy.h"
+#include "AiAgentController.h"
+#include "LmStudioClient.h"
 #include "interaction/MultiCursorController.h"
 #include "EditorInfoBar.h"
 #include "ProjectExplorerWidget.h"
@@ -106,6 +119,15 @@ private slots:
     void projectExplorerManualRefreshUpdatesGitStatus();
     void mainWindowExposesRightSideGitPanel();
     void gitPanelUsesDarkNavySurfaces();
+    void workspaceAutoCommandPolicyFailsClosed();
+    void aiAssistantSettingsUseWorkspaceAutoAndBoundLongTimeouts();
+    void lmStudioClientSerializesAssistantToolCallsForContinuation();
+    void workspaceAutoCompletesSafeReadAndContinues();
+    void workspaceAutoProtectsUnsavedOpenFile();
+    void aiAgentControllerConstructsAndDestroys();
+    void aiChatPanelConstructsAndDestroys();
+    void aiPanelPresentsWorkspaceAutoControlsAndHidesRawToolPayload();
+    void aiChatPanelUsesLeftDockRtlSurface();
     void multiCursorSelectsOccurrencesAndEditsInOneUndoStep();
     void multiCursorAddsVerticalCaretAndPreservesDuplicateLineCommand();
     void multiCursorControllerRetainsPrimaryAndDeduplicatesOverlaps();
@@ -671,6 +693,334 @@ void DockableToolsTest::gitPanelUsesDarkNavySurfaces()
                  .arg(background.red()).arg(background.green()).arg(background.blue())));
 }
 
+void DockableToolsTest::workspaceAutoCommandPolicyFailsClosed()
+{
+    QString reason;
+    QVERIFY(!AiWorkspacePolicy::commandRequiresApproval(QStringLiteral("qmake"), &reason));
+    QVERIFY(!AiWorkspacePolicy::commandRequiresApproval(QStringLiteral("nmake"), &reason));
+    QVERIFY(!AiWorkspacePolicy::commandRequiresApproval(QStringLiteral("cmake --build build"), &reason));
+    QVERIFY(!AiWorkspacePolicy::commandRequiresApproval(QStringLiteral("ctest --test-dir build"), &reason));
+    QVERIFY(!AiWorkspacePolicy::commandRequiresApproval(QStringLiteral("git diff --stat"), &reason));
+
+    const QStringList blocked = {
+        QStringLiteral("python -c print(1)"), QStringLiteral("npm test"),
+        QStringLiteral("git push"), QStringLiteral("nmake clean"),
+        QStringLiteral("cmake --build build --target install"), QStringLiteral("qmake project.pro"),
+        QStringLiteral("cmd.exe /C nmake"), QStringLiteral("nmake && git status"),
+        QStringLiteral("ctest $HOME") };
+    for (const QString& command : blocked) {
+        QVERIFY2(AiWorkspacePolicy::commandRequiresApproval(command, &reason),
+                 qPrintable(QStringLiteral("expected approval for: %1").arg(command)));
+        QVERIFY(!reason.isEmpty());
+    }
+}
+
+void DockableToolsTest::aiAssistantSettingsUseWorkspaceAutoAndBoundLongTimeouts()
+{
+    const AiAssistantSettings defaults = AiAssistantSettingsStore::defaults();
+    QCOMPARE(defaults.requestTimeoutMilliseconds, 600000);
+    QCOMPARE(defaults.commandTimeoutMilliseconds, 300000);
+    QCOMPARE(defaults.autonomyMode, AiAutonomyMode::WorkspaceAuto);
+
+    AiAssistantSettings invalid = defaults;
+    invalid.requestTimeoutMilliseconds = 1;
+    invalid.commandTimeoutMilliseconds = 99999999;
+    invalid.autonomyMode = static_cast<AiAutonomyMode>(42);
+    const AiAssistantSettings normalized = AiAssistantSettingsStore::normalize(invalid);
+    QCOMPARE(normalized.requestTimeoutMilliseconds, 30000);
+    QCOMPARE(normalized.commandTimeoutMilliseconds, 1800000);
+    QCOMPARE(normalized.autonomyMode, AiAutonomyMode::WorkspaceAuto);
+}
+
+void DockableToolsTest::lmStudioClientSerializesAssistantToolCallsForContinuation()
+{
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    QByteArray request;
+    QPointer<QTcpSocket> peer;
+    connect(&server, &QTcpServer::newConnection, &server, [&]() {
+        peer = server.nextPendingConnection();
+        connect(peer, &QTcpSocket::readyRead, &server, [&]() {
+            request.append(peer->readAll());
+            const int separator = request.indexOf("\r\n\r\n");
+            if (separator < 0) {
+                return;
+            }
+            const QByteArray headers = request.left(separator);
+            const QRegularExpression contentLengthExpression(QStringLiteral("Content-Length:\\s*(\\d+)"),
+                                                              QRegularExpression::CaseInsensitiveOption);
+            const QRegularExpressionMatch match = contentLengthExpression.match(QString::fromLatin1(headers));
+            QVERIFY(match.hasMatch());
+            const int contentLength = match.captured(1).toInt();
+            if (request.size() < separator + 4 + contentLength) {
+                return;
+            }
+            peer->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: [DONE]\n\n");
+            peer->disconnectFromHost();
+        });
+    });
+
+    AiAssistantSettings settings;
+    settings.endpointUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort());
+    settings.requestTimeoutMilliseconds = 1000;
+    LmStudioClient client;
+    client.setSettings(settings);
+    QSignalSpy finished(&client, &LmStudioClient::streamFinished);
+
+    AiChatMessage assistant;
+    assistant.role = AiChatRole::Assistant;
+    assistant.toolCalls.append(QJsonObject{
+        {QStringLiteral("id"), QStringLiteral("call-1")},
+        {QStringLiteral("type"), QStringLiteral("function")},
+        {QStringLiteral("function"), QJsonObject{{QStringLiteral("name"), QStringLiteral("read_project_file")},
+                                                    {QStringLiteral("arguments"), QStringLiteral("{\\\"path\\\":\\\"main.alif\\\"}")}}}});
+    AiChatMessage result;
+    result.role = AiChatRole::Tool;
+    result.toolCallId = QStringLiteral("call-1");
+    result.name = QStringLiteral("read_project_file");
+    result.content = QStringLiteral("read completed");
+    client.streamChat({assistant, result}, QStringLiteral("local-model"));
+
+    QTRY_VERIFY_WITH_TIMEOUT(request.contains("\r\n\r\n"), 1500);
+    const int separator = request.indexOf("\r\n\r\n");
+    const QJsonDocument document = QJsonDocument::fromJson(request.mid(separator + 4));
+    QVERIFY(document.isObject());
+    const QJsonArray messages = document.object().value(QStringLiteral("messages")).toArray();
+    QCOMPARE(messages.size(), 2);
+    const QJsonObject serializedAssistant = messages.at(0).toObject();
+    QCOMPARE(serializedAssistant.value(QStringLiteral("role")).toString(), QStringLiteral("assistant"));
+    const QJsonArray toolCalls = serializedAssistant.value(QStringLiteral("tool_calls")).toArray();
+    QCOMPARE(toolCalls.size(), 1);
+    QCOMPARE(toolCalls.first().toObject().value(QStringLiteral("id")).toString(), QStringLiteral("call-1"));
+    QCOMPARE(messages.at(1).toObject().value(QStringLiteral("tool_call_id")).toString(), QStringLiteral("call-1"));
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 1500);
+}
+
+void DockableToolsTest::workspaceAutoCompletesSafeReadAndContinues()
+{
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    QFile source(QDir(project.path()).filePath(QStringLiteral("main.alif")));
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("اطبع(1)\n");
+    source.close();
+
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    QHash<QTcpSocket*, QByteArray> buffers;
+    int responseCount = 0;
+    const auto sendSse = [](QTcpSocket* const socket, const QJsonObject& delta) {
+        const QJsonObject choice{{QStringLiteral("delta"), delta}};
+        const QJsonObject envelope{{QStringLiteral("choices"), QJsonArray{choice}}};
+        socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: ");
+        socket->write(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+        socket->write("\n\ndata: [DONE]\n\n");
+        socket->disconnectFromHost();
+    };
+    connect(&server, &QTcpServer::newConnection, &server, [&]() {
+        auto* const socket = server.nextPendingConnection();
+        connect(socket, &QTcpSocket::readyRead, &server, [&, socket]() {
+            QByteArray& buffer = buffers[socket];
+            buffer.append(socket->readAll());
+            const int separator = buffer.indexOf("\r\n\r\n");
+            if (separator < 0) {
+                return;
+            }
+            const QRegularExpression expression(QStringLiteral("Content-Length:\\s*(\\d+)"),
+                                                QRegularExpression::CaseInsensitiveOption);
+            const QRegularExpressionMatch match = expression.match(QString::fromLatin1(buffer.left(separator)));
+            QVERIFY(match.hasMatch());
+            if (buffer.size() < separator + 4 + match.captured(1).toInt()) {
+                return;
+            }
+            buffers.remove(socket);
+            if (responseCount++ == 0) {
+                const QString arguments = QString::fromUtf8(QJsonDocument(
+                    QJsonObject{{QStringLiteral("path"), QStringLiteral("main.alif")}}).toJson(QJsonDocument::Compact));
+                const QJsonObject function{{QStringLiteral("name"), QStringLiteral("read_project_file")},
+                                           {QStringLiteral("arguments"), arguments}};
+                const QJsonObject toolCall{{QStringLiteral("index"), 0}, {QStringLiteral("id"), QStringLiteral("read-1")},
+                                           {QStringLiteral("type"), QStringLiteral("function")}, {QStringLiteral("function"), function}};
+                sendSse(socket, QJsonObject{{QStringLiteral("tool_calls"), QJsonArray{toolCall}}});
+            } else {
+                sendSse(socket, QJsonObject{{QStringLiteral("content"), QStringLiteral("تمت مراجعة الملف بأمان.")}});
+            }
+        });
+    });
+
+    AiAgentController controller;
+    AiAssistantSettings settings = controller.client()->settings();
+    settings.endpointUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort());
+    settings.requestTimeoutMilliseconds = 2000;
+    settings.autonomyMode = AiAutonomyMode::WorkspaceAuto;
+    controller.client()->setSettings(settings);
+    controller.setProjectRoot(project.path());
+    controller.setSelectedModel(QStringLiteral("local-model"));
+    QSignalSpy activity(&controller, &AiAgentController::activityAdded);
+    controller.submitPrompt(QStringLiteral("اقرأ الملف ثم لخّصه."), false, false);
+
+    QTRY_COMPARE_WITH_TIMEOUT(controller.state(), AiAgentState::Idle, 4000);
+    const QVector<AiChatMessage> messages = controller.messages();
+    QVERIFY(messages.size() >= 5);
+    bool sawAssistantToolBatch = false;
+    bool sawToolResult = false;
+    bool sawFinalResponse = false;
+    for (const AiChatMessage& message : messages) {
+        sawAssistantToolBatch = sawAssistantToolBatch || !message.toolCalls.isEmpty();
+        sawToolResult = sawToolResult || (message.role == AiChatRole::Tool && message.toolCallId == QStringLiteral("read-1"));
+        sawFinalResponse = sawFinalResponse || message.content.contains(QStringLiteral("تمت مراجعة الملف"));
+    }
+    QVERIFY(sawAssistantToolBatch);
+    QVERIFY(sawToolResult);
+    QVERIFY(sawFinalResponse);
+    QVERIFY(responseCount >= 2);
+    bool sawAutomaticActivity = false;
+    for (const QList<QVariant>& signalArguments : activity) {
+        sawAutomaticActivity = sawAutomaticActivity
+            || signalArguments.constFirst().value<AiActivityEntry>().kind == AiActivityKind::AutoExecuted;
+    }
+    QVERIFY(sawAutomaticActivity);
+}
+
+void DockableToolsTest::workspaceAutoProtectsUnsavedOpenFile()
+{
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    const QString sourcePath = QDir(project.path()).filePath(QStringLiteral("main.alif"));
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("اطبع(1)\n");
+    source.close();
+
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    QByteArray request;
+    connect(&server, &QTcpServer::newConnection, &server, [&]() {
+        auto* const socket = server.nextPendingConnection();
+        connect(socket, &QTcpSocket::readyRead, &server, [&, socket]() {
+            request.append(socket->readAll());
+            const int separator = request.indexOf("\r\n\r\n");
+            if (separator < 0) {
+                return;
+            }
+            const QRegularExpression expression(QStringLiteral("Content-Length:\\s*(\\d+)"),
+                                                QRegularExpression::CaseInsensitiveOption);
+            const QRegularExpressionMatch match = expression.match(QString::fromLatin1(request.left(separator)));
+            QVERIFY(match.hasMatch());
+            if (request.size() < separator + 4 + match.captured(1).toInt()) {
+                return;
+            }
+            const QString arguments = QString::fromUtf8(QJsonDocument(QJsonObject{
+                {QStringLiteral("path"), QStringLiteral("main.alif")},
+                {QStringLiteral("content"), QStringLiteral("اطبع(2)\n")}}).toJson(QJsonDocument::Compact));
+            const QJsonObject function{{QStringLiteral("name"), QStringLiteral("propose_file_patch")},
+                                       {QStringLiteral("arguments"), arguments}};
+            const QJsonObject toolCall{{QStringLiteral("index"), 0}, {QStringLiteral("id"), QStringLiteral("patch-1")},
+                                       {QStringLiteral("type"), QStringLiteral("function")}, {QStringLiteral("function"), function}};
+            const QJsonObject choice{{QStringLiteral("delta"), QJsonObject{{QStringLiteral("tool_calls"), QJsonArray{toolCall}}}}};
+            const QJsonObject envelope{{QStringLiteral("choices"), QJsonArray{choice}}};
+            socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: ");
+            socket->write(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+            socket->write("\n\ndata: [DONE]\n\n");
+            socket->disconnectFromHost();
+        });
+    });
+
+    AiAgentController controller;
+    AiAssistantSettings settings = controller.client()->settings();
+    settings.endpointUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort());
+    settings.requestTimeoutMilliseconds = 2000;
+    settings.autonomyMode = AiAutonomyMode::WorkspaceAuto;
+    controller.client()->setSettings(settings);
+    controller.setProjectRoot(project.path());
+    controller.setModifiedOpenFiles({sourcePath});
+    controller.setSelectedModel(QStringLiteral("local-model"));
+    QSignalSpy approvals(&controller, &AiAgentController::approvalRequested);
+    controller.submitPrompt(QStringLiteral("حدّث الملف."), false, false);
+
+    QTRY_COMPARE_WITH_TIMEOUT(approvals.count(), 1, 2000);
+    QCOMPARE(controller.state(), AiAgentState::AwaitingApproval);
+    const AiToolApprovalRequest approval = approvals.constFirst().constFirst().value<AiToolApprovalRequest>();
+    QCOMPARE(approval.toolCall.id, QStringLiteral("patch-1"));
+    QVERIFY(approval.details.contains(QStringLiteral("تعديلات غير محفوظة")));
+    QFile unchanged(sourcePath);
+    QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("اطبع(1)\n"));
+}
+
+void DockableToolsTest::aiAgentControllerConstructsAndDestroys()
+{
+    AiAgentController controller;
+    QCOMPARE(controller.state(), AiAgentState::Idle);
+    QVERIFY(controller.client() != nullptr);
+    QVERIFY(!controller.client()->hasActiveRequest());
+}
+
+void DockableToolsTest::aiChatPanelConstructsAndDestroys()
+{
+    AiChatPanel panel;
+    QCOMPARE(panel.layoutDirection(), Qt::RightToLeft);
+    QVERIFY(panel.controller() != nullptr);
+}
+
+void DockableToolsTest::aiPanelPresentsWorkspaceAutoControlsAndHidesRawToolPayload()
+{
+    AiChatPanel panel;
+    auto* const workspaceAuto = panel.findChild<QCheckBox*>(QStringLiteral("AiWorkspaceAuto"));
+    auto* const timeout = panel.findChild<QComboBox*>(QStringLiteral("AiTimeoutCombo"));
+    auto* const transcript = panel.findChild<QTextBrowser*>(QStringLiteral("AiChatTranscript"));
+    QVERIFY(workspaceAuto != nullptr);
+    QVERIFY(timeout != nullptr);
+    QVERIFY(transcript != nullptr);
+    QVERIFY(workspaceAuto->isChecked());
+    QCOMPARE(timeout->currentData().toInt(), 600000);
+
+    AiChatMessage toolMessage;
+    toolMessage.role = AiChatRole::Tool;
+    toolMessage.name = QStringLiteral("propose_file_patch");
+    toolMessage.content = QStringLiteral("const QString internalSource = \\\"must not render in transcript\\\";");
+    QVERIFY(QMetaObject::invokeMethod(panel.controller(), "messageAdded", Qt::DirectConnection,
+                                      Q_ARG(AiChatMessage, toolMessage)));
+    QTRY_VERIFY(transcript->toPlainText().contains(QStringLiteral("اكتملت خطوة")));
+    QVERIFY(!transcript->toPlainText().contains(QStringLiteral("internalSource")));
+}
+
+void DockableToolsTest::aiChatPanelUsesLeftDockRtlSurface()
+{
+    Taif window({}, nullptr, true);
+    window.resize(1100, 760);
+    window.show();
+
+    auto* const dock = window.findChild<QDockWidget*>(QStringLiteral("AiChatDock"));
+    QVERIFY(dock != nullptr);
+    QCOMPARE(window.dockWidgetArea(dock), Qt::LeftDockWidgetArea);
+    QVERIFY(!dock->isVisible());
+    auto* const panel = dock->findChild<AiChatPanel*>(QStringLiteral("AiChatPanel"));
+    QVERIFY(panel != nullptr);
+    QCOMPARE(panel->layoutDirection(), Qt::RightToLeft);
+    QVERIFY(panel->findChild<QPlainTextEdit*>(QStringLiteral("AiChatComposer")) != nullptr);
+    QVERIFY(panel->findChild<QTextBrowser*>(QStringLiteral("AiChatTranscript")) != nullptr);
+    auto* const approvals = panel->findChild<QListWidget*>(QStringLiteral("AiApprovalList"));
+    QVERIFY(approvals != nullptr);
+    QVERIFY(approvals->minimumHeight() >= 132);
+
+    auto* const applicationMenu = window.findChild<TMenuBar*>();
+    QVERIFY(applicationMenu != nullptr);
+    QVERIFY(applicationMenu->aiAssistantAction != nullptr);
+    applicationMenu->aiAssistantAction->trigger();
+    QTRY_VERIFY(dock->isVisible());
+    QVERIFY(applicationMenu->aiAssistantAction->isChecked());
+    const QImage image = panel->grab().toImage();
+    QVERIFY(!image.isNull());
+    const QColor background = image.pixelColor(4, 4);
+    QVERIFY2(background.red() < 35 && background.green() < 45 && background.blue() < 65,
+             qPrintable(QStringLiteral("Unexpected AI panel background: %1,%2,%3")
+                 .arg(background.red()).arg(background.green()).arg(background.blue())));
+
+    const AiAssistantSettings defaults = AiAssistantSettingsStore::defaults();
+    QVERIFY(AiAssistantSettingsStore::isLoopbackEndpoint(defaults.endpointUrl));
+}
+
 void DockableToolsTest::multiCursorSelectsOccurrencesAndEditsInOneUndoStep()
 {
     TEditor editor; editor.resize(640, 300); editor.show(); editor.setPlainText(QStringLiteral("عنصر عنصر عنصر"));
@@ -1198,20 +1548,24 @@ void DockableToolsTest::viewMenuExposesOrderedDockActions()
     QVERIFY(viewMenu != nullptr);
     QCOMPARE(viewMenu->layoutDirection(), Qt::RightToLeft);
     const QList<QAction*> viewActions = viewMenu->actions();
-    QCOMPARE(viewActions.size(), 3);
+    QCOMPARE(viewActions.size(), 4);
     QCOMPARE(viewActions.at(0), menuBar.alifOutputAction);
     QCOMPARE(viewActions.at(1), menuBar.terminalAction);
     QCOMPARE(viewActions.at(2), menuBar.problemsAction);
+    QCOMPARE(viewActions.at(3), menuBar.aiAssistantAction);
     QCOMPARE(menuBar.alifOutputAction->text(), QStringLiteral("مخرجات ألف"));
     QCOMPARE(menuBar.terminalAction->text(), QStringLiteral("الطرفية"));
     QCOMPARE(menuBar.problemsAction->text(), QStringLiteral("الأخطاء"));
+    QCOMPARE(menuBar.aiAssistantAction->text(), QStringLiteral("مساعد الذكاء الاصطناعي"));
     QVERIFY(menuBar.alifOutputAction->isCheckable());
     QVERIFY(menuBar.terminalAction->isCheckable());
     QVERIFY(menuBar.problemsAction->isCheckable());
+    QVERIFY(menuBar.aiAssistantAction->isCheckable());
 
     QSignalSpy alifOutputSpy(&menuBar, &TMenuBar::showAlifOutputRequested);
     QSignalSpy terminalSpy(&menuBar, &TMenuBar::showTerminalRequested);
     QSignalSpy problemsSpy(&menuBar, &TMenuBar::showProblemsRequested);
+    QSignalSpy aiAssistantSpy(&menuBar, &TMenuBar::showAiAssistantRequested);
 
     menuBar.alifOutputAction->trigger();
     QVERIFY(menuBar.alifOutputAction->isChecked());
@@ -1228,14 +1582,19 @@ void DockableToolsTest::viewMenuExposesOrderedDockActions()
     QVERIFY(menuBar.terminalAction->isChecked());
     QVERIFY(menuBar.problemsAction->isChecked());
 
-    menuBar.setOpenViewToolActions(false, true, true);
+    menuBar.aiAssistantAction->trigger();
+    QVERIFY(menuBar.aiAssistantAction->isChecked());
+
+    menuBar.setOpenViewToolActions(false, true, true, false);
     QVERIFY(!menuBar.alifOutputAction->isChecked());
     QVERIFY(menuBar.terminalAction->isChecked());
     QVERIFY(menuBar.problemsAction->isChecked());
+    QVERIFY(!menuBar.aiAssistantAction->isChecked());
 
     QCOMPARE(alifOutputSpy.count(), 1);
     QCOMPARE(terminalSpy.count(), 1);
     QCOMPARE(problemsSpy.count(), 1);
+    QCOMPARE(aiAssistantSpy.count(), 1);
 }
 
 void DockableToolsTest::editMenuExposesOrderedCommandActions()

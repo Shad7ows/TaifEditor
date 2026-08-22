@@ -25,6 +25,7 @@ class EditorInfoBar;
 class ProjectExplorerWidget;
 class GitPanelWidget;
 class GitRepositoryService;
+class AiChatPanel;
 struct ProjectFileOperationResult;
 
 struct SessionRestoreResult final {
@@ -71,6 +72,7 @@ private slots:
     void deleteProjectPath(const QString& sourcePath);
     void revealProjectPath(const QString& sourcePath);
     void showGitPanel();
+    void showAiChatPanel();
     void handleGitDestructiveOperation(GitOperation operation, const QStringList& relativePaths);
     void handleGitPull();
     void handleGitBranchSwitch(const QString& branch);
@@ -135,8 +137,10 @@ private:
     void refreshDiagnosticsPanel();
     void showAndRaiseDock(QDockWidget* dock);
     void syncBottomToolActionState();
+    void syncViewToolActionState();
     void clearSearchHighlights();
     void connectEditorActionState(TEditor* editor);
+    void syncAiEditorContext(TEditor* activeEditor = nullptr);
     void updateEditActionState();
     void refreshBreadcrumbs();
     void bindInformationBarToEditor(TEditor* editor);
@@ -167,6 +171,8 @@ private:
     GitPanelWidget* gitPanel{};
     QDockWidget* gitDock{};
     QAction* showGitPanelAction{};
+    AiChatPanel* aiChatPanel{};
+    QDockWidget* aiChatDock{};
 
     QSplitter *editorSplitter{};
     TBreadcrumbBar* breadcrumbBar{};

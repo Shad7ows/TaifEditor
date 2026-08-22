@@ -1,6 +1,6 @@
 QT += core gui
 
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+greaterThan(QT_MAJOR_VERSION, 4): QT += widgets network
 
 CONFIG += c++17
 
@@ -36,6 +36,7 @@ INCLUDEPATH += \
     ../source/run \
     ../source/projectexplorer \
     ../source/versioncontrol \
+    ../source/ai \
 
 SOURCES += \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -94,7 +95,12 @@ SOURCES += \
     ../source/recovery/RecoveryCoordinator.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
     ../source/run/AlifRunController.cpp \
-    ../source/settings/TSettings.cpp
+    ../source/settings/TSettings.cpp \
+    ../source/ai/AiAssistantSettings.cpp \
+    ../source/ai/AiWorkspacePolicy.cpp \
+    ../source/ai/LmStudioClient.cpp \
+    ../source/ai/AiAgentController.cpp \
+    ../source/ai/AiChatPanel.cpp
 
 HEADERS += \
     ../source/texteditor/autocomplete/AutoComplete.h \
@@ -160,7 +166,13 @@ HEADERS += \
     ../source/recovery/RecoveryCoordinator.h \
     ../source/recovery/TRecoveryDialog.h \
     ../source/run/AlifRunController.h \
-    ../source/settings/TSettings.h
+    ../source/settings/TSettings.h \
+    ../source/ai/AiAgentTypes.h \
+    ../source/ai/AiAssistantSettings.h \
+    ../source/ai/AiWorkspacePolicy.h \
+    ../source/ai/LmStudioClient.h \
+    ../source/ai/AiAgentController.h \
+    ../source/ai/AiChatPanel.h
 
 unix {
     SOURCES += ../source/console/terminal/PosixPtyBackend.cpp

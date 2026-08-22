@@ -1,4 +1,4 @@
-QT += core gui widgets testlib
+QT += core gui widgets testlib network
 CONFIG += c++17 testcase
 TEMPLATE = app
 TARGET = TaifDockableToolsTests
@@ -29,6 +29,7 @@ INCLUDEPATH += \
     ../../source/run \
     ../../source/projectexplorer \
     ../../source/versioncontrol \
+    ../../source/ai \
     ../../source/texteditor/highlighter \
     ../../taif
 
@@ -58,6 +59,11 @@ SOURCES += \
     ../../source/session/SessionEditorDialog.cpp \
     ../../source/settings/EditorPreferences.cpp \
     ../../source/settings/TSettings.cpp \
+    ../../source/ai/AiAssistantSettings.cpp \
+    ../../source/ai/AiWorkspacePolicy.cpp \
+    ../../source/ai/LmStudioClient.cpp \
+    ../../source/ai/AiAgentController.cpp \
+    ../../source/ai/AiChatPanel.cpp \
     ../../source/recovery/RecoveryStore.cpp \
     ../../source/recovery/RecoveryCoordinator.cpp \
     ../../source/recovery/TRecoveryDialog.cpp \
@@ -114,6 +120,12 @@ HEADERS += \
     ../../source/session/SessionEditorDialog.h \
     ../../source/settings/EditorPreferences.h \
     ../../source/settings/TSettings.h \
+    ../../source/ai/AiAgentTypes.h \
+    ../../source/ai/AiAssistantSettings.h \
+    ../../source/ai/AiWorkspacePolicy.h \
+    ../../source/ai/LmStudioClient.h \
+    ../../source/ai/AiAgentController.h \
+    ../../source/ai/AiChatPanel.h \
     ../../source/recovery/RecoveryStore.h \
     ../../source/recovery/RecoveryCoordinator.h \
     ../../source/recovery/TRecoveryDialog.h \

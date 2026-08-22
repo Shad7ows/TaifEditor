@@ -88,6 +88,9 @@ TMenuBar::TMenuBar(QWidget* const parent)
     problemsAction = new QAction(QStringLiteral("الأخطاء"), this);
     problemsAction->setObjectName(QStringLiteral("ShowProblemsAction"));
     problemsAction->setCheckable(true);
+    aiAssistantAction = new QAction(QStringLiteral("مساعد الذكاء الاصطناعي"), this);
+    aiAssistantAction->setObjectName(QStringLiteral("ShowAiAssistantAction"));
+    aiAssistantAction->setCheckable(true);
 
     aboutAction = new QAction(QStringLiteral("عن المحرر"), this);
     QAction* const updateAction = new QAction(QStringLiteral("البحث عن تحديثات"), this);
@@ -121,6 +124,7 @@ TMenuBar::TMenuBar(QWidget* const parent)
     viewMenu->addAction(alifOutputAction);
     viewMenu->addAction(terminalAction);
     viewMenu->addAction(problemsAction);
+    viewMenu->addAction(aiAssistantAction);
 
     runMenu->addAction(runAction);
 
@@ -152,6 +156,7 @@ TMenuBar::TMenuBar(QWidget* const parent)
     connect(alifOutputAction, &QAction::triggered, this, &TMenuBar::showAlifOutputRequested);
     connect(terminalAction, &QAction::triggered, this, &TMenuBar::showTerminalRequested);
     connect(problemsAction, &QAction::triggered, this, &TMenuBar::showProblemsRequested);
+    connect(aiAssistantAction, &QAction::triggered, this, &TMenuBar::showAiAssistantRequested);
 
     connect(aboutAction, &QAction::triggered, this, &TMenuBar::aboutRequested);
     connect(updateAction, &QAction::triggered, this, &TMenuBar::updateRequested);
@@ -159,11 +164,13 @@ TMenuBar::TMenuBar(QWidget* const parent)
 
 void TMenuBar::setOpenViewToolActions(const bool alifOutputOpen,
                                       const bool terminalOpen,
-                                      const bool problemsOpen)
+                                      const bool problemsOpen,
+                                      const bool aiAssistantOpen)
 {
     const QSignalBlocker alifOutputActionBlocker(alifOutputAction);
     const QSignalBlocker terminalActionBlocker(terminalAction);
     const QSignalBlocker problemsActionBlocker(problemsAction);
+    const QSignalBlocker aiAssistantActionBlocker(aiAssistantAction);
 
     if (alifOutputAction != nullptr) {
         alifOutputAction->setChecked(alifOutputOpen);
@@ -173,5 +180,8 @@ void TMenuBar::setOpenViewToolActions(const bool alifOutputOpen,
     }
     if (problemsAction != nullptr) {
         problemsAction->setChecked(problemsOpen);
+    }
+    if (aiAssistantAction != nullptr) {
+        aiAssistantAction->setChecked(aiAssistantOpen);
     }
 }

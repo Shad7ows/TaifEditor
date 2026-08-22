@@ -15,7 +15,8 @@ public:
     /** Updates View-menu checks to match the open/closed state of each dock. */
     void setOpenViewToolActions(bool alifOutputOpen,
                                 bool terminalOpen,
-                                bool problemsOpen);
+                                bool problemsOpen,
+                                bool aiAssistantOpen = false);
 
 
 
@@ -32,6 +33,7 @@ public:
     QAction* alifOutputAction = nullptr;
     QAction* terminalAction = nullptr;
         QAction* problemsAction = nullptr;
+    QAction* aiAssistantAction = nullptr;
 
     QAction* undoAction = nullptr;
     QAction* redoAction = nullptr;
@@ -61,6 +63,7 @@ signals:
     void showAlifOutputRequested();
     void showTerminalRequested();
     void showProblemsRequested();
+    void showAiAssistantRequested();
     void undoRequested();
     void redoRequested();
     void cutRequested();
