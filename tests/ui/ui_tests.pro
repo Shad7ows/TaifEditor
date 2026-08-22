@@ -27,6 +27,7 @@ INCLUDEPATH += \
     ../../source/settings \
     ../../source/recovery \
     ../../source/run \
+    ../../source/projectexplorer \
     ../../source/texteditor/highlighter \
     ../../taif
 
@@ -45,6 +46,10 @@ SOURCES += \
     ../../source/components/TSearchPanel.cpp \
     ../../source/components/SearchReplaceEngine.cpp \
     ../../source/components/EditorInfoBar.cpp \
+    ../../source/projectexplorer/ProjectFileProxyModel.cpp \
+    ../../source/projectexplorer/ProjectFileOperations.cpp \
+    ../../source/projectexplorer/GitStatusService.cpp \
+    ../../source/projectexplorer/ProjectExplorerWidget.cpp \
     ../../source/components/TFlatButton.cpp \
     ../../source/session/SessionStore.cpp \
     ../../source/session/SessionEditorDialog.cpp \
@@ -125,6 +130,11 @@ HEADERS += \
     ../../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../../source/components/TMinimap.h \
     ../../source/components/EditorInfoBar.h \
+    ../../source/projectexplorer/ProjectExplorerTypes.h \
+    ../../source/projectexplorer/ProjectFileProxyModel.h \
+    ../../source/projectexplorer/ProjectFileOperations.h \
+    ../../source/projectexplorer/GitStatusService.h \
+    ../../source/projectexplorer/ProjectExplorerWidget.h \
     ../../source/components/TFlatButton.h \
     ../../source/pages/TWelcomeWindow.h \
     ../../source/run/AlifRunController.h \

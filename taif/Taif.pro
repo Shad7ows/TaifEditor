@@ -34,6 +34,7 @@ INCLUDEPATH += \
     ../source/settings \
     ../source/recovery \
     ../source/run \
+    ../source/projectexplorer \
 
 SOURCES += \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -66,6 +67,10 @@ SOURCES += \
     ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
     ../source/components/SearchReplaceEngine.cpp \
+    ../source/projectexplorer/ProjectFileProxyModel.cpp \
+    ../source/projectexplorer/ProjectFileOperations.cpp \
+    ../source/projectexplorer/GitStatusService.cpp \
+    ../source/projectexplorer/ProjectExplorerWidget.cpp \
     ../source/session/SessionStore.cpp \
     ../source/session/SessionEditorDialog.cpp \
     ../source/console/OutputBuffer.cpp \
@@ -122,6 +127,11 @@ HEADERS += \
     ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
     ../source/components/SearchReplaceEngine.h \
+    ../source/projectexplorer/ProjectExplorerTypes.h \
+    ../source/projectexplorer/ProjectFileProxyModel.h \
+    ../source/projectexplorer/ProjectFileOperations.h \
+    ../source/projectexplorer/GitStatusService.h \
+    ../source/projectexplorer/ProjectExplorerWidget.h \
     ../source/session/SessionStore.h \
     ../source/session/SessionEditorDialog.h \
     ../source/console/OutputBuffer.h \

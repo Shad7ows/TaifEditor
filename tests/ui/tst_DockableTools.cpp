@@ -16,6 +16,7 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QToolButton>
 #include <QtWidgets/QApplication>
+#include <QtCore/QProcess>
 
 #include "DockableConsoleTool.h"
 #include "OutputBuffer.h"
@@ -45,6 +46,10 @@
 #include "TRecoveryDialog.h"
 #include "TEditor.h"
 #include "EditorInfoBar.h"
+#include "ProjectExplorerWidget.h"
+#include "ProjectFileOperations.h"
+#include "ProjectFileProxyModel.h"
+#include "GitStatusService.h"
 #include "AlifRunController.h"
 
 #include <QTemporaryDir>
@@ -90,6 +95,10 @@ private slots:
     void terminalSessionControllerCompletesOneShotCommand();
     void inlinePromptProtectsTranscriptAndPreservesHistory();
     void nativeTerminalDockActivationFocusesViewport();
+    void projectFileOperationsRemainRootContained();
+    void projectExplorerUsesRtlFilteringAndSafeRoot();
+    void gitStatusServiceReportsReadOnlyFileStates();
+    void mainWindowBindsProjectExplorerToFolderRoot();
 };
 
 void DockableToolsTest::outputBufferBoundsPendingChunksAndReportsTruncation()
@@ -464,6 +473,114 @@ void DockableToolsTest::mainWindowInformationBarTracksActiveEditor()
     QVERIFY(infoBar->snapshot().modified);
     QVERIFY(infoBar->findChild<QLabel*>(QStringLiteral("InfoCursorSegmentLabel"))->text().contains(
         QStringLiteral("2")));
+}
+
+void DockableToolsTest::projectFileOperationsRemainRootContained()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("project"));
+    const QString outside = temporaryDirectory.filePath(QStringLiteral("outside"));
+    QVERIFY(QDir().mkpath(root));
+    QVERIFY(QDir().mkpath(outside));
+
+    const ProjectFileOperationResult created = ProjectFileOperations::createFile(root, root,
+                                                                                   QStringLiteral("main.alif"));
+    QVERIFY(created.succeeded);
+    QVERIFY(QFileInfo::exists(created.destinationPath));
+    QVERIFY(!ProjectFileOperations::createFile(root, root, QStringLiteral("../escape.alif")).succeeded);
+    QVERIFY(!ProjectFileOperations::createFile(root, outside, QStringLiteral("outside.alif")).succeeded);
+
+    const ProjectFileOperationResult folder = ProjectFileOperations::createFolder(root, root,
+                                                                                    QStringLiteral("lib"));
+    QVERIFY(folder.succeeded);
+    const ProjectFileOperationResult renamed = ProjectFileOperations::renamePath(root, created.destinationPath,
+                                                                                   QStringLiteral("status.alif"));
+    QVERIFY(renamed.succeeded);
+    QVERIFY(QFileInfo::exists(renamed.destinationPath));
+    QVERIFY(!ProjectFileOperations::renamePath(root, root, QStringLiteral("renamed-root")).succeeded);
+    QVERIFY(ProjectFileOperations::permanentlyDelete(root, renamed.destinationPath).succeeded);
+    QVERIFY(!QFileInfo::exists(renamed.destinationPath));
+}
+
+void DockableToolsTest::projectExplorerUsesRtlFilteringAndSafeRoot()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("project"));
+    QVERIFY(QDir().mkpath(root));
+    QFile matchingFile(QDir(root).filePath(QStringLiteral("matching.alif")));
+    QVERIFY(matchingFile.open(QIODevice::WriteOnly));
+    matchingFile.close();
+
+    ProjectExplorerWidget explorer;
+    explorer.resize(300, 520);
+    explorer.setProjectRoot(root);
+    explorer.show();
+    QCOMPARE(explorer.layoutDirection(), Qt::RightToLeft);
+    QCOMPARE(explorer.proxyModel()->projectRoot(), ProjectFileProxyModel::normalizedPath(root));
+    QVERIFY(explorer.proxyModel()->isPathInsideProject(matchingFile.fileName()));
+    QVERIFY(!explorer.proxyModel()->isPathInsideProject(QDir::tempPath()));
+
+    auto* const filter = explorer.findChild<QLineEdit*>(QStringLiteral("ProjectExplorerFilterEdit"));
+    QVERIFY(filter != nullptr);
+    filter->setText(QStringLiteral("matching"));
+    QTRY_COMPARE_WITH_TIMEOUT(explorer.proxyModel()->filterText(), QStringLiteral("matching"), 500);
+    QVERIFY(explorer.treeView()->isVisible());
+    QCOMPARE(explorer.treeView()->layoutDirection(), Qt::RightToLeft);
+}
+
+void DockableToolsTest::gitStatusServiceReportsReadOnlyFileStates()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("repository"));
+    QVERIFY(QDir().mkpath(root));
+
+    const auto runGit = [&root](const QStringList& arguments) {
+        QProcess process;
+        process.setWorkingDirectory(root);
+        process.start(QStringLiteral("git"), arguments);
+        return process.waitForFinished(3000) && process.exitStatus() == QProcess::NormalExit
+            && process.exitCode() == 0;
+    };
+    QVERIFY(runGit({QStringLiteral("init")}));
+
+    QFile added(QDir(root).filePath(QStringLiteral("added.alif")));
+    QVERIFY(added.open(QIODevice::WriteOnly));
+    added.write("اطبع(1)\n");
+    added.close();
+    QVERIFY(runGit({QStringLiteral("add"), QStringLiteral("added.alif")}));
+
+    QFile untracked(QDir(root).filePath(QStringLiteral("untracked.alif")));
+    QVERIFY(untracked.open(QIODevice::WriteOnly));
+    untracked.write("اطبع(2)\n");
+    untracked.close();
+
+    GitStatusService service;
+    service.setProjectRoot(root);
+    QTRY_VERIFY_WITH_TIMEOUT(service.isRepository(), 3000);
+    QCOMPARE(service.statusForRelativePath(QStringLiteral("added.alif")), VersionControlState::Added);
+    QCOMPARE(service.statusForRelativePath(QStringLiteral("untracked.alif")), VersionControlState::Untracked);
+}
+
+void DockableToolsTest::mainWindowBindsProjectExplorerToFolderRoot()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("project"));
+    QVERIFY(QDir().mkpath(root));
+
+    Taif window({}, nullptr, true);
+    window.resize(960, 680);
+    window.show();
+    window.loadFolder(root);
+
+    auto* const explorer = window.findChild<ProjectExplorerWidget*>();
+    QVERIFY(explorer != nullptr);
+    QTRY_COMPARE_WITH_TIMEOUT(explorer->projectRoot(), ProjectFileProxyModel::normalizedPath(root), 1000);
+    QVERIFY(explorer->isVisible());
+    QVERIFY(explorer->treeView()->isVisible());
 }
 
 void DockableToolsTest::applicationWindowControllerOwnsTopLevelWindowRouting()

@@ -21,6 +21,8 @@ class DiagnosticsPanel;
 class TConsole;
 class TBreadcrumbBar;
 class EditorInfoBar;
+class ProjectExplorerWidget;
+struct ProjectFileOperationResult;
 
 struct SessionRestoreResult final {
     QStringList openedFilePaths;
@@ -59,7 +61,13 @@ private slots:
 
 
 
-    void onFileTreeDoubleClicked(const QModelIndex &index);
+        void onProjectFileActivated(const QString& filePath);
+    void createProjectFile(const QString& directoryPath, const QString& name);
+    void createProjectFolder(const QString& directoryPath, const QString& name);
+    void renameProjectPath(const QString& sourcePath, const QString& newName);
+    void deleteProjectPath(const QString& sourcePath);
+    void revealProjectPath(const QString& sourcePath);
+
     void closeTab(int index);
     void toggleSidebar();
 
@@ -113,6 +121,8 @@ private:
     void restoreRecoveryEntry(const RecoveryEntry& entry);
 
     TEditor* currentEditor();
+    [[nodiscard]] bool hasOpenEditorAtOrBelow(const QString& path) const;
+    void presentProjectOperationResult(const ProjectFileOperationResult& result);
 
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
@@ -146,8 +156,7 @@ private:
     QAbstractItemModel* model{};
 
     QSplitter *mainSplitter{};
-    QTreeView *fileTreeView{};
-    QFileSystemModel *fileSystemModel{};
+    ProjectExplorerWidget* projectExplorer{};
 
     QSplitter *editorSplitter{};
     TBreadcrumbBar* breadcrumbBar{};
