@@ -73,6 +73,7 @@ SOURCES += \
     ../../source/texteditor/services/EditorAnalysisBinding.cpp \
     ../../source/texteditor/services/EditorRecoveryBinding.cpp \
     ../../source/texteditor/services/EditorInteractionBinding.cpp \
+    ../../source/texteditor/interaction/MultiCursorController.cpp \
     ../../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../../source/texteditor/analysis/SemanticHoverProvider.cpp \
     ../../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
@@ -124,6 +125,7 @@ HEADERS += \
     ../../source/texteditor/services/EditorAnalysisBinding.h \
     ../../source/texteditor/services/EditorRecoveryBinding.h \
     ../../source/texteditor/services/EditorInteractionBinding.h \
+    ../../source/texteditor/interaction/MultiCursorController.h \
     ../../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../../source/texteditor/analysis/SemanticHoverProvider.h \
     ../../source/texteditor/analysis/SemanticDefinitionProvider.h \

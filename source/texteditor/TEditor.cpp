@@ -4,6 +4,7 @@
 #include "EditorAnalysisBinding.h"
 #include "EditorRecoveryBinding.h"
 #include "EditorInteractionBinding.h"
+#include "interaction/MultiCursorController.h"
 
 #include <QPainter>
 #include <QTextBlock>
@@ -20,6 +21,7 @@
 #include <QGuiApplication>
 #include <QMouseEvent>
 #include <QScreen>
+#include <QScopedValueRollback>
 
 #include "HoverPopup.h"
 
@@ -68,6 +70,7 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
         return RecoverySnapshot{entry, toPlainText()};
     });
     semanticCompletionProvider = std::make_unique<SemanticCompletionProvider>();
+    multiCursorController = std::make_unique<MultiCursorController>(editorDocument);
 
     hoverPopup = new THoverPopup(this);
     interactionBinding = new EditorInteractionBinding(this);
@@ -80,6 +83,9 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     connect(editorDocument, &QTextDocument::contentsChange,
             this, [this](int, int, int) {
                 clearActiveCompletionContext();
+                if (!multiCursorTransactionInProgress) {
+                    clearSecondaryCursors();
+                }
                 definitionNavigationHistory.clear();
                 clearCtrlHoverDefinitionLink();
                 m_currentDiagnostics.clear();
@@ -234,6 +240,25 @@ EditorInfoSnapshot TEditor::informationSnapshot() const
         }
     }
     return snapshot;
+}
+
+int TEditor::secondaryCursorCount() const
+{
+    return multiCursorController ? multiCursorController->secondaryCursorCount() : 0;
+}
+
+int TEditor::totalCursorCount() const
+{
+    return 1 + secondaryCursorCount();
+}
+
+void TEditor::clearSecondaryCursors()
+{
+    if (multiCursorController && multiCursorController->isActive()) {
+        multiCursorController->clear();
+        highlightCurrentLine();
+        viewport()->update();
+    }
 }
 
 void TEditor::setDocumentLineEnding(const EditorInfoSnapshot::LineEnding lineEnding)
@@ -471,7 +496,17 @@ bool TEditor::eventFilter(QObject* obj, QEvent* event) {
             if (keyEvent->modifiers() & Qt::ShiftModifier) {
                 return true;
             }
-            curserIndentation();
+            const bool completionOwnsEnter = c != nullptr && c->popup() != nullptr
+                && c->popup()->isVisible();
+            if (multiCursorController && multiCursorController->isActive()) {
+                if (completionOwnsEnter || !snippetTargets.isEmpty()) {
+                    clearSecondaryCursors();
+                    return false;
+                }
+                applyMultiCursorNewline();
+            } else {
+                curserIndentation();
+            }
             return true;
         }
     }
@@ -588,6 +623,19 @@ void TEditor::mousePressEvent(QMouseEvent* event) {
             return;
         }
     }
+    if (event->button() == Qt::LeftButton
+        && event->modifiers().testFlag(Qt::AltModifier)
+        && !event->modifiers().testFlag(Qt::ControlModifier)
+        && multiCursorController != nullptr) {
+        if (multiCursorController->toggleCursorAt(cursorForPosition(event->position().toPoint()), textCursor())) {
+            dismissCompletionPopup();
+            highlightCurrentLine();
+            viewport()->update();
+            event->accept();
+            return;
+        }
+    }
+    clearSecondaryCursorsForSingleCursorAction();
     QPlainTextEdit::mousePressEvent(event);
 }
 
@@ -886,6 +934,16 @@ void TEditor::highlightCurrentLine() {
         extraSelections.append(selection);  
     }
 
+    if (multiCursorController != nullptr && multiCursorController->isActive()) {
+        for (const QTextCursor& cursor : multiCursorController->secondaryCursors()) {
+            if (!cursor.hasSelection()) continue;
+            QTextEdit::ExtraSelection secondarySelection;
+            secondarySelection.cursor = cursor;
+            secondarySelection.format.setBackground(QColor(30, 64, 175, 135));
+            extraSelections.append(secondarySelection);
+        }
+    }
+
     if (ctrlHoverDefinitionRange.has_value()) {
         const SourceRange& range = *ctrlHoverDefinitionRange;
         QTextEdit::ExtraSelection linkSelection;
@@ -1160,8 +1218,19 @@ void TEditor::paintEvent(QPaintEvent *event) {
         top = bottom;
         bottom = top + static_cast<int>(blockBoundingRect(block).height());
     }
+    paintSecondaryCursors(painter);
 }
 
+void TEditor::paintSecondaryCursors(QPainter& painter)
+{
+    if (multiCursorController == nullptr || !multiCursorController->isActive()) return;
+    const QColor caretColor(96, 165, 250);
+    for (const QTextCursor& cursor : multiCursorController->secondaryCursors()) {
+        const QRect rectangle = cursorRect(cursor);
+        if (!rectangle.intersects(viewport()->rect())) continue;
+        painter.fillRect(QRect(rectangle.left(), rectangle.top(), 2, qMax(2, rectangle.height())), caretColor);
+    }
+}
 
 /* ---------------------------------- Drag and Drop ---------------------------------- */
 
@@ -1485,6 +1554,7 @@ void TEditor::keyReleaseEvent(QKeyEvent *e) {
 }
 
 void TEditor::focusOutEvent(QFocusEvent *e) {
+    clearSecondaryCursors();
     dismissCompletionPopup();
     clearCtrlHoverDefinitionLink();
     dismissHover();
@@ -1493,6 +1563,9 @@ void TEditor::focusOutEvent(QFocusEvent *e) {
 
 void TEditor::keyPressEvent(QKeyEvent *e) {
     dismissHover();
+    if (handleMultiCursorKeyPress(e)) {
+        return;
+    }
     if (e->key() == Qt::Key_Control) {
         updateCtrlHoverDefinitionLink(viewport()->mapFromGlobal(QCursor::pos()));
     }
@@ -1565,6 +1638,131 @@ void TEditor::keyPressEvent(QKeyEvent *e) {
     }
 
     performCompletion();
+}
+
+bool TEditor::handleMultiCursorKeyPress(QKeyEvent* const event)
+{
+    if (multiCursorController == nullptr) {
+        return false;
+    }
+
+    const Qt::KeyboardModifiers modifiers = event->modifiers();
+    if (event->key() == Qt::Key_Escape && multiCursorController->isActive()) {
+        clearSecondaryCursors();
+        event->accept();
+        return true;
+    }
+
+    const bool verticalCaretShortcut = modifiers == (Qt::AltModifier | Qt::ShiftModifier)
+        || modifiers == (Qt::ControlModifier | Qt::AltModifier);
+    if (verticalCaretShortcut && (event->key() == Qt::Key_Up || event->key() == Qt::Key_Down)) {
+        const bool changed = multiCursorController->addVerticalCursor(
+            textCursor(), event->key() == Qt::Key_Up ? -1 : 1);
+        if (changed) {
+            dismissCompletionPopup();
+            highlightCurrentLine();
+            viewport()->update();
+        }
+        event->accept();
+        return true;
+    }
+
+    if (modifiers == (Qt::ControlModifier | Qt::AltModifier) && event->key() == Qt::Key_D) {
+        if (multiCursorController->selectNextOccurrence(textCursor())) {
+            dismissCompletionPopup();
+            highlightCurrentLine();
+            viewport()->update();
+        }
+        event->accept();
+        return true;
+    }
+
+    if (modifiers == (Qt::ControlModifier | Qt::ShiftModifier) && event->key() == Qt::Key_L) {
+        if (multiCursorController->selectAllOccurrences(textCursor())) {
+            dismissCompletionPopup();
+            highlightCurrentLine();
+            viewport()->update();
+        }
+        event->accept();
+        return true;
+    }
+
+    if (!multiCursorController->isActive()) {
+        return false;
+    }
+
+    // Modifier key presses precede repeated Ctrl+Alt shortcuts and Alt-click
+    // gestures. They do not mutate the document and must not clear the active
+    // secondary-caret set before the actual shortcut or mouse event arrives.
+    if (event->key() == Qt::Key_Control || event->key() == Qt::Key_Alt
+        || event->key() == Qt::Key_Shift || event->key() == Qt::Key_Meta) {
+        return false;
+    }
+
+    const bool completionOwnsInput = c != nullptr && c->popup() != nullptr && c->popup()->isVisible();
+    const QChar typedCharacter = event->text().isEmpty() ? QChar() : event->text().front();
+    const bool requiresSingleCursorBehavior = completionOwnsInput || !snippetTargets.isEmpty()
+        || typedCharacter == QLatin1Char('(') || typedCharacter == QLatin1Char('[')
+        || typedCharacter == QLatin1Char('{') || typedCharacter == QLatin1Char(')')
+        || typedCharacter == QLatin1Char(']') || typedCharacter == QLatin1Char('}')
+        || typedCharacter == QLatin1Char('\'') || typedCharacter == QLatin1Char('"')
+        || typedCharacter == QLatin1Char('`');
+    if (requiresSingleCursorBehavior) {
+        clearSecondaryCursors();
+        return false;
+    }
+
+    QTextCursor next = textCursor();
+    bool handled = true;
+    {
+        QScopedValueRollback<bool> transactionGuard(multiCursorTransactionInProgress, true);
+        if (event->key() == Qt::Key_Backspace) {
+            next = multiCursorController->backspace(textCursor());
+        } else if (event->key() == Qt::Key_Delete) {
+            next = multiCursorController->deleteForward(textCursor());
+        } else if (event->key() == Qt::Key_Tab && modifiers == Qt::NoModifier) {
+            next = multiCursorController->insertText(textCursor(), QStringLiteral("\t"));
+        } else if (!event->text().isEmpty()
+                   && !(modifiers & (Qt::ControlModifier | Qt::AltModifier))) {
+            next = multiCursorController->insertText(textCursor(), event->text());
+        } else {
+            handled = false;
+        }
+    }
+    if (!handled) {
+        clearSecondaryCursors();
+        return false;
+    }
+
+    setTextCursor(next);
+    ensureCursorVisible();
+    highlightCurrentLine();
+    viewport()->update();
+    event->accept();
+    return true;
+}
+
+void TEditor::applyMultiCursorNewline()
+{
+    if (multiCursorController == nullptr || !multiCursorController->isActive()) {
+        curserIndentation();
+        return;
+    }
+
+    QTextCursor next = textCursor();
+    {
+        QScopedValueRollback<bool> transactionGuard(multiCursorTransactionInProgress, true);
+        next = multiCursorController->insertNewlinesWithIndentation(textCursor());
+    }
+    setTextCursor(next);
+    ensureCursorVisible();
+    highlightCurrentLine();
+    viewport()->update();
+}
+
+void TEditor::clearSecondaryCursorsForSingleCursorAction()
+{
+    if (multiCursorController && multiCursorController->isActive()) clearSecondaryCursors();
 }
 
 void TEditor::performCompletion() {

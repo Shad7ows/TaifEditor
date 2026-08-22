@@ -15,6 +15,7 @@ class RecoveryCoordinator;
 class EditorAnalysisBinding;
 class EditorRecoveryBinding;
 class EditorInteractionBinding;
+class MultiCursorController;
 struct RecoveryEntry;
 struct RecoveryWriteResult;
 
@@ -71,6 +72,9 @@ public:
     [[nodiscard]] EditorBreadcrumbContext breadcrumbContextAtCursor() const;
     [[nodiscard]] EditorInfoSnapshot informationSnapshot() const;
     void setDocumentLineEnding(EditorInfoSnapshot::LineEnding lineEnding);
+    [[nodiscard]] int secondaryCursorCount() const;
+    [[nodiscard]] int totalCursorCount() const;
+    void clearSecondaryCursors();
 
 public slots:
     void UpdateTabStopDistance(QFont);
@@ -117,6 +121,8 @@ private:
     SemanticDefinitionProvider semanticDefinitionProvider{};
     THoverPopup* hoverPopup{};
     EditorInteractionBinding* interactionBinding{};
+    std::unique_ptr<MultiCursorController> multiCursorController{};
+    bool multiCursorTransactionInProgress = false;
     std::optional<SourceRange> ctrlHoverDefinitionRange{};
 
     struct NavigationHistoryEntry {
@@ -163,6 +169,10 @@ private:
     [[nodiscard]] bool canRefreshActiveCompletion() const;
     void clearActiveCompletionContext();
     void dismissCompletionPopup();
+    bool handleMultiCursorKeyPress(QKeyEvent* event);
+    void applyMultiCursorNewline();
+    void paintSecondaryCursors(QPainter& painter);
+    void clearSecondaryCursorsForSingleCursorAction();
     void scheduleHover(const QPoint& viewportPosition);
     void showPendingHover();
     void dismissHover();

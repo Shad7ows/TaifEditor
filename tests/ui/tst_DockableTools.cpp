@@ -45,6 +45,7 @@
 #include "EditorInteractionBinding.h"
 #include "TRecoveryDialog.h"
 #include "TEditor.h"
+#include "interaction/MultiCursorController.h"
 #include "EditorInfoBar.h"
 #include "ProjectExplorerWidget.h"
 #include "ProjectFileOperations.h"
@@ -105,6 +106,10 @@ private slots:
     void projectExplorerManualRefreshUpdatesGitStatus();
     void mainWindowExposesRightSideGitPanel();
     void gitPanelUsesDarkNavySurfaces();
+    void multiCursorSelectsOccurrencesAndEditsInOneUndoStep();
+    void multiCursorAddsVerticalCaretAndPreservesDuplicateLineCommand();
+    void multiCursorControllerRetainsPrimaryAndDeduplicatesOverlaps();
+    void multiCursorSupportsAltClickDeletionAndIndentedNewlines();
 };
 
 void DockableToolsTest::outputBufferBoundsPendingChunksAndReportsTruncation()
@@ -664,6 +669,123 @@ void DockableToolsTest::gitPanelUsesDarkNavySurfaces()
     QVERIFY2(background.red() < 50 && background.green() < 60 && background.blue() < 80,
              qPrintable(QStringLiteral("Unexpected Git panel background: %1,%2,%3")
                  .arg(background.red()).arg(background.green()).arg(background.blue())));
+}
+
+void DockableToolsTest::multiCursorSelectsOccurrencesAndEditsInOneUndoStep()
+{
+    TEditor editor; editor.resize(640, 300); editor.show(); editor.setPlainText(QStringLiteral("عنصر عنصر عنصر"));
+    QTextCursor cursor(editor.document()); cursor.setPosition(0); cursor.setPosition(4, QTextCursor::KeepAnchor); editor.setTextCursor(cursor);
+    QTest::keyClick(&editor, Qt::Key_D, Qt::ControlModifier | Qt::AltModifier);
+    QCOMPARE(editor.secondaryCursorCount(), 1);
+    QTest::keyClick(&editor, Qt::Key_D, Qt::ControlModifier | Qt::AltModifier);
+    QCOMPARE(editor.secondaryCursorCount(), 2);
+    QKeyEvent firstArabicInput(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier, QStringLiteral("س"));
+    QCoreApplication::sendEvent(&editor, &firstArabicInput);
+    QCOMPARE(editor.toPlainText(), QStringLiteral("س س س"));
+    editor.undo();
+    QCOMPARE(editor.toPlainText(), QStringLiteral("عنصر عنصر عنصر"));
+    QCOMPARE(editor.secondaryCursorCount(), 0);
+
+    cursor.setPosition(0); cursor.setPosition(4, QTextCursor::KeepAnchor); editor.setTextCursor(cursor);
+    QTest::keyClick(&editor, Qt::Key_L, Qt::ControlModifier | Qt::ShiftModifier);
+    QCOMPARE(editor.secondaryCursorCount(), 2);
+    QKeyEvent secondArabicInput(QEvent::KeyPress, Qt::Key_unknown, Qt::NoModifier, QStringLiteral("ص"));
+    QCoreApplication::sendEvent(&editor, &secondArabicInput);
+    QCOMPARE(editor.toPlainText(), QStringLiteral("ص ص ص"));
+}
+
+void DockableToolsTest::multiCursorAddsVerticalCaretAndPreservesDuplicateLineCommand()
+{
+    TEditor editor; editor.resize(640, 300); editor.show(); editor.setPlainText(QStringLiteral("ا\nب\nج"));
+    QTextCursor cursor(editor.document()); cursor.setPosition(0); editor.setTextCursor(cursor);
+    QTest::keyClick(&editor, Qt::Key_Down, Qt::AltModifier | Qt::ShiftModifier);
+    QCOMPARE(editor.secondaryCursorCount(), 1);
+    QTest::keyClicks(&editor, QStringLiteral("X"));
+    QCOMPARE(editor.toPlainText(), QStringLiteral("Xا\nXب\nج"));
+    QTest::keyClick(&editor, Qt::Key_Escape);
+    QCOMPARE(editor.secondaryCursorCount(), 0);
+
+    editor.setPlainText(QStringLiteral("سطر")); cursor = editor.textCursor(); cursor.movePosition(QTextCursor::Start); editor.setTextCursor(cursor);
+    editor.duplicateLine();
+    QCOMPARE(editor.toPlainText(), QStringLiteral("سطر\nسطر"));
+}
+
+void DockableToolsTest::multiCursorControllerRetainsPrimaryAndDeduplicatesOverlaps()
+{
+    QTextDocument document(QStringLiteral("abcdef"));
+    MultiCursorController controller(&document);
+    QTextCursor primary(&document); primary.setPosition(1); primary.setPosition(4, QTextCursor::KeepAnchor);
+    QTextCursor overlapping(&document); overlapping.setPosition(2);
+    QVERIFY(!controller.toggleCursorAt(overlapping, primary));
+
+    QTextCursor secondary(&document); secondary.setPosition(5);
+    QVERIFY(controller.toggleCursorAt(secondary, primary));
+    QCOMPARE(controller.secondaryCursorCount(), 1);
+    QVERIFY(controller.toggleCursorAt(secondary, primary));
+    QCOMPARE(controller.secondaryCursorCount(), 0);
+    QVERIFY(controller.toggleCursorAt(secondary, primary));
+
+    const QTextCursor editedPrimary = controller.insertText(primary, QStringLiteral("X"));
+    QCOMPARE(document.toPlainText(), QStringLiteral("aXeXf"));
+    QCOMPARE(editedPrimary.position(), 2);
+    document.undo();
+    QCOMPARE(document.toPlainText(), QStringLiteral("abcdef"));
+
+    QTextDocument occurrenceDocument(QStringLiteral("عنصر عنصر عنصر"));
+    MultiCursorController occurrenceController(&occurrenceDocument);
+    QTextCursor occurrencePrimary(&occurrenceDocument); occurrencePrimary.setPosition(0); occurrencePrimary.setPosition(4, QTextCursor::KeepAnchor);
+    QVERIFY(occurrenceController.selectNextOccurrence(occurrencePrimary));
+    QCOMPARE(occurrenceController.secondaryCursorCount(), 1);
+    QVERIFY(occurrenceController.selectNextOccurrence(occurrencePrimary));
+    QCOMPARE(occurrenceController.secondaryCursorCount(), 2);
+
+    QTextDocument deleteDocument(QStringLiteral("abcdef"));
+    MultiCursorController deleteController(&deleteDocument);
+    QTextCursor deletePrimary(&deleteDocument); deletePrimary.setPosition(1);
+    QTextCursor deleteSecondary(&deleteDocument); deleteSecondary.setPosition(4);
+    QVERIFY(deleteController.toggleCursorAt(deleteSecondary, deletePrimary));
+    const QTextCursor deletedPrimary = deleteController.deleteForward(deletePrimary);
+    QCOMPARE(deletedPrimary.position(), 1);
+    QCOMPARE(deleteDocument.toPlainText(), QStringLiteral("acdf"));
+    deleteDocument.undo();
+    QCOMPARE(deleteDocument.toPlainText(), QStringLiteral("abcdef"));
+}
+
+void DockableToolsTest::multiCursorSupportsAltClickDeletionAndIndentedNewlines()
+{
+    TEditor editor; editor.resize(640, 300); editor.show(); editor.setFocus(); editor.setPlainText(QStringLiteral("ab\ncd"));
+    QTextCursor primary(editor.document()); primary.setPosition(1); editor.setTextCursor(primary);
+    QTextCursor secondary(editor.document()); secondary.setPosition(4);
+    const QImage before = editor.viewport()->grab().toImage();
+    QTest::mouseClick(editor.viewport(), Qt::LeftButton, Qt::AltModifier, editor.cursorRect(secondary).center());
+    QCOMPARE(editor.secondaryCursorCount(), 1);
+    QTextCursor third(editor.document()); third.setPosition(5);
+    QTest::mouseClick(editor.viewport(), Qt::LeftButton, Qt::AltModifier, editor.cursorRect(third).center());
+    QCOMPARE(editor.secondaryCursorCount(), 2);
+    const QImage after = editor.viewport()->grab().toImage();
+    QVERIFY(before != after);
+    QTest::keyClick(&editor, Qt::Key_Escape);
+    QCOMPARE(editor.secondaryCursorCount(), 0);
+
+    editor.setPlainText(QStringLiteral("ab\ncd"));
+    primary = QTextCursor(editor.document()); primary.setPosition(1); editor.setTextCursor(primary);
+    secondary = QTextCursor(editor.document()); secondary.setPosition(4);
+    QTest::mouseClick(editor.viewport(), Qt::LeftButton, Qt::AltModifier, editor.cursorRect(secondary).center());
+    QCOMPARE(editor.secondaryCursorCount(), 1);
+    QTest::keyClick(&editor, Qt::Key_Backspace);
+    QCOMPARE(editor.toPlainText(), QStringLiteral("b\nd"));
+    editor.undo();
+    QCOMPARE(editor.toPlainText(), QStringLiteral("ab\ncd"));
+
+    const QString firstLine = QStringLiteral("\tاذا:");
+    editor.setPlainText(firstLine + QStringLiteral("\n\tاطبع"));
+    primary = editor.textCursor(); primary.setPosition(firstLine.size()); editor.setTextCursor(primary);
+    QTest::keyClick(&editor, Qt::Key_Down, Qt::AltModifier | Qt::ShiftModifier);
+    QCOMPARE(editor.secondaryCursorCount(), 1);
+    QTest::keyClick(&editor, Qt::Key_Return);
+    QCOMPARE(editor.toPlainText(), QStringLiteral("\tاذا:\n\t\t\n\tاطبع\n\t"));
+    editor.undo();
+    QCOMPARE(editor.toPlainText(), firstLine + QStringLiteral("\n\tاطبع"));
 }
 
 void DockableToolsTest::applicationWindowControllerOwnsTopLevelWindowRouting()
