@@ -1,6 +1,6 @@
 #include "ProjectExplorerWidget.h"
 
-#include "GitStatusService.h"
+#include "GitRepositoryService.h"
 #include "ProjectFileProxyModel.h"
 
 #include <QApplication>
@@ -51,7 +51,7 @@ public:
 
 class GitDecorationProvider final : public IFileDecorationProvider {
 public:
-    explicit GitDecorationProvider(GitStatusService* const service) : m_service(service) {}
+    explicit GitDecorationProvider(GitRepositoryService* const service) : m_service(service) {}
     [[nodiscard]] int priority() const override { return 100; }
 
     [[nodiscard]] FileDecoration decorationFor(const FileIconContext& context) const override
@@ -106,7 +106,7 @@ public:
     }
 
 private:
-    GitStatusService* m_service = nullptr;
+    GitRepositoryService* m_service = nullptr;
 };
 
 QColor statusMarkerColor(const VersionControlState state)
@@ -191,13 +191,13 @@ ProjectExplorerWidget::ProjectExplorerWidget(QWidget* const parent)
     m_fileSystemModel->setFilter(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Drives);
     m_proxyModel = new ProjectFileProxyModel(this);
     m_proxyModel->setSourceModel(m_fileSystemModel);
-    m_gitStatusService = new GitStatusService(this);
+    m_gitRepositoryService = new GitRepositoryService(this);
     m_filterTimer = new QTimer(this);
     m_filterTimer->setSingleShot(true);
     m_filterTimer->setInterval(140);
 
     m_iconProviders.push_back(std::make_shared<BuiltinFileIconProvider>());
-    m_decorationProviders.push_back(std::make_shared<GitDecorationProvider>(m_gitStatusService));
+    m_decorationProviders.push_back(std::make_shared<GitDecorationProvider>(m_gitRepositoryService));
 
     auto* const layout = new QVBoxLayout(this);
     layout->setContentsMargins(7, 7, 7, 7);
@@ -289,12 +289,12 @@ ProjectExplorerWidget::ProjectExplorerWidget(QWidget* const parent)
             this, &ProjectExplorerWidget::requestContextMenu);
     connect(m_treeView, &QTreeView::expanded, this, [this](const QModelIndex&) { persistSettings(); });
     connect(m_treeView, &QTreeView::collapsed, this, [this](const QModelIndex&) { persistSettings(); });
-    connect(m_gitStatusService, &GitStatusService::statusChanged,
-            m_treeView->viewport(), qOverload<>(&QWidget::update));
+    connect(m_gitRepositoryService, &GitRepositoryService::snapshotChanged, this,
+            [this](const GitRepositorySnapshot&) { m_treeView->viewport()->update(); });
     connect(m_fileSystemModel, &QFileSystemModel::directoryLoaded,
-            this, [this](const QString&) { m_gitStatusService->requestRefresh(); });
+            this, [this](const QString&) { m_gitRepositoryService->refresh(false); });
     connect(m_fileSystemModel, &QFileSystemModel::rowsInserted,
-            this, [this](const QModelIndex&, int, int) { m_gitStatusService->requestRefresh(); });
+            this, [this](const QModelIndex&, int, int) { m_gitRepositoryService->refresh(false); });
 
     updateRootPresentation();
 }
@@ -311,7 +311,7 @@ void ProjectExplorerWidget::setProjectRoot(const QString& rootPath)
     m_fileSystemModel->setRootPath(m_projectRoot);
     const QModelIndex sourceRoot = m_fileSystemModel->index(m_projectRoot);
     m_treeView->setRootIndex(m_proxyModel->mapFromSource(sourceRoot));
-    m_gitStatusService->setProjectRoot(m_projectRoot);
+    m_gitRepositoryService->setProjectRoot(m_projectRoot);
     updateRootPresentation();
     restoreSettings();
 }
@@ -357,7 +357,7 @@ void ProjectExplorerWidget::addDecorationProvider(std::shared_ptr<IFileDecoratio
 
 QTreeView* ProjectExplorerWidget::treeView() const { return m_treeView; }
 ProjectFileProxyModel* ProjectExplorerWidget::proxyModel() const { return m_proxyModel; }
-GitStatusService* ProjectExplorerWidget::gitStatusService() const { return m_gitStatusService; }
+GitRepositoryService* ProjectExplorerWidget::gitRepositoryService() const { return m_gitRepositoryService; }
 
 void ProjectExplorerWidget::selectPath(const QString& absolutePath)
 {
@@ -378,8 +378,14 @@ void ProjectExplorerWidget::selectPath(const QString& absolutePath)
 
 void ProjectExplorerWidget::refresh()
 {
-    m_proxyModel->invalidate();
-    m_gitStatusService->requestRefresh();
+    if (!m_projectRoot.isEmpty()) {
+        // QFileSystemModel caches directory contents. Re-rooting forces an
+        // explicit asynchronous rescan while preserving the project boundary.
+        m_fileSystemModel->setRootPath({});
+        const QModelIndex sourceRoot = m_fileSystemModel->setRootPath(m_projectRoot);
+        m_treeView->setRootIndex(m_proxyModel->mapFromSource(sourceRoot));
+    }
+    m_gitRepositoryService->refresh(true);
     m_treeView->viewport()->update();
 }
 

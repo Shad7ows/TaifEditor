@@ -11,6 +11,8 @@
 #include "EditorInfoBar.h"
 #include "ProjectExplorerWidget.h"
 #include "ProjectFileOperations.h"
+#include "GitPanelWidget.h"
+#include "GitRepositoryService.h"
 #include "TRecoveryDialog.h"
 
 
@@ -236,6 +238,33 @@ void Taif::setupUI() {
     diagnosticsPanel = new DiagnosticsPanel(diagnosticsDock);
     diagnosticsDock->setWidget(diagnosticsPanel);
     addDockWidget(Qt::BottomDockWidgetArea, diagnosticsDock);
+
+    gitPanel = new GitPanelWidget(projectExplorer->gitRepositoryService(), this);
+    gitDock = new QDockWidget(QStringLiteral("Git"), this);
+    gitDock->setObjectName(QStringLiteral("GitDock"));
+    gitDock->setWidget(gitPanel);
+    gitDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
+    gitDock->setStyleSheet(QStringLiteral(R"(
+        QDockWidget#GitDock { background:#0f172a; color:#e2e8f0; border:1px solid #1e3a5f; }
+        QDockWidget#GitDock::title { background:#111d33; color:#dbeafe; padding:7px 9px; border-bottom:1px solid #263a57; text-align:right; }
+        QDockWidget#GitDock::close-button, QDockWidget#GitDock::float-button { background:transparent; border:none; }
+        QDockWidget#GitDock::close-button:hover, QDockWidget#GitDock::float-button:hover { background:#1e3a5f; }
+    )"));
+    addDockWidget(Qt::RightDockWidgetArea, gitDock);
+    gitDock->hide();
+
+    auto* const gitEdgeToolbar = new QToolBar(QStringLiteral("Git"), this);
+    gitEdgeToolbar->setObjectName(QStringLiteral("GitEdgeToolbar"));
+    gitEdgeToolbar->setOrientation(Qt::Vertical);
+    gitEdgeToolbar->setStyleSheet(QStringLiteral(R"(
+        QToolBar#GitEdgeToolbar { background:#0f172a; border-left:1px solid #1e3a5f; spacing:3px; padding:3px; }
+        QToolButton { background:#111d33; color:#93c5fd; border:1px solid #263a57; border-radius:4px; padding:6px 4px; }
+        QToolButton:hover, QToolButton:checked { background:#1e3a5f; color:#ffffff; border-color:#3b82f6; }
+    )"));
+    showGitPanelAction = gitEdgeToolbar->addAction(QStringLiteral("Git"));
+    showGitPanelAction->setCheckable(true);
+    showGitPanelAction->setToolTip(QStringLiteral("إظهار لوحة Git"));
+    addToolBar(Qt::RightToolBarArea, gitEdgeToolbar);
     resizeDocks({diagnosticsDock}, {220}, Qt::Vertical);
     connect(diagnosticsPanel, &DiagnosticsPanel::diagnosticActivated,
             this, [this](const EditorDiagnostic& diagnostic) {
@@ -290,6 +319,13 @@ void Taif::setupConnections() {
             this, &Taif::deleteProjectPath);
     connect(projectExplorer, &ProjectExplorerWidget::revealRequested,
             this, &Taif::revealProjectPath);
+    connect(showGitPanelAction, &QAction::triggered, this, &Taif::showGitPanel);
+    connect(gitDock, &QDockWidget::visibilityChanged, this,
+            [this](const bool visible) { showGitPanelAction->setChecked(visible); });
+    connect(gitPanel, &GitPanelWidget::destructiveOperationRequested,
+            this, &Taif::handleGitDestructiveOperation);
+    connect(gitPanel, &GitPanelWidget::pullRequested, this, &Taif::handleGitPull);
+    connect(gitPanel, &GitPanelWidget::branchSwitchRequested, this, &Taif::handleGitBranchSwitch);
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &Taif::closeTab);
     connect(toggleSidebarAction, &QAction::triggered, this, &Taif::toggleSidebar);
 
@@ -1201,11 +1237,13 @@ void Taif::loadFolder(const QString& requestedFolderPath)
     if (!normalizedFolderPath.isEmpty() && QDir(normalizedFolderPath).exists()) {
         folderPath = normalizedFolderPath;
         projectExplorer->setProjectRoot(folderPath);
+        gitPanel->setProjectRoot(folderPath);
         projectExplorer->setVisible(true);
         toggleSidebarAction->setChecked(true);
     } else {
         folderPath.clear();
         projectExplorer->setProjectRoot({});
+        gitPanel->setProjectRoot({});
         projectExplorer->setVisible(false);
         toggleSidebarAction->setChecked(false);
     }
@@ -1335,6 +1373,78 @@ void Taif::deleteProjectPath(const QString& sourcePath)
 void Taif::revealProjectPath(const QString& sourcePath)
 {
     presentProjectOperationResult(ProjectFileOperations::reveal(folderPath, sourcePath));
+}
+
+void Taif::showGitPanel()
+{
+    if (gitPanel->projectRoot() != folderPath) {
+        gitPanel->setProjectRoot(folderPath);
+    }
+    gitDock->show();
+    gitDock->raise();
+    gitPanel->refresh();
+}
+
+void Taif::handleGitDestructiveOperation(const GitOperation operation, const QStringList& relativePaths)
+{
+    if (operation != GitOperation::Discard || folderPath.isEmpty() || relativePaths.isEmpty()) {
+        return;
+    }
+    for (const QString& relativePath : relativePaths) {
+        if (hasOpenEditorAtOrBelow(QDir(folderPath).filePath(relativePath))) {
+            QMessageBox::warning(this, QStringLiteral("حماية المحرر"),
+                QStringLiteral("أغلق أو احفظ الملف المفتوح قبل تجاهل تعديلاته من Git."));
+            return;
+        }
+    }
+    const auto reply = QMessageBox::warning(this, QStringLiteral("تجاهل تعديلات Git"),
+        QStringLiteral("سيجري فقدان التعديلات المحلية في الملفات المحددة نهائياً. هل تريد المتابعة؟"),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+    if (reply == QMessageBox::Yes) {
+        projectExplorer->gitRepositoryService()->discard(relativePaths);
+    }
+}
+
+void Taif::handleGitPull()
+{
+    const GitRepositorySnapshot& snapshot = projectExplorer->gitRepositoryService()->snapshot();
+    if (!snapshot.repository) return;
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor != nullptr && editor->document()->isModified()) {
+            QMessageBox::warning(this, QStringLiteral("حماية المحرر"),
+                QStringLiteral("احفظ أو أغلق الملفات المعدلة قبل السحب من Git."));
+            return;
+        }
+    }
+    if (snapshot.isDirty()) {
+        const auto reply = QMessageBox::question(this, QStringLiteral("سحب Git"),
+            QStringLiteral("توجد تغييرات محلية. سيُنفذ السحب السريع فقط. هل تريد المتابعة؟"),
+            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (reply != QMessageBox::Yes) return;
+    }
+    projectExplorer->gitRepositoryService()->pull();
+}
+
+void Taif::handleGitBranchSwitch(const QString& branch)
+{
+    const GitRepositorySnapshot& snapshot = projectExplorer->gitRepositoryService()->snapshot();
+    if (!snapshot.repository) return;
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor != nullptr && editor->document()->isModified()) {
+            QMessageBox::warning(this, QStringLiteral("حماية المحرر"),
+                QStringLiteral("احفظ أو أغلق الملفات المعدلة قبل تبديل فرع Git."));
+            return;
+        }
+    }
+    if (snapshot.isDirty()) {
+        const auto reply = QMessageBox::question(this, QStringLiteral("تبديل فرع Git"),
+            QStringLiteral("توجد تغييرات محلية. هل تريد متابعة تبديل الفرع؟"),
+            QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (reply != QMessageBox::Yes) return;
+    }
+    projectExplorer->gitRepositoryService()->switchBranch(branch);
 }
 
 void Taif::saveFile()

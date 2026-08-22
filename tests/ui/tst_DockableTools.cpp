@@ -50,6 +50,8 @@
 #include "ProjectFileOperations.h"
 #include "ProjectFileProxyModel.h"
 #include "GitStatusService.h"
+#include "GitRepositoryService.h"
+#include "GitPanelWidget.h"
 #include "AlifRunController.h"
 
 #include <QTemporaryDir>
@@ -99,6 +101,10 @@ private slots:
     void projectExplorerUsesRtlFilteringAndSafeRoot();
     void gitStatusServiceReportsReadOnlyFileStates();
     void mainWindowBindsProjectExplorerToFolderRoot();
+    void gitRepositoryServiceRefreshesAndStagesWorktreeFile();
+    void projectExplorerManualRefreshUpdatesGitStatus();
+    void mainWindowExposesRightSideGitPanel();
+    void gitPanelUsesDarkNavySurfaces();
 };
 
 void DockableToolsTest::outputBufferBoundsPendingChunksAndReportsTruncation()
@@ -581,6 +587,83 @@ void DockableToolsTest::mainWindowBindsProjectExplorerToFolderRoot()
     QTRY_COMPARE_WITH_TIMEOUT(explorer->projectRoot(), ProjectFileProxyModel::normalizedPath(root), 1000);
     QVERIFY(explorer->isVisible());
     QVERIFY(explorer->treeView()->isVisible());
+}
+
+void DockableToolsTest::gitRepositoryServiceRefreshesAndStagesWorktreeFile()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("repository"));
+    QVERIFY(QDir().mkpath(root));
+    const auto runGit = [&root](const QStringList& arguments) {
+        QProcess process; process.setWorkingDirectory(root); process.start(QStringLiteral("git"), arguments);
+        return process.waitForFinished(3000) && process.exitCode() == 0;
+    };
+    QVERIFY(runGit({QStringLiteral("init")}));
+    QFile file(QDir(root).filePath(QStringLiteral("new.alif")));
+    QVERIFY(file.open(QIODevice::WriteOnly)); file.write("اطبع(1)\n"); file.close();
+
+    GitRepositoryService service;
+    QSignalSpy operationSpy(&service, &GitRepositoryService::operationFinished);
+    service.setProjectRoot(root);
+    QTRY_VERIFY_WITH_TIMEOUT(service.snapshot().repository, 3000);
+    QCOMPARE(service.statusForRelativePath(QStringLiteral("new.alif")), VersionControlState::Untracked);
+    service.stage({QStringLiteral("new.alif")});
+    QTRY_VERIFY_WITH_TIMEOUT(operationSpy.count() == 1, 3000);
+    QVERIFY(operationSpy.takeFirst().at(0).value<GitCommandResult>().succeeded);
+    QTRY_COMPARE_WITH_TIMEOUT(service.statusForRelativePath(QStringLiteral("new.alif")), VersionControlState::Added, 3000);
+}
+
+void DockableToolsTest::projectExplorerManualRefreshUpdatesGitStatus()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("repository"));
+    QVERIFY(QDir().mkpath(root));
+    QProcess init; init.setWorkingDirectory(root); init.start(QStringLiteral("git"), {QStringLiteral("init")});
+    QVERIFY(init.waitForFinished(3000)); QCOMPARE(init.exitCode(), 0);
+
+    ProjectExplorerWidget explorer; explorer.setProjectRoot(root);
+    QTRY_VERIFY_WITH_TIMEOUT(explorer.gitRepositoryService()->snapshot().repository, 3000);
+    QFile file(QDir(root).filePath(QStringLiteral("refresh.alif")));
+    QVERIFY(file.open(QIODevice::WriteOnly)); file.write("اطبع(3)\n"); file.close();
+    explorer.refresh();
+    QTRY_COMPARE_WITH_TIMEOUT(explorer.gitRepositoryService()->statusForRelativePath(QStringLiteral("refresh.alif")),
+                              VersionControlState::Untracked, 3000);
+}
+
+void DockableToolsTest::mainWindowExposesRightSideGitPanel()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("project"));
+    QVERIFY(QDir().mkpath(root));
+    Taif window({}, nullptr, true); window.resize(960, 680); window.show(); window.loadFolder(root);
+    auto* const dock = window.findChild<QDockWidget*>(QStringLiteral("GitDock"));
+    auto* const panel = window.findChild<GitPanelWidget*>();
+    QVERIFY(dock != nullptr); QVERIFY(panel != nullptr); QVERIFY(!dock->isVisible());
+    QVERIFY(QMetaObject::invokeMethod(&window, "showGitPanel", Qt::DirectConnection));
+    QTRY_VERIFY_WITH_TIMEOUT(dock->isVisible(), 1000);
+    QCOMPARE(panel->projectRoot(), ProjectFileProxyModel::normalizedPath(root));
+}
+
+void DockableToolsTest::gitPanelUsesDarkNavySurfaces()
+{
+    QTemporaryDir temporaryDirectory;
+    QVERIFY(temporaryDirectory.isValid());
+    const QString root = temporaryDirectory.filePath(QStringLiteral("project"));
+    QVERIFY(QDir().mkpath(root));
+    Taif window({}, nullptr, true); window.resize(1024, 720); window.show(); window.loadFolder(root);
+    QVERIFY(QMetaObject::invokeMethod(&window, "showGitPanel", Qt::DirectConnection));
+    auto* const panel = window.findChild<GitPanelWidget*>();
+    QVERIFY(panel != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(panel->isVisible(), 1000);
+    const QImage image = panel->grab().toImage();
+    QVERIFY(!image.isNull());
+    const QColor background = image.pixelColor(4, 4);
+    QVERIFY2(background.red() < 50 && background.green() < 60 && background.blue() < 80,
+             qPrintable(QStringLiteral("Unexpected Git panel background: %1,%2,%3")
+                 .arg(background.red()).arg(background.green()).arg(background.blue())));
 }
 
 void DockableToolsTest::applicationWindowControllerOwnsTopLevelWindowRouting()

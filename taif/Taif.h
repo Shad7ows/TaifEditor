@@ -6,6 +6,7 @@
 #include "AlifRunController.h"
 #include "SessionStore.h"
 #include "RecoveryCoordinator.h"
+#include "GitTypes.h"
 
 #include <QMainWindow>
 #include <QStatusBar>
@@ -22,6 +23,8 @@ class TConsole;
 class TBreadcrumbBar;
 class EditorInfoBar;
 class ProjectExplorerWidget;
+class GitPanelWidget;
+class GitRepositoryService;
 struct ProjectFileOperationResult;
 
 struct SessionRestoreResult final {
@@ -67,6 +70,10 @@ private slots:
     void renameProjectPath(const QString& sourcePath, const QString& newName);
     void deleteProjectPath(const QString& sourcePath);
     void revealProjectPath(const QString& sourcePath);
+    void showGitPanel();
+    void handleGitDestructiveOperation(GitOperation operation, const QStringList& relativePaths);
+    void handleGitPull();
+    void handleGitBranchSwitch(const QString& branch);
 
     void closeTab(int index);
     void toggleSidebar();
@@ -157,6 +164,9 @@ private:
 
     QSplitter *mainSplitter{};
     ProjectExplorerWidget* projectExplorer{};
+    GitPanelWidget* gitPanel{};
+    QDockWidget* gitDock{};
+    QAction* showGitPanelAction{};
 
     QSplitter *editorSplitter{};
     TBreadcrumbBar* breadcrumbBar{};

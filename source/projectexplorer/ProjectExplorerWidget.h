@@ -13,7 +13,7 @@ class QTimer;
 class QToolButton;
 class QTreeView;
 class ProjectFileProxyModel;
-class GitStatusService;
+class GitRepositoryService;
 class ProjectExplorerItemDelegate;
 
 /**
@@ -36,7 +36,7 @@ public:
 
     [[nodiscard]] QTreeView* treeView() const;
     [[nodiscard]] ProjectFileProxyModel* proxyModel() const;
-    [[nodiscard]] GitStatusService* gitStatusService() const;
+    [[nodiscard]] GitRepositoryService* gitRepositoryService() const;
     void selectPath(const QString& absolutePath);
     void refresh();
 
@@ -73,7 +73,7 @@ private:
 
     QFileSystemModel* m_fileSystemModel = nullptr;
     ProjectFileProxyModel* m_proxyModel = nullptr;
-    GitStatusService* m_gitStatusService = nullptr;
+    GitRepositoryService* m_gitRepositoryService = nullptr;
     QLabel* m_rootLabel = nullptr;
     QLabel* m_emptyLabel = nullptr;
     QLineEdit* m_filterEdit = nullptr;

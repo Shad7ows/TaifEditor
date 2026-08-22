@@ -35,6 +35,7 @@ INCLUDEPATH += \
     ../source/recovery \
     ../source/run \
     ../source/projectexplorer \
+    ../source/versioncontrol \
 
 SOURCES += \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -71,6 +72,8 @@ SOURCES += \
     ../source/projectexplorer/ProjectFileOperations.cpp \
     ../source/projectexplorer/GitStatusService.cpp \
     ../source/projectexplorer/ProjectExplorerWidget.cpp \
+    ../source/versioncontrol/GitRepositoryService.cpp \
+    ../source/versioncontrol/GitPanelWidget.cpp \
     ../source/session/SessionStore.cpp \
     ../source/session/SessionEditorDialog.cpp \
     ../source/console/OutputBuffer.cpp \
@@ -132,6 +135,9 @@ HEADERS += \
     ../source/projectexplorer/ProjectFileOperations.h \
     ../source/projectexplorer/GitStatusService.h \
     ../source/projectexplorer/ProjectExplorerWidget.h \
+    ../source/versioncontrol/GitTypes.h \
+    ../source/versioncontrol/GitRepositoryService.h \
+    ../source/versioncontrol/GitPanelWidget.h \
     ../source/session/SessionStore.h \
     ../source/session/SessionEditorDialog.h \
     ../source/console/OutputBuffer.h \
