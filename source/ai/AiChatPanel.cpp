@@ -139,7 +139,7 @@ AiChatPanel::AiChatPanel(QWidget* const parent)
 
     m_composer = new QPlainTextEdit(this);
     // set RTL
-    QTextDocument* editorDocument = m_transcript->document();
+    QTextDocument* editorDocument = m_composer->document();
     QTextOption option = editorDocument->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);
     option.setAlignment(Qt::AlignRight);
