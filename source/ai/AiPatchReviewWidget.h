@@ -35,17 +35,20 @@ private:
     void highlightRows(const QVector<int>& originalRows, const QVector<int>& proposedRows);
     void navigateChange(int direction);
     void beginStreamingPreview(const AiPatchReviewRequest& preview);
-    void advanceStreamedToken();
     void finalizeStreamedReview();
     void refreshReviewPresentation(bool updateDiff);
-    void appendProposedText(QStringView token);
+    void refreshStreamingPreviewPresentation();
+    void replaceStreamingRange(const QString& replacement);
+    void setStreamingHighlights();
 
     QString m_reviewId;
     AiPatchReviewRequest m_displayedReview;
     AiPatchReviewRequest m_finalReview;
-    QString m_streamTarget;
     QString m_displayedProposal;
-    QTimer m_tokenTimer;
+    int m_streamRangeStart = -1;
+    int m_streamRangeLength = 0;
+    int m_streamStartLine = 0;
+    int m_streamEndLine = 0;
     bool m_streamingPreviewActive = false;
     bool m_finalReviewPending = false;
     QVector<int> m_changeRows;

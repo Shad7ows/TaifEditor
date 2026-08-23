@@ -123,6 +123,12 @@ struct AiPatchReviewRequest final {
     // True only while the model is still emitting an incomplete tool argument.
     // Preview data is never eligible for Accept or filesystem mutation.
     bool isStreamingPreview = false;
+    // The only range rendered live while an incomplete anchored tool call streams.
+    // These fields are presentation-only and are never used for persistence.
+    int streamingStartLine = 0;
+    int streamingEndLine = 0;
+    QString streamingExpectedText;
+    QString streamingReplacement;
     QDateTime createdAt = QDateTime::currentDateTimeUtc();
 
     [[nodiscard]] bool isValid() const

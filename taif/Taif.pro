@@ -98,6 +98,7 @@ SOURCES += \
     ../source/settings/TSettings.cpp \
     ../source/ai/AiAssistantSettings.cpp \
     ../source/ai/AiLineDiff.cpp \
+    ../source/ai/AiTextPatch.cpp \
     ../source/ai/AiWorkspacePolicy.cpp \
     ../source/ai/LmStudioClient.cpp \
     ../source/ai/AiAgentController.cpp \
@@ -172,6 +173,7 @@ HEADERS += \
     ../source/ai/AiAgentTypes.h \
     ../source/ai/AiAssistantSettings.h \
     ../source/ai/AiLineDiff.h \
+    ../source/ai/AiTextPatch.h \
     ../source/ai/AiWorkspacePolicy.h \
     ../source/ai/LmStudioClient.h \
     ../source/ai/AiAgentController.h \

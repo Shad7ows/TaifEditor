@@ -3,6 +3,7 @@
 #include "LmStudioClient.h"
 #include "ProjectFileOperations.h"
 #include "AiWorkspacePolicy.h"
+#include "AiTextPatch.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -76,39 +77,18 @@ AiAgentController::AiAgentController(QObject* const parent)
         updateStreamingPatchPreview(id);
     });
     connect(m_client, &LmStudioClient::streamFinished, this, [this](const QString& reason) {
-        const bool hasToolCalls = !m_toolArguments.isEmpty();
-        if (hasToolCalls) {
-            appendAssistantToolCallMessage();
-        } else if (!m_currentAssistantText.trimmed().isEmpty()) {
-            appendMessage(AiChatRole::Assistant, m_currentAssistantText);
-            appendActivity(AiActivityKind::AssistantResponse, QStringLiteral("اكتملت استجابة النموذج"));
-        }
-        m_finalizingToolCalls = true;
-        finalizeToolCalls();
-        m_finalizingToolCalls = false;
-        m_currentAssistantText.clear();
-        const QList<AiPatchReviewRequest> unfinishedPreviews = m_streamingPatchPreviews.values();
-        m_streamingPatchPreviews.clear();
-        for (const AiPatchReviewRequest& preview : unfinishedPreviews) {
-            emit patchReviewResolved(preview.reviewId, false);
-        }
-        m_toolNames.clear();
-        m_toolArguments.clear();
-        if (reason == QStringLiteral("cancelled")) {
-            m_workspaceAutoTaskActive = false;
-            setState(AiAgentState::Idle);
-            return;
-        }
-        if (!hasToolCalls) {
-            m_workspaceAutoTaskActive = false;
-            setState(AiAgentState::Idle);
-        } else if (!m_pendingApprovals.isEmpty() || !m_pendingPatchReviews.isEmpty()) {
-            setState(AiAgentState::AwaitingApproval);
-        } else if (m_automaticOperationsInFlight > 0) {
-            setState(AiAgentState::ExecutingApprovedTool);
-        } else {
-            continueAutonomousTask();
-        }
+        // Network completion may arrive during a paint/input turn. Defer parsing,
+        // patch materialization, review rendering, and continuation until Qt has
+        // returned to its event loop so a completed step cannot freeze the editor.
+        if (m_streamCompletionQueued) return;
+        m_streamCompletionQueued = true;
+        m_completedStreamReason = reason;
+        m_completedStreamHasToolCalls = !m_toolArguments.isEmpty();
+        const quint64 generation = m_lifecycleGeneration;
+        QTimer::singleShot(0, this, [this, generation]() {
+            if (generation != m_lifecycleGeneration) return;
+            processCompletedStream();
+        });
     });
     connect(m_client, &LmStudioClient::requestFailed, this, [this](const AiTransportError& error) {
         m_workspaceAutoTaskActive = false;
@@ -170,6 +150,7 @@ void AiAgentController::refreshModels()
 void AiAgentController::submitPrompt(const QString& prompt, const bool includeActiveFile, const bool includeSelection)
 {
     if (prompt.trimmed().isEmpty() || m_client->hasActiveRequest()) return;
+    ++m_lifecycleGeneration;
     if (m_selectedModel.isEmpty()) {
         emit connectionError({QStringLiteral("لا يوجد نموذج محدد. حدّث قائمة نماذج LM Studio واختر نموذجاً."), 0, true});
         return;
@@ -196,6 +177,8 @@ void AiAgentController::submitPrompt(const QString& prompt, const bool includeAc
 
 void AiAgentController::stop()
 {
+    ++m_lifecycleGeneration;
+    m_streamCompletionQueued = false;
     m_workspaceAutoTaskActive = false;
     if (!m_streamingPatchPreviews.isEmpty()) {
         const QList<AiPatchReviewRequest> previews = m_streamingPatchPreviews.values();
@@ -276,6 +259,8 @@ void AiAgentController::rejectPendingAction(const QString& approvalId)
 
 void AiAgentController::shutdown()
 {
+    ++m_lifecycleGeneration;
+    m_streamCompletionQueued = false;
     m_workspaceAutoTaskActive = false;
     m_commandTimeout.stop();
     m_client->cancelActiveRequest();
@@ -336,6 +321,66 @@ void AiAgentController::appendAssistantToolCallMessage()
 void AiAgentController::appendActivity(const AiActivityKind kind, const QString& title, const QString& details)
 {
     emit activityAdded({kind, title, details});
+}
+
+void AiAgentController::processCompletedStream()
+{
+    m_streamCompletionQueued = false;
+    const QString reason = m_completedStreamReason;
+    const bool hasToolCalls = m_completedStreamHasToolCalls;
+    if (hasToolCalls) {
+        appendAssistantToolCallMessage();
+    } else if (!m_currentAssistantText.trimmed().isEmpty()) {
+        appendMessage(AiChatRole::Assistant, m_currentAssistantText);
+        appendActivity(AiActivityKind::AssistantResponse, QStringLiteral("اكتملت استجابة النموذج"));
+    }
+    m_finalizingToolCalls = true;
+    finalizeToolCalls();
+    m_finalizingToolCalls = false;
+    m_currentAssistantText.clear();
+    const QList<AiPatchReviewRequest> unfinishedPreviews = m_streamingPatchPreviews.values();
+    m_streamingPatchPreviews.clear();
+    for (const AiPatchReviewRequest& preview : unfinishedPreviews) {
+        emit patchReviewResolved(preview.reviewId, false);
+    }
+    m_toolNames.clear();
+    m_toolArguments.clear();
+
+    const quint64 generation = m_lifecycleGeneration;
+    QTimer::singleShot(0, this, [this, generation, reason, hasToolCalls]() {
+        if (generation != m_lifecycleGeneration) return;
+        m_completedStreamReason = reason;
+        m_completedStreamHasToolCalls = hasToolCalls;
+        settleCompletedStream(generation);
+    });
+}
+
+void AiAgentController::settleCompletedStream(const quint64 generation)
+{
+    if (generation != m_lifecycleGeneration) return;
+    if (m_completedStreamReason == QStringLiteral("cancelled")) {
+        m_workspaceAutoTaskActive = false;
+        setState(AiAgentState::Idle);
+        return;
+    }
+    if (!m_completedStreamHasToolCalls) {
+        m_workspaceAutoTaskActive = false;
+        setState(AiAgentState::Idle);
+    } else if (!m_pendingApprovals.isEmpty() || !m_pendingPatchReviews.isEmpty()) {
+        setState(AiAgentState::AwaitingApproval);
+    } else if (m_automaticOperationsInFlight > 0) {
+        setState(AiAgentState::ExecutingApprovedTool);
+    } else {
+        queueAutonomousContinuation(generation);
+    }
+}
+
+void AiAgentController::queueAutonomousContinuation(const quint64 generation)
+{
+    QTimer::singleShot(0, this, [this, generation]() {
+        if (generation != m_lifecycleGeneration) return;
+        continueAutonomousTask();
+    });
 }
 
 void AiAgentController::finalizeToolCalls()
@@ -467,8 +512,37 @@ void AiAgentController::updateStreamingPatchPreview(const QString& toolCallId)
     if (originalBytes.size() > kMaximumFileBytes || originalBytes.contains('\0')) {
         return;
     }
-    bool contentComplete = false;
-    const QString proposedText = extractString(QStringLiteral("content"), &contentComplete);
+    // Existing-file patch previews are intentionally anchored-only. A legacy
+    // full-content payload is neither previewed nor executable.
+    if (rawArguments.contains(QStringLiteral("\"content\""))) {
+        return;
+    }
+    const auto extractInteger = [&rawArguments](const QString& key, bool* const present) -> int {
+        const QRegularExpression expression(QStringLiteral("\\\"%1\\\"\\s*:\\s*(\\d+)").arg(QRegularExpression::escape(key)));
+        const QRegularExpressionMatch match = expression.match(rawArguments);
+        *present = match.hasMatch();
+        return *present ? match.captured(1).toInt() : 0;
+    };
+    bool startPresent = false;
+    bool endPresent = false;
+    bool expectedComplete = false;
+    bool replacementComplete = false;
+    const int startLine = extractInteger(QStringLiteral("start_line"), &startPresent);
+    const int endLine = extractInteger(QStringLiteral("end_line"), &endPresent);
+    const QString expectedText = extractString(QStringLiteral("expected_text"), &expectedComplete);
+    const QString replacement = extractString(QStringLiteral("replacement"), &replacementComplete);
+    if (!startPresent || !endPresent || !expectedComplete) {
+        return;
+    }
+    const QJsonObject edit{{QStringLiteral("start_line"), startLine},
+                           {QStringLiteral("end_line"), endLine},
+                           {QStringLiteral("expected_text"), expectedText},
+                           {QStringLiteral("replacement"), replacement}};
+    const AiTextPatchResult validatedRange = AiTextPatch::applyAnchoredLineEdits(
+        QString::fromUtf8(originalBytes), QJsonArray{edit});
+    if (!validatedRange.succeeded) {
+        return;
+    }
     AiPatchReviewRequest preview;
     preview.reviewId = QStringLiteral("stream-%1").arg(toolCallId);
     preview.toolCall.id = toolCallId;
@@ -478,10 +552,14 @@ void AiAgentController::updateStreamingPatchPreview(const QString& toolCallId)
     preview.relativePath = QDir(m_projectRoot).relativeFilePath(absolutePath);
     preview.absolutePath = absolutePath;
     preview.originalText = QString::fromUtf8(originalBytes);
-    preview.proposedText = proposedText;
+    preview.proposedText = preview.originalText;
     preview.originalSha256 = QString::fromLatin1(QCryptographicHash::hash(originalBytes, QCryptographicHash::Sha256).toHex());
     preview.automatic = m_workspaceAutoTaskActive;
     preview.isStreamingPreview = true;
+    preview.streamingStartLine = startLine;
+    preview.streamingEndLine = endLine;
+    preview.streamingExpectedText = expectedText;
+    preview.streamingReplacement = replacement;
     m_streamingPatchPreviews.insert(toolCallId, preview);
     emit patchReviewPreviewUpdated(preview);
 }
@@ -500,7 +578,6 @@ void AiAgentController::stagePatchReview(const AiToolCall& call, const bool auto
     ++m_toolSignatureCounts[signature];
     const QString relativePath = call.arguments.value(QStringLiteral("path")).toString();
     const QString absolutePath = canonicalProjectPath(relativePath);
-    const QString proposedText = call.arguments.value(QStringLiteral("content")).toString();
     QFile source(absolutePath);
     if (absolutePath.isEmpty() || relativePath.trimmed().isEmpty() || !source.open(QIODevice::ReadOnly)
         || source.size() > kMaximumFileBytes) {
@@ -515,11 +592,20 @@ void AiAgentController::stagePatchReview(const AiToolCall& call, const bool auto
         return;
     }
 
+    QString patchError;
+    const QString proposedText = targetedPatchText(call.arguments, QString::fromUtf8(originalBytes), &patchError);
+    if (!patchError.isEmpty()) {
+        appendActivity(AiActivityKind::Blocked, QStringLiteral("تم رفض تعديل أسطر غير آمن"), patchError);
+        appendMessage(AiChatRole::Tool, QStringLiteral("تم رفض اقتراح تعديل الأسطر: %1").arg(patchError), call.id, call.name);
+        return;
+    }
+
     AiPatchReviewRequest review;
     review.reviewId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     review.toolCall = call;
     review.toolCall.arguments.insert(QStringLiteral("_taif_snapshot_sha256"),
                                      QString::fromLatin1(QCryptographicHash::hash(originalBytes, QCryptographicHash::Sha256).toHex()));
+    review.toolCall.arguments.insert(QStringLiteral("_taif_materialized_content"), proposedText);
     review.relativePath = QDir(m_projectRoot).relativeFilePath(absolutePath);
     review.absolutePath = absolutePath;
     review.originalText = QString::fromUtf8(originalBytes);
@@ -882,7 +968,12 @@ QString AiAgentController::executeFileMutation(const AiToolCall& call, bool* con
     const QString path = canonicalProjectPath(call.arguments.value(QStringLiteral("path")).toString());
     if (path.isEmpty()) return QStringLiteral("تم رفض مسار خارج جذر المشروع.");
     if (call.kind == AiToolKind::ProposeFilePatch || call.kind == AiToolKind::ProposeCreateFile) {
-        const QString content = call.arguments.value(QStringLiteral("content")).toString();
+        if (call.kind == AiToolKind::ProposeFilePatch && !call.arguments.contains(QStringLiteral("_taif_materialized_content"))) {
+            return QStringLiteral("لم تُحضّر نتيجة تعديل الأسطر للمراجعة الآمنة.");
+        }
+        const QString content = call.kind == AiToolKind::ProposeFilePatch
+            ? call.arguments.value(QStringLiteral("_taif_materialized_content")).toString()
+            : call.arguments.value(QStringLiteral("content")).toString();
         QFileInfo info(path);
         if (call.kind == AiToolKind::ProposeFilePatch && !info.isFile()) return QStringLiteral("الملف المطلوب لتطبيق التعديل غير موجود.");
         const bool activeConflict = call.kind == AiToolKind::ProposeFilePatch && m_activeFileModified
@@ -904,7 +995,7 @@ QString AiAgentController::executeFileMutation(const AiToolCall& call, bool* con
             }
         }
         QSaveFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return QStringLiteral("تعذر فتح الملف للكتابة الآمنة.");
+        if (!file.open(QIODevice::WriteOnly)) return QStringLiteral("تعذر فتح الملف للكتابة الآمنة.");
         if (file.write(content.toUtf8()) < 0 || !file.commit()) return QStringLiteral("تعذر حفظ التعديل بشكل ذري.");
         *success = true;
         return QStringLiteral("تم حفظ التعديل بعد الموافقة: %1").arg(QDir(m_projectRoot).relativeFilePath(path));
@@ -925,6 +1016,23 @@ QString AiAgentController::executeFileMutation(const AiToolCall& call, bool* con
     return QStringLiteral("أداة التعديل غير مدعومة.");
 }
 
+QString AiAgentController::targetedPatchText(const QJsonObject& arguments, const QString& originalText,
+                                                     QString* const error) const
+{
+    *error = {};
+    const QJsonArray edits = arguments.value(QStringLiteral("edits")).toArray();
+    if (edits.isEmpty()) {
+        *error = QStringLiteral("استخدم edits لتعديل نطاق أسطر محدد بدلاً من استبدال الملف كاملاً.");
+        return {};
+    }
+    const AiTextPatchResult result = AiTextPatch::applyAnchoredLineEdits(originalText, edits);
+    if (!result.succeeded) {
+        *error = result.error;
+        return {};
+    }
+    return result.text;
+}
+
 QString AiAgentController::canonicalProjectPath(const QString& relativePath) const
 {
     if (relativePath.trimmed().isEmpty() || m_projectRoot.isEmpty()) return {};
@@ -936,6 +1044,9 @@ QJsonArray AiAgentController::toolDefinitions() const
 {
     const auto stringProperty = []() {
         return QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}};
+    };
+    const auto integerProperty = []() {
+        return QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}};
     };
     QJsonArray definitions;
     const auto addTool = [&definitions](const QString& name, const QString& description,
@@ -960,7 +1071,17 @@ QJsonArray AiAgentController::toolDefinitions() const
     addTool(QStringLiteral("get_active_editor_context"), QStringLiteral("Read user-approved current editor context."), {});
     const QJsonObject fileProperties{{QStringLiteral("path"), stringProperty()},
                                      {QStringLiteral("content"), stringProperty()}};
-    addTool(QStringLiteral("propose_file_patch"), QStringLiteral("Replace a contained text file only when the policy permits it."), fileProperties);
+    const QJsonObject anchoredEdit{{QStringLiteral("type"), QStringLiteral("object")},
+        {QStringLiteral("properties"), QJsonObject{{QStringLiteral("start_line"), integerProperty()},
+                                                     {QStringLiteral("end_line"), integerProperty()},
+                                                     {QStringLiteral("expected_text"), stringProperty()},
+                                                     {QStringLiteral("replacement"), stringProperty()}}},
+        {QStringLiteral("required"), QJsonArray{QStringLiteral("start_line"), QStringLiteral("end_line"),
+                                                   QStringLiteral("expected_text"), QStringLiteral("replacement")}}};
+    const QJsonObject patchProperties{{QStringLiteral("path"), stringProperty()},
+        {QStringLiteral("edits"), QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
+                                                 {QStringLiteral("items"), anchoredEdit}}}};
+    addTool(QStringLiteral("propose_file_patch"), QStringLiteral("Apply only small, exact anchored line edits. Never replace the complete file; each edit must include the one-based inclusive line range, exact expected existing text, and replacement."), patchProperties);
     addTool(QStringLiteral("propose_create_file"), QStringLiteral("Create a new contained text file only when the policy permits it."), fileProperties);
     addTool(QStringLiteral("propose_rename_path"), QStringLiteral("Request a reviewed rename of a contained project path."),
             {{QStringLiteral("path"), stringProperty()}, {QStringLiteral("new_name"), stringProperty()}});
@@ -977,5 +1098,7 @@ QString AiAgentController::systemPrompt() const
         "Use available tools for project work and keep paths relative to the project root. Workspace Auto may complete only "
         "policy-validated low-risk operations; other actions are paused for explicit review. Never attempt shell chains, packages, "
         "network access, credentials, elevation, process control, deletion, rename, or an out-of-root path. Never claim a file "
-        "or command changed unless its tool result confirms completion. The project language is Alif, an Arabic RTL programming language.");
+        "or command changed unless its tool result confirms completion. For an existing file, use propose_file_patch only with small edits: "
+        "provide one-based start_line/end_line, the exact expected_text currently in that range, and replacement for each edit. "
+        "Never send a full-file replacement; read the file or search it first when you lack an exact anchor. The project language is Alif, an Arabic RTL programming language.");
 }

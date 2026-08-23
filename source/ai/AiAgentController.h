@@ -64,6 +64,9 @@ private:
     void appendMessage(AiChatRole role, const QString& content, const QString& toolCallId = {}, const QString& name = {});
     void appendAssistantToolCallMessage();
     void appendActivity(AiActivityKind kind, const QString& title, const QString& details = {});
+    void processCompletedStream();
+    void settleCompletedStream(quint64 generation);
+    void queueAutonomousContinuation(quint64 generation);
     void finalizeToolCalls();
     void stageToolApproval(const AiToolCall& call, const QString& reason = {});
     void stagePatchReview(const AiToolCall& call, bool automatic);
@@ -81,6 +84,8 @@ private:
     void executeTerminalCommand(const AiToolApprovalRequest& request, bool automatic = false);
     [[nodiscard]] QString executeReadOnlyTool(const AiToolCall& call, bool* success) const;
     [[nodiscard]] QString executeFileMutation(const AiToolCall& call, bool* success) const;
+    [[nodiscard]] QString targetedPatchText(const QJsonObject& arguments, const QString& originalText,
+                                            QString* error) const;
     [[nodiscard]] QString canonicalProjectPath(const QString& relativePath) const;
     [[nodiscard]] QJsonArray toolDefinitions() const;
     [[nodiscard]] QString systemPrompt() const;
@@ -109,6 +114,10 @@ private:
     int m_autonomousStepCount = 0;
     int m_automaticOperationsInFlight = 0;
     bool m_finalizingToolCalls = false;
+    bool m_streamCompletionQueued = false;
+    bool m_completedStreamHasToolCalls = false;
+    QString m_completedStreamReason;
+    quint64 m_lifecycleGeneration = 0;
     QHash<QString, int> m_toolSignatureCounts;
     static constexpr int kMaximumAutonomousSteps = 12;
     static constexpr int kMaximumRepeatedToolSignature = 3;
