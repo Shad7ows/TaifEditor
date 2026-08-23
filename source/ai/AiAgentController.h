@@ -50,6 +50,7 @@ signals:
     void approvalRequested(AiToolApprovalRequest request);
     void approvalResolved(QString approvalId, bool approved);
     void patchReviewRequested(AiPatchReviewRequest request);
+    void patchReviewPreviewUpdated(AiPatchReviewRequest preview);
     void patchReviewResolved(QString reviewId, bool accepted);
     void activityAdded(AiActivityEntry entry);
     void toolResultReady(QString toolCallId, QString result, bool success);
@@ -66,6 +67,7 @@ private:
     void finalizeToolCalls();
     void stageToolApproval(const AiToolCall& call, const QString& reason = {});
     void stagePatchReview(const AiToolCall& call, bool automatic);
+    void updateStreamingPatchPreview(const QString& toolCallId);
     void presentNextPatchReview();
     void resolvePatchReview(const QString& reviewId, bool accepted);
     void executeApprovedTool(const AiToolApprovalRequest& request);
@@ -99,6 +101,7 @@ private:
     QHash<QString, AiPatchReviewRequest> m_pendingPatchReviews;
     QStringList m_patchReviewOrder;
     QString m_visiblePatchReviewId;
+    QHash<QString, AiPatchReviewRequest> m_streamingPatchPreviews;
     QString m_currentAssistantText;
     QPointer<QProcess> m_commandProcess;
     QTimer m_commandTimeout;

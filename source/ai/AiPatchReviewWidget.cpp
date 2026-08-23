@@ -115,6 +115,8 @@ AiPatchReviewWidget::AiPatchReviewWidget(QWidget* const parent)
     connect(m_proposed->verticalScrollBar(), &QScrollBar::valueChanged, this, [this](const int) {
         synchronizeScrollBars(m_proposed->verticalScrollBar(), m_original->verticalScrollBar());
     });
+    m_tokenTimer.setInterval(12);
+    connect(&m_tokenTimer, &QTimer::timeout, this, &AiPatchReviewWidget::advanceStreamedToken);
     connect(m_previousChange, &QPushButton::clicked, this, [this]() { navigateChange(-1); });
     connect(m_nextChange, &QPushButton::clicked, this, [this]() { navigateChange(1); });
     connect(m_accept, &QPushButton::clicked, this, [this]() {
@@ -128,17 +130,124 @@ AiPatchReviewWidget::AiPatchReviewWidget(QWidget* const parent)
 
 void AiPatchReviewWidget::setReview(const AiPatchReviewRequest& review, const int queuePosition, const int queueSize)
 {
-    m_reviewId = review.reviewId;
-    m_title->setText(QStringLiteral("مراجعة تعديل الوكيل: %1").arg(review.relativePath));
-    m_queueLabel->setText(queueSize > 1
-        ? QStringLiteral("مراجعة %1 من %2").arg(queuePosition).arg(queueSize) : QString());
-    m_original->setPlainText(review.originalText);
-    m_proposed->setPlainText(review.proposedText);
+    Q_UNUSED(queuePosition)
+    Q_UNUSED(queueSize)
+    if (review.isStreamingPreview) {
+        beginStreamingPreview(review);
+        return;
+    }
 
-    const AiLineDiffResult diff = AiLineDiff::compare(review.originalText, review.proposedText);
-    m_summary->setText(QStringLiteral("%1 سطر مضاف، %2 سطر محذوف. لن يُحفظ الملف حتى تختار «قبول التعديل».%3")
+    if (m_streamingPreviewActive && m_displayedReview.absolutePath == review.absolutePath) {
+        m_finalReview = review;
+        m_finalReviewPending = true;
+        m_streamTarget = review.proposedText;
+        if (!m_streamTarget.startsWith(m_displayedProposal)) {
+            m_displayedProposal.clear();
+            m_proposed->clear();
+        }
+        if (m_displayedProposal == m_streamTarget) {
+            finalizeStreamedReview();
+        } else if (!m_tokenTimer.isActive()) {
+            m_tokenTimer.start();
+        }
+        return;
+    }
+
+    m_tokenTimer.stop();
+    m_streamingPreviewActive = false;
+    m_finalReviewPending = false;
+    m_displayedReview = review;
+    m_displayedProposal = review.proposedText;
+    m_reviewId = review.reviewId;
+    refreshReviewPresentation(true);
+}
+
+void AiPatchReviewWidget::beginStreamingPreview(const AiPatchReviewRequest& preview)
+{
+    const bool changedFile = !m_streamingPreviewActive || m_displayedReview.absolutePath != preview.absolutePath;
+    if (changedFile) {
+        m_tokenTimer.stop();
+        m_displayedProposal.clear();
+        m_proposed->clear();
+        m_finalReviewPending = false;
+    }
+    m_streamingPreviewActive = true;
+    m_displayedReview = preview;
+    m_reviewId = preview.reviewId;
+    m_streamTarget = preview.proposedText;
+    if (!m_streamTarget.startsWith(m_displayedProposal)) {
+        m_displayedProposal.clear();
+        m_proposed->clear();
+    }
+    refreshReviewPresentation(true);
+    if (m_displayedProposal != m_streamTarget && !m_tokenTimer.isActive()) {
+        m_tokenTimer.start();
+    }
+}
+
+void AiPatchReviewWidget::advanceStreamedToken()
+{
+    if (!m_streamingPreviewActive) {
+        m_tokenTimer.stop();
+        return;
+    }
+    if (m_displayedProposal.size() >= m_streamTarget.size()) {
+        m_tokenTimer.stop();
+        if (m_finalReviewPending) {
+            finalizeStreamedReview();
+        }
+        return;
+    }
+    appendProposedText(QStringView(m_streamTarget).mid(m_displayedProposal.size(), 1));
+    if (m_displayedProposal.size() >= m_streamTarget.size()) {
+        m_tokenTimer.stop();
+        if (m_finalReviewPending) {
+            finalizeStreamedReview();
+        } else if (m_displayedProposal.endsWith(QLatin1Char('\n'))) {
+            refreshReviewPresentation(true);
+        }
+        return;
+    }
+    if (m_displayedProposal.endsWith(QLatin1Char('\n'))) {
+        refreshReviewPresentation(true);
+    }
+}
+
+void AiPatchReviewWidget::finalizeStreamedReview()
+{
+    m_tokenTimer.stop();
+    m_streamingPreviewActive = false;
+    if (m_finalReviewPending) {
+        m_displayedReview = m_finalReview;
+        m_displayedProposal = m_finalReview.proposedText;
+        m_reviewId = m_finalReview.reviewId;
+    }
+    m_finalReviewPending = false;
+    refreshReviewPresentation(true);
+}
+
+void AiPatchReviewWidget::refreshReviewPresentation(const bool updateDiff)
+{
+    const AiPatchReviewRequest& review = m_displayedReview;
+    m_title->setText(QStringLiteral("مراجعة تعديل الوكيل: %1").arg(review.relativePath));
+    m_queueLabel->clear();
+    if (m_original->toPlainText() != review.originalText) {
+        m_original->setPlainText(review.originalText);
+    }
+    if (updateDiff && m_proposed->toPlainText() != m_displayedProposal) {
+        m_proposed->setPlainText(m_displayedProposal);
+    }
+
+    const AiLineDiffResult diff = AiLineDiff::compare(review.originalText, m_displayedProposal);
+    const bool streaming = m_streamingPreviewActive || review.isStreamingPreview;
+    const QString livePrefix = streaming
+        ? QStringLiteral("يكتب النموذج الاقتراح الآن رمزاً برمز؛ يتحدث العرض مباشرة ولا يمكن حفظه بعد. ")
+        : QString();
+    m_summary->setText(livePrefix + QStringLiteral("%1 سطر مضاف، %2 سطر محذوف.%3")
         .arg(diff.summary.addedLines).arg(diff.summary.removedLines)
-        .arg(diff.summary.usedWholeDocumentFallback ? QStringLiteral(" تم تبسيط العرض للملف الكبير.") : QString()));
+        .arg(streaming ? QString()
+             : (diff.summary.usedWholeDocumentFallback ? QStringLiteral(" تم تبسيط العرض للملف الكبير.")
+                                                       : QStringLiteral(" لن يُحفظ الملف حتى تختار «قبول التعديل»."))));
 
     QVector<int> originalRows;
     QVector<int> proposedRows;
@@ -159,13 +268,33 @@ void AiPatchReviewWidget::setReview(const AiPatchReviewRequest& review, const in
     const bool hasChanges = !m_changeRows.isEmpty();
     m_previousChange->setEnabled(hasChanges);
     m_nextChange->setEnabled(hasChanges);
-    m_accept->setEnabled(review.isValid());
-    m_reject->setEnabled(review.isValid());
-    if (hasChanges) navigateChange(1);
+    m_accept->setEnabled(!streaming && review.isValid());
+    m_reject->setEnabled(!streaming && review.isValid());
+}
+
+void AiPatchReviewWidget::appendProposedText(const QStringView token)
+{
+    if (token.isEmpty()) return;
+    const QScrollBar* const scrollBar = m_proposed->verticalScrollBar();
+    const bool wasAtBottom = scrollBar->value() >= scrollBar->maximum() - 2;
+    QTextCursor cursor(m_proposed->document());
+    cursor.movePosition(QTextCursor::End);
+    cursor.insertText(token.toString());
+    m_displayedProposal.append(token);
+    if (wasAtBottom) {
+        m_proposed->verticalScrollBar()->setValue(m_proposed->verticalScrollBar()->maximum());
+    }
 }
 
 void AiPatchReviewWidget::clearReview()
 {
+    m_tokenTimer.stop();
+    m_streamingPreviewActive = false;
+    m_finalReviewPending = false;
+    m_displayedReview = {};
+    m_finalReview = {};
+    m_streamTarget.clear();
+    m_displayedProposal.clear();
     m_reviewId.clear();
     m_changeRows.clear();
     m_currentChange = -1;

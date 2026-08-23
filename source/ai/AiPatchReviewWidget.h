@@ -4,6 +4,8 @@
 
 #include <QWidget>
 
+#include <QTimer>
+
 class QLabel;
 class QPlainTextEdit;
 class QPushButton;
@@ -32,8 +34,20 @@ private:
     void synchronizeScrollBars(QScrollBar* source, QScrollBar* target);
     void highlightRows(const QVector<int>& originalRows, const QVector<int>& proposedRows);
     void navigateChange(int direction);
+    void beginStreamingPreview(const AiPatchReviewRequest& preview);
+    void advanceStreamedToken();
+    void finalizeStreamedReview();
+    void refreshReviewPresentation(bool updateDiff);
+    void appendProposedText(QStringView token);
 
     QString m_reviewId;
+    AiPatchReviewRequest m_displayedReview;
+    AiPatchReviewRequest m_finalReview;
+    QString m_streamTarget;
+    QString m_displayedProposal;
+    QTimer m_tokenTimer;
+    bool m_streamingPreviewActive = false;
+    bool m_finalReviewPending = false;
     QVector<int> m_changeRows;
     int m_currentChange = -1;
     bool m_synchronizingScroll = false;

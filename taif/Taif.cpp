@@ -274,6 +274,8 @@ void Taif::setupUI() {
     aiChatDock->hide();
     connect(aiChatPanel->controller(), &AiAgentController::patchReviewRequested,
             this, &Taif::showAiPatchReview);
+    connect(aiChatPanel->controller(), &AiAgentController::patchReviewPreviewUpdated,
+            this, &Taif::showAiPatchReview);
     connect(aiChatPanel->controller(), &AiAgentController::patchReviewResolved,
             this, [this](const QString&, const bool) { restoreEditorWorkspace(); });
     connect(aiPatchReviewWidget, &AiPatchReviewWidget::acceptRequested,

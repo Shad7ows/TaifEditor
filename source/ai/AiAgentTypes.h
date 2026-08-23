@@ -120,11 +120,15 @@ struct AiPatchReviewRequest final {
     QString proposedText;
     QString originalSha256;
     bool automatic = false;
+    // True only while the model is still emitting an incomplete tool argument.
+    // Preview data is never eligible for Accept or filesystem mutation.
+    bool isStreamingPreview = false;
     QDateTime createdAt = QDateTime::currentDateTimeUtc();
 
     [[nodiscard]] bool isValid() const
     {
-        return !reviewId.isEmpty() && toolCall.kind == AiToolKind::ProposeFilePatch
+        return !isStreamingPreview && !reviewId.isEmpty()
+            && toolCall.kind == AiToolKind::ProposeFilePatch
             && !absolutePath.isEmpty() && !originalSha256.isEmpty();
     }
 };

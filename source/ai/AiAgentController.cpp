@@ -73,6 +73,7 @@ AiAgentController::AiAgentController(QObject* const parent)
             [this](const QString& id, const QString& name, const QString& argumentsFragment) {
         if (!name.isEmpty()) m_toolNames.insert(id, name);
         m_toolArguments[id].append(argumentsFragment);
+        updateStreamingPatchPreview(id);
     });
     connect(m_client, &LmStudioClient::streamFinished, this, [this](const QString& reason) {
         const bool hasToolCalls = !m_toolArguments.isEmpty();
@@ -86,6 +87,11 @@ AiAgentController::AiAgentController(QObject* const parent)
         finalizeToolCalls();
         m_finalizingToolCalls = false;
         m_currentAssistantText.clear();
+        const QList<AiPatchReviewRequest> unfinishedPreviews = m_streamingPatchPreviews.values();
+        m_streamingPatchPreviews.clear();
+        for (const AiPatchReviewRequest& preview : unfinishedPreviews) {
+            emit patchReviewResolved(preview.reviewId, false);
+        }
         m_toolNames.clear();
         m_toolArguments.clear();
         if (reason == QStringLiteral("cancelled")) {
@@ -191,6 +197,13 @@ void AiAgentController::submitPrompt(const QString& prompt, const bool includeAc
 void AiAgentController::stop()
 {
     m_workspaceAutoTaskActive = false;
+    if (!m_streamingPatchPreviews.isEmpty()) {
+        const QList<AiPatchReviewRequest> previews = m_streamingPatchPreviews.values();
+        m_streamingPatchPreviews.clear();
+        for (const AiPatchReviewRequest& preview : previews) {
+            emit patchReviewResolved(preview.reviewId, false);
+        }
+    }
     if (!m_pendingPatchReviews.isEmpty()) {
         const QStringList reviewIds = m_patchReviewOrder;
         m_pendingPatchReviews.clear();
@@ -223,6 +236,7 @@ void AiAgentController::clearConversation()
     m_pendingPatchReviews.clear();
     m_patchReviewOrder.clear();
     m_visiblePatchReviewId.clear();
+    m_streamingPatchPreviews.clear();
     m_currentAssistantText.clear();
     m_toolNames.clear();
     m_toolArguments.clear();
@@ -397,8 +411,84 @@ void AiAgentController::stageToolApproval(const AiToolCall& call, const QString&
     emit approvalRequested(request);
 }
 
+void AiAgentController::updateStreamingPatchPreview(const QString& toolCallId)
+{
+    if (m_toolNames.value(toolCallId) != QStringLiteral("propose_file_patch")) {
+        return;
+    }
+    const QString rawArguments = m_toolArguments.value(toolCallId);
+    const auto extractString = [&rawArguments](const QString& key, bool* const complete) -> QString {
+        *complete = false;
+        const int keyPosition = rawArguments.indexOf(QStringLiteral("\"%1\"").arg(key));
+        if (keyPosition < 0) return {};
+        const int colon = rawArguments.indexOf(QLatin1Char(':'), keyPosition + key.size() + 2);
+        if (colon < 0) return {};
+        int position = colon + 1;
+        while (position < rawArguments.size() && rawArguments.at(position).isSpace()) ++position;
+        if (position >= rawArguments.size() || rawArguments.at(position) != QLatin1Char('\"')) return {};
+        ++position;
+        QString value;
+        bool escaped = false;
+        for (; position < rawArguments.size(); ++position) {
+            const QChar character = rawArguments.at(position);
+            if (escaped) {
+                switch (character.unicode()) {
+                case 'n': value.append(QLatin1Char('\n')); break;
+                case 'r': value.append(QLatin1Char('\r')); break;
+                case 't': value.append(QLatin1Char('\t')); break;
+                default: value.append(character); break;
+                }
+                escaped = false;
+                continue;
+            }
+            if (character == QLatin1Char('\\')) {
+                escaped = true;
+            } else if (character == QLatin1Char('\"')) {
+                *complete = true;
+                break;
+            } else {
+                value.append(character);
+            }
+        }
+        return value;
+    };
+
+    bool pathComplete = false;
+    const QString relativePath = extractString(QStringLiteral("path"), &pathComplete);
+    if (!pathComplete || relativePath.trimmed().isEmpty()) {
+        return;
+    }
+    const QString absolutePath = canonicalProjectPath(relativePath);
+    QFile source(absolutePath);
+    if (absolutePath.isEmpty() || !source.open(QIODevice::ReadOnly) || source.size() > kMaximumFileBytes) {
+        return;
+    }
+    const QByteArray originalBytes = source.read(kMaximumFileBytes + 1);
+    if (originalBytes.size() > kMaximumFileBytes || originalBytes.contains('\0')) {
+        return;
+    }
+    bool contentComplete = false;
+    const QString proposedText = extractString(QStringLiteral("content"), &contentComplete);
+    AiPatchReviewRequest preview;
+    preview.reviewId = QStringLiteral("stream-%1").arg(toolCallId);
+    preview.toolCall.id = toolCallId;
+    preview.toolCall.kind = AiToolKind::ProposeFilePatch;
+    preview.toolCall.name = QStringLiteral("propose_file_patch");
+    preview.toolCall.arguments.insert(QStringLiteral("path"), relativePath);
+    preview.relativePath = QDir(m_projectRoot).relativeFilePath(absolutePath);
+    preview.absolutePath = absolutePath;
+    preview.originalText = QString::fromUtf8(originalBytes);
+    preview.proposedText = proposedText;
+    preview.originalSha256 = QString::fromLatin1(QCryptographicHash::hash(originalBytes, QCryptographicHash::Sha256).toHex());
+    preview.automatic = m_workspaceAutoTaskActive;
+    preview.isStreamingPreview = true;
+    m_streamingPatchPreviews.insert(toolCallId, preview);
+    emit patchReviewPreviewUpdated(preview);
+}
+
 void AiAgentController::stagePatchReview(const AiToolCall& call, const bool automatic)
 {
+    m_streamingPatchPreviews.remove(call.id);
     const QString signature = aiToolKindName(call.kind) + QLatin1Char(':')
         + QString::fromUtf8(QJsonDocument(call.arguments).toJson(QJsonDocument::Compact));
     if (m_toolSignatureCounts.value(signature) >= kMaximumRepeatedToolSignature) {

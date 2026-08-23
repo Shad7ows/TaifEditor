@@ -130,6 +130,8 @@ private slots:
     void workspaceAutoProtectsUnsavedOpenFile();
     void aiPatchStagesForReviewAndWritesOnlyAfterAcceptance();
     void aiPatchReviewWidgetPresentsReadOnlyLtrSplitAndAcceptAction();
+    void aiPatchPreviewAppearsAndUpdatesFromStreamedArguments();
+    void aiPatchReviewWidgetStreamsProposedTokensBeforeEnablingAcceptance();
     void mainWindowSwitchesToAiPatchReviewWorkspace();
     void aiAgentControllerConstructsAndDestroys();
     void aiChatPanelConstructsAndDestroys();
@@ -1086,6 +1088,76 @@ void DockableToolsTest::aiPatchReviewWidgetPresentsReadOnlyLtrSplitAndAcceptActi
     QCOMPARE(accepted.constFirst().constFirst().toString(), review.reviewId);
 }
 
+void DockableToolsTest::aiPatchPreviewAppearsAndUpdatesFromStreamedArguments()
+{
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    QFile source(QDir(project.path()).filePath(QStringLiteral("main.alif")));
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("اطبع(1)\n");
+    source.close();
+
+    AiAgentController controller;
+    controller.setProjectRoot(project.path());
+    QSignalSpy previews(&controller, &AiAgentController::patchReviewPreviewUpdated);
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "toolCallDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("live-patch-1")),
+                                      Q_ARG(QString, QStringLiteral("propose_file_patch")),
+                                      Q_ARG(QString, QStringLiteral("{\"path\":\"main.alif\",\"content\":\"اطبع("))));
+    QTRY_COMPARE(previews.count(), 1);
+    const AiPatchReviewRequest firstPreview = previews.constFirst().constFirst().value<AiPatchReviewRequest>();
+    QVERIFY(firstPreview.isStreamingPreview);
+    QCOMPARE(firstPreview.relativePath, QStringLiteral("main.alif"));
+    QCOMPARE(firstPreview.originalText, QStringLiteral("اطبع(1)\r\n"));
+    QCOMPARE(firstPreview.proposedText, QStringLiteral("اطبع("));
+    QVERIFY(!firstPreview.isValid());
+
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "toolCallDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("live-patch-1")),
+                                      Q_ARG(QString, QString()),
+                                      Q_ARG(QString, QStringLiteral("2)\\n\"}"))));
+    QTRY_COMPARE(previews.count(), 2);
+    const AiPatchReviewRequest finalPreview = previews.constLast().constFirst().value<AiPatchReviewRequest>();
+    QVERIFY(finalPreview.isStreamingPreview);
+    QCOMPARE(finalPreview.proposedText, QStringLiteral("اطبع(2)\n"));
+    QFile unchanged(source.fileName());
+    QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("اطبع(1)\n"));
+}
+
+void DockableToolsTest::aiPatchReviewWidgetStreamsProposedTokensBeforeEnablingAcceptance()
+{
+    AiPatchReviewWidget widget;
+    widget.resize(1000, 640);
+    widget.show();
+    AiPatchReviewRequest preview;
+    preview.reviewId = QStringLiteral("stream-review");
+    preview.toolCall.id = QStringLiteral("stream-call");
+    preview.toolCall.kind = AiToolKind::ProposeFilePatch;
+    preview.toolCall.name = QStringLiteral("propose_file_patch");
+    preview.relativePath = QStringLiteral("main.alif");
+    preview.absolutePath = QStringLiteral("C:/workspace/main.alif");
+    preview.originalSha256 = QStringLiteral("snapshot");
+    preview.originalText = QStringLiteral("اطبع(1)\n");
+    preview.proposedText = QStringLiteral("اطبع(2)\nاطبع(3)\nاطبع(4)\n");
+    preview.isStreamingPreview = true;
+    widget.setReview(preview);
+
+    auto* const accept = widget.findChild<QPushButton*>(QStringLiteral("AiPatchReviewAccept"));
+    QVERIFY(accept != nullptr);
+    QVERIFY(!accept->isEnabled());
+    QTRY_VERIFY_WITH_TIMEOUT(widget.proposedPane()->toPlainText().size() > 0, 300);
+    QVERIFY(widget.proposedPane()->toPlainText().size() < preview.proposedText.size());
+
+    AiPatchReviewRequest finalReview = preview;
+    finalReview.reviewId = QStringLiteral("final-review");
+    finalReview.isStreamingPreview = false;
+    widget.setReview(finalReview);
+    QTRY_COMPARE_WITH_TIMEOUT(widget.proposedPane()->toPlainText(), finalReview.proposedText, 1000);
+    QCOMPARE(widget.reviewId(), finalReview.reviewId);
+    QVERIFY(accept->isEnabled());
+}
+
 void DockableToolsTest::mainWindowSwitchesToAiPatchReviewWorkspace()
 {
     Taif window({}, nullptr, true);
@@ -1109,10 +1181,22 @@ void DockableToolsTest::mainWindowSwitchesToAiPatchReviewWorkspace()
     review.originalSha256 = QStringLiteral("snapshot");
     review.originalText = QStringLiteral("اطبع(1)\n");
     review.proposedText = QStringLiteral("اطبع(2)\n");
+    AiPatchReviewRequest preview = review;
+    preview.reviewId = QStringLiteral("stream-window-review");
+    preview.isStreamingPreview = true;
+    QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewPreviewUpdated", Qt::DirectConnection,
+                                      Q_ARG(AiPatchReviewRequest, preview)));
+    QTRY_COMPARE(stack->currentWidget(), static_cast<QWidget*>(reviewWidget));
+    QCOMPARE(reviewWidget->reviewId(), preview.reviewId);
+    auto* const accept = reviewWidget->findChild<QPushButton*>(QStringLiteral("AiPatchReviewAccept"));
+    QVERIFY(accept != nullptr);
+    QVERIFY(!accept->isEnabled());
+
     QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewRequested", Qt::DirectConnection,
                                       Q_ARG(AiPatchReviewRequest, review)));
     QTRY_COMPARE(stack->currentWidget(), static_cast<QWidget*>(reviewWidget));
-    QCOMPARE(reviewWidget->reviewId(), review.reviewId);
+    QTRY_COMPARE_WITH_TIMEOUT(reviewWidget->reviewId(), review.reviewId, 1000);
+    QVERIFY(accept->isEnabled());
 
     QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewResolved", Qt::DirectConnection,
                                       Q_ARG(QString, review.reviewId), Q_ARG(bool, false)));
