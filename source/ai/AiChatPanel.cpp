@@ -71,7 +71,6 @@ AiChatPanel::AiChatPanel(QWidget* const parent)
     , m_controller(new AiAgentController())
 {
     setObjectName(QStringLiteral("AiChatPanel"));
-    setLayoutDirection(Qt::RightToLeft);
     setMinimumWidth(330);
 
     auto* const layout = new QVBoxLayout(this);
@@ -126,8 +125,6 @@ AiChatPanel::AiChatPanel(QWidget* const parent)
 
     m_transcript = new QTextBrowser(this);
     m_transcript->setObjectName(QStringLiteral("AiChatTranscript"));
-    m_transcript->setLayoutDirection(Qt::RightToLeft);
-    m_transcript->document()->setDefaultTextOption(QTextOption(Qt::AlignRight));
     m_transcript->setReadOnly(true);
     m_transcript->setOpenExternalLinks(false);
     layout->addWidget(m_transcript, 4);
@@ -141,6 +138,12 @@ AiChatPanel::AiChatPanel(QWidget* const parent)
     layout->addLayout(contextToggles);
 
     m_composer = new QPlainTextEdit(this);
+    // set RTL
+    QTextDocument* editorDocument = m_transcript->document();
+    QTextOption option = editorDocument->defaultTextOption();
+    option.setTextDirection(Qt::RightToLeft);
+    option.setAlignment(Qt::AlignRight);
+    editorDocument->setDefaultTextOption(option);
     m_composer->setObjectName(QStringLiteral("AiChatComposer"));
     m_composer->setPlaceholderText(QStringLiteral("اكتب طلبك للمساعد المحلي…"));
     m_composer->setMaximumBlockCount(2000);

@@ -25,7 +25,14 @@ QPlainTextEdit* createSourcePane(const QString& objectName, const QString& place
     pane->setReadOnly(true);
     pane->setUndoRedoEnabled(false);
     pane->setLineWrapMode(QPlainTextEdit::NoWrap);
-    pane->setLayoutDirection(Qt::LeftToRight);
+
+    // set RTL
+    QTextDocument* editorDocument = pane->document();
+    QTextOption option = editorDocument->defaultTextOption();
+    option.setTextDirection(Qt::RightToLeft);
+    option.setAlignment(Qt::AlignRight);
+    editorDocument->setDefaultTextOption(option);
+
     pane->setPlaceholderText(placeholder);
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
     font.setPointSize(qMax(9, font.pointSize()));
