@@ -9,6 +9,7 @@
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPlainTextEdit>
 #include <QtWidgets/QStackedWidget>
+
 #include <QtGui/QImage>
 #include <QtGui/QTextDocument>
 #include <QtCore/QDir>
@@ -58,7 +59,7 @@
 #include "AiAssistantSettings.h"
 #include "AiLineDiff.h"
 #include "AiTextPatch.h"
-#include "AiPatchReviewWidget.h"
+
 #include "AiWorkspacePolicy.h"
 #include "AiAgentController.h"
 #include "LmStudioClient.h"
@@ -132,10 +133,14 @@ private slots:
     void workspaceAutoCompletesSafeReadAndContinues();
     void workspaceAutoProtectsUnsavedOpenFile();
     void aiPatchStagesForReviewAndWritesOnlyAfterAcceptance();
-    void aiPatchReviewWidgetPresentsReadOnlyLtrSplitAndAcceptAction();
-    void aiPatchPreviewAppearsAndUpdatesFromStreamedArguments();
-    void aiPatchReviewWidgetStreamsProposedTokensBeforeEnablingAcceptance();
-    void mainWindowSwitchesToAiPatchReviewWorkspace();
+    void workspaceAutoDefersSequentialPatchesUntilOneFinalInlineReview();
+
+    void aiPatchPreviewAppearsBeforeExpectedAnchorCompletes();
+    void assistantEditEventStreamsBeforeFinalPatchValidation();
+    void finalPatchPromotesAssistantPreviewWithoutResolutionClear();
+    void editorRendersInlineAiProjectionAndFinalApproval();
+    void mainWindowUsesNormalEditorTabsForAiInlineReview();
+
     void aiAgentControllerConstructsAndDestroys();
     void aiChatPanelConstructsAndDestroys();
     void aiPanelPresentsWorkspaceAutoControlsAndHidesRawToolPayload();
@@ -1025,8 +1030,12 @@ void DockableToolsTest::workspaceAutoProtectsUnsavedOpenFile()
     const AiPatchReviewRequest review = reviews.constFirst().constFirst().value<AiPatchReviewRequest>();
     QCOMPARE(review.toolCall.id, QStringLiteral("patch-1"));
     controller.acceptPatchReview(review.reviewId);
-    QTRY_COMPARE_WITH_TIMEOUT(toolResults.count(), 1, 2000);
-    QVERIFY(!toolResults.constFirst().at(2).toBool());
+    // Workspace Auto receives one non-mutating interim result while the
+    // patch remains visually deferred, then the guarded write result on Apply.
+    QTRY_COMPARE_WITH_TIMEOUT(toolResults.count(), 2, 2000);
+    QVERIFY(toolResults.constFirst().at(2).toBool());
+    QVERIFY(!toolResults.constLast().at(2).toBool());
+
     controller.stop();
     QFile unchanged(sourcePath);
     QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
@@ -1106,43 +1115,91 @@ void DockableToolsTest::aiPatchStagesForReviewAndWritesOnlyAfterAcceptance()
     QCOMPARE(QString::fromUtf8(updated.readAll()), QStringLiteral("قبل\nاطبع(2)\nبعد\n"));
 }
 
-void DockableToolsTest::aiPatchReviewWidgetPresentsReadOnlyLtrSplitAndAcceptAction()
+void DockableToolsTest::workspaceAutoDefersSequentialPatchesUntilOneFinalInlineReview()
 {
-    AiPatchReviewWidget widget;
-    widget.resize(1000, 640);
-    widget.show();
-    AiPatchReviewRequest review;
-    review.reviewId = QStringLiteral("review-1");
-    review.toolCall.id = QStringLiteral("call-1");
-    review.toolCall.kind = AiToolKind::ProposeFilePatch;
-    review.toolCall.name = QStringLiteral("propose_file_patch");
-    review.relativePath = QStringLiteral("source/main.alif");
-    review.absolutePath = QStringLiteral("C:/workspace/source/main.alif");
-    review.originalSha256 = QStringLiteral("snapshot");
-    review.originalText = QStringLiteral("اطبع(1)\n");
-    review.proposedText = QStringLiteral("اطبع(2)\n");
-    widget.setReview(review);
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    const QString sourcePath = QDir(project.path()).filePath(QStringLiteral("main.alif"));
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("أ\nب\nج\nد\n");
+    source.close();
 
-    QCOMPARE(widget.reviewId(), review.reviewId);
-    QVERIFY(widget.originalPane()->isReadOnly());
-    QVERIFY(widget.proposedPane()->isReadOnly());
-    QCOMPARE(widget.originalPane()->layoutDirection(), Qt::LeftToRight);
-    QCOMPARE(widget.proposedPane()->layoutDirection(), Qt::LeftToRight);
-    QCOMPARE(widget.originalPane()->toPlainText(), review.originalText);
-    QCOMPARE(widget.proposedPane()->toPlainText(), review.proposedText);
-    auto* const accept = widget.findChild<QPushButton*>(QStringLiteral("AiPatchReviewAccept"));
-    auto* const reject = widget.findChild<QPushButton*>(QStringLiteral("AiPatchReviewReject"));
-    QVERIFY(accept != nullptr);
-    QVERIFY(reject != nullptr);
-    QVERIFY(accept->isEnabled());
-    QVERIFY(reject->isEnabled());
-    QSignalSpy accepted(&widget, &AiPatchReviewWidget::acceptRequested);
-    accept->click();
-    QCOMPARE(accepted.count(), 1);
-    QCOMPARE(accepted.constFirst().constFirst().toString(), review.reviewId);
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost));
+    int requestCount = 0;
+    connect(&server, &QTcpServer::newConnection, &server, [&]() {
+        auto* const socket = server.nextPendingConnection();
+        connect(socket, &QTcpSocket::readyRead, &server, [&, socket]() {
+            if (socket->property("taifResponded").toBool()) {
+                socket->readAll();
+                return;
+            }
+            const QByteArray request = socket->readAll();
+            if (!request.contains("\r\n\r\n")) {
+                return;
+            }
+            socket->setProperty("taifResponded", true);
+            ++requestCount;
+            socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n");
+            QJsonObject delta;
+            if (requestCount <= 2) {
+                const int line = requestCount == 1 ? 2 : 4;
+                const QString expected = requestCount == 1 ? QStringLiteral("ب") : QStringLiteral("د");
+                const QString replacement = requestCount == 1 ? QStringLiteral("ب1") : QStringLiteral("د2");
+                const QJsonObject arguments{{QStringLiteral("path"), QStringLiteral("main.alif")},
+                    {QStringLiteral("edits"), QJsonArray{QJsonObject{{QStringLiteral("start_line"), line},
+                        {QStringLiteral("end_line"), line}, {QStringLiteral("expected_text"), expected},
+                        {QStringLiteral("replacement"), replacement}}}}};
+                const QJsonObject function{{QStringLiteral("name"), QStringLiteral("propose_file_patch")},
+                    {QStringLiteral("arguments"), QString::fromUtf8(QJsonDocument(arguments).toJson(QJsonDocument::Compact))}};
+                const QJsonObject toolCall{{QStringLiteral("index"), 0},
+                    {QStringLiteral("id"), QStringLiteral("deferred-%1").arg(requestCount)},
+                    {QStringLiteral("type"), QStringLiteral("function")}, {QStringLiteral("function"), function}};
+                delta.insert(QStringLiteral("tool_calls"), QJsonArray{toolCall});
+            } else {
+                delta.insert(QStringLiteral("content"), QStringLiteral("اكتملت الأمثلة."));
+            }
+            const QJsonObject envelope{{QStringLiteral("choices"), QJsonArray{QJsonObject{{QStringLiteral("delta"), delta}}}}};
+            socket->write("data: ");
+            socket->write(QJsonDocument(envelope).toJson(QJsonDocument::Compact));
+            socket->write("\n\ndata: [DONE]\n\n");
+            socket->disconnectFromHost();
+        });
+    });
+
+    AiAgentController controller;
+    AiAssistantSettings settings = controller.client()->settings();
+    settings.endpointUrl = QStringLiteral("http://127.0.0.1:%1/v1").arg(server.serverPort());
+    settings.requestTimeoutMilliseconds = 3000;
+    settings.autonomyMode = AiAutonomyMode::WorkspaceAuto;
+    controller.client()->setSettings(settings);
+    controller.setProjectRoot(project.path());
+    controller.setSelectedModel(QStringLiteral("local-model"));
+    QSignalSpy previews(&controller, &AiAgentController::patchReviewPreviewUpdated);
+    QSignalSpy reviews(&controller, &AiAgentController::patchReviewRequested);
+    controller.submitPrompt(QStringLiteral("أضف مثالين صغيرين."), false, false);
+
+    QTRY_COMPARE_WITH_TIMEOUT(reviews.count(), 1, 6000);
+    QCOMPARE(requestCount, 3);
+    QVERIFY(previews.count() >= 2);
+    const AiPatchReviewRequest finalReview = reviews.constFirst().constFirst().value<AiPatchReviewRequest>();
+    QVERIFY(finalReview.isCumulativeInlineReview);
+    QCOMPARE(finalReview.originalText, QStringLiteral("أ\r\nب\r\nج\r\nد\r\n"));
+    QCOMPARE(finalReview.proposedText, QStringLiteral("أ\r\nب1\r\nج\r\nد2\r\n"));
+
+    QFile unchanged(sourcePath);
+    QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("أ\nب\nج\nد\n"));
+    unchanged.close();
+    controller.acceptPatchReview(finalReview.reviewId);
+    QTRY_VERIFY_WITH_TIMEOUT(controller.state() == AiAgentState::Idle, 2000);
+    QFile updated(sourcePath);
+    QVERIFY(updated.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(updated.readAll()), QStringLiteral("أ\nب1\nج\nد2\n"));
 }
 
-void DockableToolsTest::aiPatchPreviewAppearsAndUpdatesFromStreamedArguments()
+void DockableToolsTest::aiPatchPreviewAppearsBeforeExpectedAnchorCompletes()
 {
     QTemporaryDir project;
     QVERIFY(project.isValid());
@@ -1157,115 +1214,188 @@ void DockableToolsTest::aiPatchPreviewAppearsAndUpdatesFromStreamedArguments()
     QVERIFY(QMetaObject::invokeMethod(controller.client(), "toolCallDelta", Qt::DirectConnection,
                                       Q_ARG(QString, QStringLiteral("live-patch-1")),
                                       Q_ARG(QString, QStringLiteral("propose_file_patch")),
-                                      Q_ARG(QString, QStringLiteral("{\"path\":\"main.alif\",\"edits\":[{\"start_line\":2,\"end_line\":2,\"expected_text\":\"اطبع(1)\",\"replacement\":\"اطبع("))));
+                                      Q_ARG(QString, QStringLiteral("{\"path\":\"main.alif\",\"edits\":[{\"start_line\":2,\"end_line\":2,\"replacement\":\"اطبع(\\u0"))));
     QTRY_COMPARE(previews.count(), 1);
     const AiPatchReviewRequest firstPreview = previews.constFirst().constFirst().value<AiPatchReviewRequest>();
     QVERIFY(firstPreview.isStreamingPreview);
-    QCOMPARE(firstPreview.relativePath, QStringLiteral("main.alif"));
-    QCOMPARE(firstPreview.originalText, QStringLiteral("قبل\r\nاطبع(1)\r\nبعد\r\n"));
-    QCOMPARE(firstPreview.proposedText, firstPreview.originalText);
     QCOMPARE(firstPreview.streamingStartLine, 2);
     QCOMPARE(firstPreview.streamingEndLine, 2);
-    QCOMPARE(firstPreview.streamingExpectedText, QStringLiteral("اطبع(1)"));
+    // The incomplete Unicode escape is held back until all four hex digits arrive.
     QCOMPARE(firstPreview.streamingReplacement, QStringLiteral("اطبع("));
+    QVERIFY(firstPreview.streamingExpectedText.isEmpty());
     QVERIFY(!firstPreview.isValid());
 
     QVERIFY(QMetaObject::invokeMethod(controller.client(), "toolCallDelta", Qt::DirectConnection,
                                       Q_ARG(QString, QStringLiteral("live-patch-1")),
                                       Q_ARG(QString, QString()),
-                                      Q_ARG(QString, QStringLiteral("2)\"}]}"))));
+                                      Q_ARG(QString, QStringLiteral("628)\",\"expected_text\":\"اطبع(1)\"}]}"))));
     QTRY_COMPARE(previews.count(), 2);
     const AiPatchReviewRequest finalPreview = previews.constLast().constFirst().value<AiPatchReviewRequest>();
-    QVERIFY(finalPreview.isStreamingPreview);
-    QCOMPARE(finalPreview.proposedText, finalPreview.originalText);
-    QCOMPARE(finalPreview.streamingReplacement, QStringLiteral("اطبع(2)"));
+    QCOMPARE(finalPreview.streamingReplacement, QStringLiteral("اطبع(ب)"));
     QFile unchanged(source.fileName());
     QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
     QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("قبل\nاطبع(1)\nبعد\n"));
 }
 
-void DockableToolsTest::aiPatchReviewWidgetStreamsProposedTokensBeforeEnablingAcceptance()
+void DockableToolsTest::assistantEditEventStreamsBeforeFinalPatchValidation()
 {
-    AiPatchReviewWidget widget;
-    widget.resize(1000, 640);
-    widget.show();
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    QFile source(QDir(project.path()).filePath(QStringLiteral("main.alif")));
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("قبل\nاطبع(1)\nبعد\n");
+    source.close();
+
+    AiAgentController controller;
+    controller.setProjectRoot(project.path());
+    QSignalSpy previews(&controller, &AiAgentController::patchReviewPreviewUpdated);
+    QSignalSpy transcript(&controller, &AiAgentController::assistantTextUpdated);
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "streamDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("سأضيف مثالاً.\n[[TAIF_EDIT path=\"main.alif\" start=2 end=2]]اطب"))));
+    QTRY_COMPARE(previews.count(), 1);
+    QCOMPARE(previews.constFirst().constFirst().value<AiPatchReviewRequest>().streamingReplacement,
+             QStringLiteral("اطب"));
+    QVERIFY(!transcript.constLast().constFirst().toString().contains(QStringLiteral("TAIF_EDIT")));
+
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "streamDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("ع(2)"))));
+    QTRY_COMPARE(previews.count(), 2);
+    const AiPatchReviewRequest preview = previews.constLast().constFirst().value<AiPatchReviewRequest>();
+    QCOMPARE(preview.streamingReplacement, QStringLiteral("اطبع(2)"));
+    QVERIFY(preview.isStreamingPreview);
+    QVERIFY(!preview.isValid());
+
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "streamDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("[[/TAIF_EDIT]]"))));
+    QTRY_VERIFY(!transcript.constLast().constFirst().toString().contains(QStringLiteral("TAIF_EDIT")));
+    QFile unchanged(source.fileName());
+    QVERIFY(unchanged.open(QIODevice::ReadOnly | QIODevice::Text));
+    QCOMPARE(QString::fromUtf8(unchanged.readAll()), QStringLiteral("قبل\nاطبع(1)\nبعد\n"));
+}
+
+void DockableToolsTest::finalPatchPromotesAssistantPreviewWithoutResolutionClear()
+{
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    QFile source(QDir(project.path()).filePath(QStringLiteral("main.alif")));
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("قبل\nاطبع(1)\nبعد\n");
+    source.close();
+
+    AiAgentController controller;
+    controller.setProjectRoot(project.path());
+    QSignalSpy previews(&controller, &AiAgentController::patchReviewPreviewUpdated);
+    QSignalSpy finalReviews(&controller, &AiAgentController::patchReviewRequested);
+    QSignalSpy resolutions(&controller, &AiAgentController::patchReviewResolved);
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "streamDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("[[TAIF_EDIT path=\"main.alif\" start=2 end=2]]اطبع(2)[[/TAIF_EDIT]]"))));
+    QTRY_COMPARE(previews.count(), 1);
+    const QString previewId = previews.constFirst().constFirst().value<AiPatchReviewRequest>().reviewId;
+
+    const QString patchJson = QString::fromUtf8(QJsonDocument(QJsonObject{
+        {QStringLiteral("path"), QStringLiteral("main.alif")},
+        {QStringLiteral("edits"), QJsonArray{QJsonObject{{QStringLiteral("start_line"), 2},
+            {QStringLiteral("end_line"), 2}, {QStringLiteral("expected_text"), QStringLiteral("اطبع(1)")},
+            {QStringLiteral("replacement"), QStringLiteral("اطبع(2)")}}}}}).toJson(QJsonDocument::Compact));
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "toolCallDelta", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("final-patch")),
+                                      Q_ARG(QString, QStringLiteral("propose_file_patch")),
+                                      Q_ARG(QString, patchJson)));
+    QVERIFY(QMetaObject::invokeMethod(controller.client(), "streamFinished", Qt::DirectConnection,
+                                      Q_ARG(QString, QStringLiteral("stop"))));
+    QTRY_COMPARE(finalReviews.count(), 1);
+    const AiPatchReviewRequest finalReview = finalReviews.constFirst().constFirst().value<AiPatchReviewRequest>();
+    QCOMPARE(finalReview.supersedesPreviewReviewId, previewId);
+    QTest::qWait(20);
+    QCOMPARE(resolutions.count(), 0);
+}
+
+void DockableToolsTest::editorRendersInlineAiProjectionAndFinalApproval()
+{
+    QTemporaryDir project;
+    QVERIFY(project.isValid());
+    const QString sourcePath = QDir(project.path()).filePath(QStringLiteral("main.alif"));
+    QFile source(sourcePath);
+    QVERIFY(source.open(QIODevice::WriteOnly | QIODevice::Text));
+    source.write("قبل\nاطبع(1)\nوسط\nاطبع(3)\nبعد\n");
+    source.close();
+
+    TEditor editor;
+    editor.filePath = sourcePath;
+    editor.setPlainText(QStringLiteral("قبل\nاطبع(1)\nوسط\nاطبع(3)\nبعد\n"));
+    editor.document()->setModified(false);
+    editor.resize(900, 500);
+    editor.show();
+
     AiPatchReviewRequest preview;
     preview.reviewId = QStringLiteral("stream-review");
-    preview.toolCall.id = QStringLiteral("stream-call");
+    preview.toolCall.id = QStringLiteral("call-1");
     preview.toolCall.kind = AiToolKind::ProposeFilePatch;
     preview.toolCall.name = QStringLiteral("propose_file_patch");
+    preview.absolutePath = sourcePath;
     preview.relativePath = QStringLiteral("main.alif");
-    preview.absolutePath = QStringLiteral("C:/workspace/main.alif");
     preview.originalSha256 = QStringLiteral("snapshot");
-    preview.originalText = QStringLiteral("قبل\nاطبع(1)\nبعد\n");
-    preview.proposedText = preview.originalText;
+    preview.originalText = editor.toPlainText();
     preview.isStreamingPreview = true;
     preview.streamingStartLine = 2;
     preview.streamingEndLine = 2;
-    preview.streamingExpectedText = QStringLiteral("اطبع(1)");
     preview.streamingReplacement = QStringLiteral("اطبع(2)");
-    widget.setReview(preview);
+    editor.presentAiInlinePatch(preview);
 
-    auto* const accept = widget.findChild<QPushButton*>(QStringLiteral("AiPatchReviewAccept"));
-    QVERIFY(accept != nullptr);
-    QVERIFY(!accept->isEnabled());
-    QCOMPARE(widget.originalPane()->toPlainText(), preview.originalText);
-    QCOMPARE(widget.proposedPane()->toPlainText(), QStringLiteral("قبل\nاطبع(2)\nبعد\n"));
-    QVERIFY(!widget.proposedPane()->toPlainText().contains(QStringLiteral("اطبع(1)")));
+    QTRY_COMPARE_WITH_TIMEOUT(editor.toPlainText(),
+                              QStringLiteral("قبل\nاطبع(1)\nاطبع(2)\nوسط\nاطبع(3)\nبعد\n"), 250);
+    QVERIFY(editor.isReadOnly());
+    QVERIFY(!editor.document()->isModified());
+    QCOMPARE(editor.aiInlineReviewId(), preview.reviewId);
+    auto* const reviewBar = editor.findChild<QFrame*>(QStringLiteral("AiInlineReviewBar"));
+    QVERIFY(reviewBar != nullptr);
+    QVERIFY(!reviewBar->isVisible());
+    const auto selections = editor.extraSelections();
+    QVERIFY(selections.size() >= 2);
+    auto* const apply = editor.findChild<QPushButton*>();
+    QVERIFY(apply != nullptr);
+    QVERIFY(!apply->isVisible());
 
     AiPatchReviewRequest finalReview = preview;
     finalReview.reviewId = QStringLiteral("final-review");
     finalReview.isStreamingPreview = false;
-    finalReview.proposedText = QStringLiteral("قبل\nاطبع(2)\nبعد\n");
-    widget.setReview(finalReview);
-    QTRY_COMPARE_WITH_TIMEOUT(widget.proposedPane()->toPlainText(), finalReview.proposedText, 1000);
-    QCOMPARE(widget.reviewId(), finalReview.reviewId);
-    QVERIFY(accept->isEnabled());
+    finalReview.proposedText = QStringLiteral("قبل\nاطبع(2)\nوسط\nاطبع(4)\nبعد\n");
+    finalReview.toolCall.arguments.insert(QStringLiteral("edits"), QJsonArray{
+        QJsonObject{{QStringLiteral("start_line"), 2}, {QStringLiteral("end_line"), 2},
+                    {QStringLiteral("expected_text"), QStringLiteral("اطبع(1)")},
+                    {QStringLiteral("replacement"), QStringLiteral("اطبع(2)")}},
+        QJsonObject{{QStringLiteral("start_line"), 4}, {QStringLiteral("end_line"), 4},
+                    {QStringLiteral("expected_text"), QStringLiteral("اطبع(3)")},
+                    {QStringLiteral("replacement"), QStringLiteral("اطبع(4)")}}});
+    QSignalSpy accepted(&editor, &TEditor::aiInlinePatchAccepted);
+    QSignalSpy rejected(&editor, &TEditor::aiInlinePatchRejected);
+    editor.presentAiInlinePatch(finalReview);
+    QCOMPARE(editor.aiInlineReviewId(), finalReview.reviewId);
+    QVERIFY(reviewBar->isVisible());
+    QCOMPARE(editor.toPlainText(), QStringLiteral("قبل\nاطبع(1)\nاطبع(2)\nوسط\nاطبع(3)\nاطبع(4)\nبعد\n"));
+    QVERIFY(editor.extraSelections().size() >= 4);
+    QVERIFY(apply->isEnabled());
+    apply->click();
+    QCOMPARE(accepted.count(), 1);
+    QCOMPARE(accepted.constFirst().constFirst().toString(), finalReview.reviewId);
+    auto* const reject = editor.findChild<QPushButton*>(QStringLiteral("AiInlineRejectButton"));
+    QVERIFY(reject != nullptr);
+    reject->click();
+    QCOMPARE(rejected.count(), 1);
+    editor.clearAiInlinePatch();
+    QCOMPARE(editor.toPlainText(), QStringLiteral("قبل\nاطبع(1)\nوسط\nاطبع(3)\nبعد\n"));
+    QVERIFY(!editor.document()->isModified());
 }
 
-void DockableToolsTest::mainWindowSwitchesToAiPatchReviewWorkspace()
+void DockableToolsTest::mainWindowUsesNormalEditorTabsForAiInlineReview()
 {
     Taif window({}, nullptr, true);
     window.resize(1100, 760);
     window.show();
-    auto* const stack = window.findChild<QStackedWidget*>(QStringLiteral("EditorWorkspaceStack"));
-    auto* const reviewWidget = window.findChild<AiPatchReviewWidget*>();
+    QVERIFY(window.findChild<QStackedWidget*>(QStringLiteral("EditorWorkspaceStack")) == nullptr);
+    QVERIFY(window.findChild<QWidget*>(QStringLiteral("AiPatchReviewWorkspace")) == nullptr);
     auto* const aiPanel = window.findChild<AiChatPanel*>();
-    QVERIFY(stack != nullptr);
-    QVERIFY(reviewWidget != nullptr);
     QVERIFY(aiPanel != nullptr);
-    QVERIFY(stack->currentWidget() != reviewWidget);
-
-    AiPatchReviewRequest review;
-    review.reviewId = QStringLiteral("window-review");
-    review.toolCall.id = QStringLiteral("window-call");
-    review.toolCall.kind = AiToolKind::ProposeFilePatch;
-    review.toolCall.name = QStringLiteral("propose_file_patch");
-    review.relativePath = QStringLiteral("main.alif");
-    review.absolutePath = QStringLiteral("C:/workspace/main.alif");
-    review.originalSha256 = QStringLiteral("snapshot");
-    review.originalText = QStringLiteral("اطبع(1)\n");
-    review.proposedText = QStringLiteral("اطبع(2)\n");
-    AiPatchReviewRequest preview = review;
-    preview.reviewId = QStringLiteral("stream-window-review");
-    preview.isStreamingPreview = true;
-    QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewPreviewUpdated", Qt::DirectConnection,
-                                      Q_ARG(AiPatchReviewRequest, preview)));
-    QTRY_COMPARE(stack->currentWidget(), static_cast<QWidget*>(reviewWidget));
-    QCOMPARE(reviewWidget->reviewId(), preview.reviewId);
-    auto* const accept = reviewWidget->findChild<QPushButton*>(QStringLiteral("AiPatchReviewAccept"));
-    QVERIFY(accept != nullptr);
-    QVERIFY(!accept->isEnabled());
-
-    QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewRequested", Qt::DirectConnection,
-                                      Q_ARG(AiPatchReviewRequest, review)));
-    QTRY_COMPARE(stack->currentWidget(), static_cast<QWidget*>(reviewWidget));
-    QTRY_COMPARE_WITH_TIMEOUT(reviewWidget->reviewId(), review.reviewId, 1000);
-    QVERIFY(accept->isEnabled());
-
-    QVERIFY(QMetaObject::invokeMethod(aiPanel->controller(), "patchReviewResolved", Qt::DirectConnection,
-                                      Q_ARG(QString, review.reviewId), Q_ARG(bool, false)));
-    QTRY_VERIFY(stack->currentWidget() != reviewWidget);
 }
 
 void DockableToolsTest::aiAgentControllerConstructsAndDestroys()

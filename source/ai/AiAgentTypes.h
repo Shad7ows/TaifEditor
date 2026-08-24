@@ -110,7 +110,7 @@ struct AiToolApprovalRequest final {
     QDateTime createdAt = QDateTime::currentDateTimeUtc();
 };
 
-/** A validated existing-file patch held for explicit side-by-side review. */
+/** A validated existing-file patch held for explicit inline editor review. */
 struct AiPatchReviewRequest final {
     QString reviewId;
     AiToolCall toolCall;
@@ -119,12 +119,21 @@ struct AiPatchReviewRequest final {
     QString originalText;
     QString proposedText;
     QString originalSha256;
+    // The transient preview replaced by this final review in the same editor.
+    // A matching cleanup resolution must not clear this promoted final proposal.
+    QString supersedesPreviewReviewId;
+
     bool automatic = false;
+    // True when a Workspace Auto task accumulated several validated anchored
+    // patches for this file and exposes them as one final inline review.
+    bool isCumulativeInlineReview = false;
+
     // True only while the model is still emitting an incomplete tool argument.
     // Preview data is never eligible for Accept or filesystem mutation.
     bool isStreamingPreview = false;
-    // The only range rendered live while an incomplete anchored tool call streams.
+    // The only range rendered live inside the active editor while an incomplete anchored tool call streams.
     // These fields are presentation-only and are never used for persistence.
+
     int streamingStartLine = 0;
     int streamingEndLine = 0;
     QString streamingExpectedText;

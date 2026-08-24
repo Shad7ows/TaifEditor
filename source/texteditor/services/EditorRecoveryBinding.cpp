@@ -149,7 +149,8 @@ void EditorRecoveryBinding::stopAutoSave()
 void EditorRecoveryBinding::flushSnapshot()
 {
     if (!m_preferences.autoSaveEnabled || m_coordinator == nullptr || !m_dirty
-        || m_snapshotAwaitingAcknowledgement || !m_snapshotFactory || m_shutdown) {
+        || m_snapshotAwaitingAcknowledgement || !m_snapshotFactory || m_shutdown
+        || m_previewSuspended) {
         return;
     }
     if (m_documentId.isEmpty()) {
@@ -171,6 +172,19 @@ void EditorRecoveryBinding::flushSnapshot()
     m_snapshotAwaitingAcknowledgement = true;
     m_writeTimer.start();
     m_coordinator->submitSnapshot(std::move(snapshot));
+    emitStateChanged();
+}
+
+void EditorRecoveryBinding::setPreviewSuspended(const bool suspended)
+{
+    if (m_previewSuspended == suspended) {
+        return;
+    }
+    m_previewSuspended = suspended;
+    if (m_previewSuspended) {
+        stopAutoSave();
+        m_retryTimer.stop();
+    }
     emitStateChanged();
 }
 
@@ -239,7 +253,8 @@ qint64 EditorRecoveryBinding::lastWriteDurationMilliseconds() const
 
 void EditorRecoveryBinding::onDocumentChanged()
 {
-    if (!m_preferences.autoSaveEnabled || m_coordinator == nullptr || m_shutdown) {
+    if (!m_preferences.autoSaveEnabled || m_coordinator == nullptr || m_shutdown
+        || m_previewSuspended) {
         return;
     }
 

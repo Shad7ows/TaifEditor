@@ -102,8 +102,7 @@ SOURCES += \
     ../source/ai/AiWorkspacePolicy.cpp \
     ../source/ai/LmStudioClient.cpp \
     ../source/ai/AiAgentController.cpp \
-    ../source/ai/AiChatPanel.cpp \
-    ../source/ai/AiPatchReviewWidget.cpp
+    ../source/ai/AiChatPanel.cpp
 
 HEADERS += \
     ../source/texteditor/autocomplete/AutoComplete.h \
@@ -177,8 +176,7 @@ HEADERS += \
     ../source/ai/AiWorkspacePolicy.h \
     ../source/ai/LmStudioClient.h \
     ../source/ai/AiAgentController.h \
-    ../source/ai/AiChatPanel.h \
-    ../source/ai/AiPatchReviewWidget.h
+    ../source/ai/AiChatPanel.h
 
 unix {
     SOURCES += ../source/console/terminal/PosixPtyBackend.cpp

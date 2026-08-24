@@ -4,6 +4,7 @@
 #include "EditorAnalysisBinding.h"
 #include "EditorRecoveryBinding.h"
 #include "EditorInteractionBinding.h"
+#include "AiLineDiff.h"
 #include "interaction/MultiCursorController.h"
 
 #include <QPainter>
@@ -22,6 +23,12 @@
 #include <QMouseEvent>
 #include <QScreen>
 #include <QScopedValueRollback>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QTextBlock>
+#include <QSignalBlocker>
 
 #include "HoverPopup.h"
 
@@ -30,6 +37,16 @@ TEditor::TEditor(TSettings* setting, QWidget* parent) {
     qRegisterMetaType<EditorBreadcrumbContext>("EditorBreadcrumbContext");
     qRegisterMetaType<EditorInfoSnapshot>("EditorInfoSnapshot");
     setAcceptDrops(true);
+    m_aiInlineRenderTimer.setSingleShot(true);
+    m_aiInlineRenderTimer.setInterval(16);
+    connect(&m_aiInlineRenderTimer, &QTimer::timeout, this, [this]() {
+        if (!m_pendingAiInlineReview.has_value()) {
+            return;
+        }
+        const AiPatchReviewRequest review = *m_pendingAiInlineReview;
+        m_pendingAiInlineReview.reset();
+        applyAiInlinePatch(review);
+    });
 
     this->setStyleSheet(R"(
     QPlainTextEdit {
@@ -944,6 +961,13 @@ void TEditor::highlightCurrentLine() {
         }
     }
 
+    for (const QTextEdit::ExtraSelection& selection : m_aiInlineRemovedSelections) {
+        extraSelections.append(selection);
+    }
+    for (const QTextEdit::ExtraSelection& selection : m_aiInlineAddedSelections) {
+        extraSelections.append(selection);
+    }
+
     if (ctrlHoverDefinitionRange.has_value()) {
         const SourceRange& range = *ctrlHoverDefinitionRange;
         QTextEdit::ExtraSelection linkSelection;
@@ -1219,6 +1243,273 @@ void TEditor::paintEvent(QPaintEvent *event) {
         bottom = top + static_cast<int>(blockBoundingRect(block).height());
     }
     paintSecondaryCursors(painter);
+}
+
+void TEditor::presentAiInlinePatch(const AiPatchReviewRequest& review)
+{
+    if (review.isStreamingPreview) {
+        m_pendingAiInlineReview = review;
+        if (!m_aiInlineRenderTimer.isActive()) {
+            m_aiInlineRenderTimer.start();
+        }
+        return;
+    }
+    m_aiInlineRenderTimer.stop();
+    m_pendingAiInlineReview.reset();
+    applyAiInlinePatch(review);
+}
+
+void TEditor::applyAiInlinePatch(const AiPatchReviewRequest& review)
+{
+    if (review.absolutePath.isEmpty() || !QFileInfo(filePath).exists()
+        || QFileInfo(filePath).absoluteFilePath() != QFileInfo(review.absolutePath).absoluteFilePath()) {
+        return;
+    }
+
+    if (!m_aiInlineActive) {
+        m_aiInlineOriginalText = toPlainText();
+        m_aiInlineWasReadOnly = isReadOnly();
+        m_aiInlineFocusedLine = -1;
+        m_aiInlineActive = true;
+        setReadOnly(true);
+        if (recoveryBinding != nullptr) {
+            recoveryBinding->setPreviewSuspended(true);
+        }
+    }
+
+    m_aiInlineHunks.clear();
+    if (review.isCumulativeInlineReview) {
+        const AiLineDiffResult diff = AiLineDiff::compare(review.originalText, review.proposedText);
+        for (int index = 0; index < diff.rows.size();) {
+            if (diff.rows.at(index).kind == AiLineDiffRow::Kind::Unchanged) {
+                ++index;
+                continue;
+            }
+            const int begin = index;
+            int firstRemovedLine = -1;
+            int lastRemovedLine = -1;
+            QStringList addedLines;
+            while (index < diff.rows.size() && diff.rows.at(index).kind != AiLineDiffRow::Kind::Unchanged) {
+                const AiLineDiffRow& row = diff.rows.at(index++);
+                if (row.kind == AiLineDiffRow::Kind::Removed) {
+                    firstRemovedLine = firstRemovedLine < 0 ? row.originalLine : firstRemovedLine;
+                    lastRemovedLine = row.originalLine;
+                } else if (row.kind == AiLineDiffRow::Kind::Added) {
+                    addedLines.append(row.proposedText);
+                }
+            }
+            int startLine = firstRemovedLine;
+            if (startLine < 0) {
+                startLine = index < diff.rows.size() ? diff.rows.at(index).originalLine
+                                                     : review.originalText.count(QLatin1Char('\n')) + 1;
+            }
+            const int endLine = firstRemovedLine < 0 ? startLine - 1 : lastRemovedLine;
+            Q_UNUSED(begin);
+            m_aiInlineHunks.append({startLine, endLine, addedLines.join(QLatin1Char('\n'))});
+        }
+    } else if (review.isStreamingPreview) {
+        m_aiInlineHunks.append({review.streamingStartLine, review.streamingEndLine,
+                                 review.streamingReplacement});
+    } else {
+        const QJsonArray edits = review.toolCall.arguments.value(QStringLiteral("edits")).toArray();
+        for (const QJsonValue& value : edits) {
+            if (!value.isObject()) {
+                continue;
+            }
+            const QJsonObject edit = value.toObject();
+            m_aiInlineHunks.append({edit.value(QStringLiteral("start_line")).toInt(),
+                                     edit.value(QStringLiteral("end_line")).toInt(),
+                                     edit.value(QStringLiteral("replacement")).toString()});
+        }
+    }
+    if (!rebuildAiInlineProjection(review)) {
+        return;
+    }
+
+    m_aiInlineReviewId = review.reviewId;
+    m_aiInlineFinal = !review.isStreamingPreview && review.isValid();
+    updateAiInlineSelections();
+    updateAiInlineReviewBar();
+
+    const int targetLine = qMax(1, review.isStreamingPreview ? review.streamingStartLine : 1);
+    if (m_aiInlineFocusedLine != targetLine) {
+        const QTextBlock targetBlock = document()->findBlockByNumber(targetLine - 1);
+        if (targetBlock.isValid()) {
+            QTextCursor cursor(targetBlock);
+            setTextCursor(cursor);
+            ensureCursorVisible();
+            m_aiInlineFocusedLine = targetLine;
+        }
+    }
+}
+
+void TEditor::clearAiInlinePatch()
+{
+    m_aiInlineRenderTimer.stop();
+    m_pendingAiInlineReview.reset();
+    if (!m_aiInlineActive) {
+        return;
+    }
+
+    const QSignalBlocker documentSignals(document());
+    setPlainText(m_aiInlineOriginalText);
+    document()->setModified(false);
+    m_aiInlineActive = false;
+    m_aiInlineFinal = false;
+    m_aiInlineReviewId.clear();
+    m_aiInlineOriginalText.clear();
+    m_aiInlineFocusedLine = -1;
+    m_aiInlineHunks.clear();
+    m_aiInlineRemovedSelections.clear();
+    m_aiInlineAddedSelections.clear();
+    setReadOnly(m_aiInlineWasReadOnly);
+    if (recoveryBinding != nullptr) {
+        recoveryBinding->setPreviewSuspended(false);
+    }
+    if (m_aiInlineReviewBar != nullptr) {
+        m_aiInlineReviewBar->hide();
+    }
+    highlightCurrentLine();
+}
+
+QString TEditor::aiInlineReviewId() const
+{
+    return m_aiInlineReviewId;
+}
+
+bool TEditor::rebuildAiInlineProjection(const AiPatchReviewRequest& review)
+{
+    Q_UNUSED(review);
+    if (m_aiInlineHunks.isEmpty()) {
+        return false;
+    }
+
+    // Rebuild from the immutable source snapshot on every delta. Processing
+    // bottom-to-top leaves all recorded one-based source line anchors stable.
+    const QSignalBlocker documentSignals(document());
+    setPlainText(m_aiInlineOriginalText);
+    document()->setModified(false);
+    m_aiInlineRemovedSelections.clear();
+    m_aiInlineAddedSelections.clear();
+
+    QVector<AiInlineHunk> hunks = m_aiInlineHunks;
+    std::sort(hunks.begin(), hunks.end(), [](const AiInlineHunk& left, const AiInlineHunk& right) {
+        return left.startLine > right.startLine;
+    });
+    for (const AiInlineHunk& hunk : hunks) {
+        const bool insertion = hunk.endLine == hunk.startLine - 1;
+        if (hunk.startLine < 1 || (insertion ? hunk.endLine < 0 : hunk.endLine < hunk.startLine)) {
+            return false;
+        }
+        QTextBlock first = document()->findBlockByNumber(hunk.startLine - 1);
+        if (!first.isValid()) {
+            return false;
+        }
+        QTextBlock last = insertion ? first : document()->findBlockByNumber(hunk.endLine - 1);
+        if (!last.isValid()) {
+            return false;
+        }
+
+        const int originalStart = first.position();
+        const int originalEnd = insertion ? originalStart : last.position() + last.text().size();
+        QTextCursor cursor(document());
+        cursor.setPosition(originalStart);
+        cursor.setPosition(originalEnd, QTextCursor::KeepAnchor);
+        const QString originalBlock = insertion ? QString() : cursor.selectedText();
+        const QString separator = originalBlock.isEmpty() || hunk.replacement.isEmpty()
+            ? QString() : QString(QLatin1Char('\n'));
+        cursor.insertText(originalBlock + separator + hunk.replacement
+                          + (insertion && !hunk.replacement.isEmpty() ? QString(QLatin1Char('\n')) : QString()));
+
+        if (!originalBlock.isEmpty()) {
+            QTextEdit::ExtraSelection removed;
+            removed.cursor = QTextCursor(document());
+            removed.cursor.setPosition(originalStart);
+            removed.cursor.setPosition(originalStart + originalBlock.size(), QTextCursor::KeepAnchor);
+            removed.format.setBackground(QColor(104, 35, 48, 190));
+            removed.format.setForeground(QColor(254, 205, 211));
+            removed.format.setProperty(QTextFormat::FullWidthSelection, true);
+            m_aiInlineRemovedSelections.append(removed);
+        }
+        if (!hunk.replacement.isEmpty()) {
+            const int addedStart = originalStart + originalBlock.size() + separator.size();
+            QTextEdit::ExtraSelection added;
+            added.cursor = QTextCursor(document());
+            added.cursor.setPosition(addedStart);
+            added.cursor.setPosition(addedStart + hunk.replacement.size(), QTextCursor::KeepAnchor);
+            added.format.setBackground(QColor(27, 94, 66, 190));
+            added.format.setForeground(QColor(187, 247, 208));
+            added.format.setProperty(QTextFormat::FullWidthSelection, true);
+            m_aiInlineAddedSelections.append(added);
+        }
+    }
+    document()->setModified(false);
+    return true;
+}
+
+void TEditor::updateAiInlineSelections()
+{
+    highlightCurrentLine();
+    viewport()->update();
+}
+
+void TEditor::updateAiInlineReviewBar()
+{
+    if (m_aiInlineReviewBar == nullptr) {
+        m_aiInlineReviewBar = new QFrame(viewport());
+        m_aiInlineReviewBar->setObjectName(QStringLiteral("AiInlineReviewBar"));
+        m_aiInlineReviewBar->setFrameShape(QFrame::StyledPanel);
+        m_aiInlineReviewBar->setStyleSheet(QStringLiteral(
+            "QFrame#AiInlineReviewBar { background:#0f1d35; border:1px solid #365b89; border-radius:8px; }"
+            "QLabel { color:#dbeafe; }"
+            "QPushButton { background:#1d4ed8; color:white; border:0; border-radius:5px; padding:5px 10px; }"
+            "QPushButton:hover { background:#2563eb; }"
+            "QPushButton#AiInlineRejectButton { background:#7f1d1d; }"
+            "QPushButton#AiInlineRejectButton:hover { background:#991b1b; }"));
+        auto* const layout = new QHBoxLayout(m_aiInlineReviewBar);
+        layout->setContentsMargins(8, 5, 8, 5);
+        layout->setSpacing(6);
+        m_aiInlineReviewLabel = new QLabel(m_aiInlineReviewBar);
+        m_aiInlineApplyButton = new QPushButton(QStringLiteral("تطبيق التعديل"), m_aiInlineReviewBar);
+        m_aiInlineRejectButton = new QPushButton(QStringLiteral("رفض التعديل"), m_aiInlineReviewBar);
+        m_aiInlineRejectButton->setObjectName(QStringLiteral("AiInlineRejectButton"));
+        layout->addWidget(m_aiInlineReviewLabel, 1);
+        layout->addWidget(m_aiInlineApplyButton);
+        layout->addWidget(m_aiInlineRejectButton);
+        connect(m_aiInlineApplyButton, &QPushButton::clicked, this, [this]() {
+            if (m_aiInlineFinal && !m_aiInlineReviewId.isEmpty()) {
+                emit aiInlinePatchAccepted(m_aiInlineReviewId);
+            }
+        });
+        connect(m_aiInlineRejectButton, &QPushButton::clicked, this, [this]() {
+            if (!m_aiInlineReviewId.isEmpty()) {
+                emit aiInlinePatchRejected(m_aiInlineReviewId);
+            }
+        });
+    }
+
+    if (!m_aiInlineFinal) {
+        // Streaming is represented only by inline red/green source decoration.
+        // The decision surface must not appear before strict final validation.
+        m_aiInlineReviewBar->hide();
+        return;
+    }
+    m_aiInlineReviewLabel->setText(QStringLiteral("راجع التعديل داخل الملف قبل حفظه."));
+    m_aiInlineApplyButton->setEnabled(true);
+    m_aiInlineRejectButton->setEnabled(true);
+    m_aiInlineReviewBar->adjustSize();
+    positionAiInlineReviewBar();
+    m_aiInlineReviewBar->show();
+}
+
+void TEditor::positionAiInlineReviewBar()
+{
+    if (m_aiInlineReviewBar == nullptr) {
+        return;
+    }
+    const QSize size = m_aiInlineReviewBar->sizeHint();
+    m_aiInlineReviewBar->resize(size);
+    m_aiInlineReviewBar->move(qMax(8, viewport()->width() - size.width() - 12), 10);
 }
 
 void TEditor::paintSecondaryCursors(QPainter& painter)

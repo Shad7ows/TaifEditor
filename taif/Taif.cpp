@@ -14,13 +14,11 @@
 #include "GitPanelWidget.h"
 #include "AiChatPanel.h"
 #include "AiAgentController.h"
-#include "AiPatchReviewWidget.h"
 #include "GitRepositoryService.h"
 #include "TRecoveryDialog.h"
 
 
 #include <QDockWidget>
-#include <QStackedWidget>
 #include <QVBoxLayout>
 #include <QMessageBox>
 #include <QDir>
@@ -224,13 +222,7 @@ void Taif::setupUI() {
     editorPaneLayout->setSpacing(0);
     breadcrumbBar = new TBreadcrumbBar(editorPane);
     editorPaneLayout->addWidget(breadcrumbBar);
-    editorWorkspaceStack = new QStackedWidget(editorPane);
-    editorWorkspaceStack->setObjectName(QStringLiteral("EditorWorkspaceStack"));
-    editorWorkspaceStack->addWidget(tabWidget);
-    aiPatchReviewWidget = new AiPatchReviewWidget(editorWorkspaceStack);
-    editorWorkspaceStack->addWidget(aiPatchReviewWidget);
-    editorWorkspaceStack->setCurrentWidget(tabWidget);
-    editorPaneLayout->addWidget(editorWorkspaceStack, 1);
+    editorPaneLayout->addWidget(tabWidget, 1);
     editorSplitter->addWidget(editorPane);
     editorSplitter->setSizes({1000});
 
@@ -277,17 +269,25 @@ void Taif::setupUI() {
     connect(aiChatPanel->controller(), &AiAgentController::patchReviewPreviewUpdated,
             this, &Taif::showAiPatchReview);
     connect(aiChatPanel->controller(), &AiAgentController::patchReviewResolved,
-            this, [this](const QString&, const bool) { restoreEditorWorkspace(); });
-    connect(aiPatchReviewWidget, &AiPatchReviewWidget::acceptRequested,
-            aiChatPanel->controller(), &AiAgentController::acceptPatchReview);
-    connect(aiPatchReviewWidget, &AiPatchReviewWidget::rejectRequested,
-            aiChatPanel->controller(), &AiAgentController::rejectPatchReview);
+            this, [this](const QString& reviewId, const bool) {
+                for (int index = 0; index < tabWidget->count(); ++index) {
+                    if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+                        editor != nullptr && editor->aiInlineReviewId() == reviewId) {
+                        editor->clearAiInlinePatch();
+                    }
+                }
+            });
     connect(aiChatPanel, &AiChatPanel::workspaceFileMutated, this, [this](const QString& absolutePath) {
         const QString targetPath = ProjectFileOperations::normalizedPath(absolutePath);
         for (int index = 0; index < tabWidget->count(); ++index) {
             auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
-            if (editor == nullptr || editor->document()->isModified()
-                || ProjectFileOperations::normalizedPath(editor->filePath) != targetPath) {
+            if (editor == nullptr || ProjectFileOperations::normalizedPath(editor->filePath) != targetPath) {
+                continue;
+            }
+            if (!editor->aiInlineReviewId().isEmpty()) {
+                editor->clearAiInlinePatch();
+            }
+            if (editor->document()->isModified()) {
                 continue;
             }
             QFile file(targetPath);
@@ -643,50 +643,6 @@ void Taif::setupStyle() {
             border-color: #fca5a5;
         }
 
-        QWidget#AiPatchReviewWorkspace {
-            background-color: #0b1220;
-            color: #e2e8f0;
-        }
-        QLabel#AiPatchReviewTitle {
-            color: #f8fafc;
-            font-size: 16px;
-            font-weight: 700;
-        }
-        QLabel#AiPatchReviewSummary, QLabel#AiPatchReviewQueue, QLabel#AiPatchReviewCaption {
-            color: #bfdbfe;
-        }
-        QSplitter#AiPatchReviewSplitter::handle {
-            background-color: #31547f;
-            width: 5px;
-        }
-        QPlainTextEdit#AiPatchReviewOriginal, QPlainTextEdit#AiPatchReviewProposed {
-            background-color: #101b30;
-            color: #e5eefc;
-            border: 1px solid #263a57;
-            selection-background-color: #1d4ed8;
-        }
-        QWidget#AiPatchReviewWorkspace QPushButton {
-            background-color: #172a46;
-            color: #dbeafe;
-            border: 1px solid #2d4a70;
-            padding: 6px 10px;
-        }
-        QWidget#AiPatchReviewWorkspace QPushButton:hover {
-            background-color: #1e3a5f;
-            border-color: #60a5fa;
-        }
-        QWidget#AiPatchReviewWorkspace QPushButton#AiPatchReviewAccept {
-            background-color: #166534;
-            color: #f0fdf4;
-            border-color: #4ade80;
-            font-weight: 700;
-        }
-        QWidget#AiPatchReviewWorkspace QPushButton#AiPatchReviewReject {
-            background-color: #7f1d1d;
-            color: #fef2f2;
-            border-color: #f87171;
-            font-weight: 700;
-        }
 
         /* --- تصميم شريط القوائم --- */
         QMenuBar {
@@ -1928,25 +1884,36 @@ void Taif::onCurrentTabChanged()
 
 void Taif::showAiPatchReview(const AiPatchReviewRequest& review)
 {
-    if (aiPatchReviewWidget == nullptr || editorWorkspaceStack == nullptr) {
+    TEditor* targetEditor = nullptr;
+    const QString targetPath = ProjectFileOperations::normalizedPath(review.absolutePath);
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor != nullptr && ProjectFileOperations::normalizedPath(editor->filePath) == targetPath) {
+            targetEditor = editor;
+            tabWidget->setCurrentIndex(index);
+            break;
+        }
+    }
+    if (targetEditor == nullptr && !targetPath.isEmpty()) {
+        QString failureMessage;
+        if (openDocumentFile(targetPath, false, true, false, &failureMessage)) {
+            targetEditor = currentEditor();
+        }
+    }
+    if (targetEditor == nullptr) {
+        statusBar()->showMessage(QStringLiteral("تعذر فتح الملف لمراجعة تعديل الوكيل داخل المحرر."), 7000);
         return;
     }
-    aiPatchReviewWidget->setReview(review, 1, 1);
-    editorWorkspaceStack->setCurrentWidget(aiPatchReviewWidget);
-    aiPatchReviewWidget->setFocus(Qt::OtherFocusReason);
-    statusBar()->showMessage(QStringLiteral("راجع تعديل الوكيل قبل حفظه في المشروع."), 5000);
-}
 
-void Taif::restoreEditorWorkspace()
-{
-    if (editorWorkspaceStack == nullptr || aiPatchReviewWidget == nullptr) {
-        return;
-    }
-    editorWorkspaceStack->setCurrentWidget(tabWidget);
-    aiPatchReviewWidget->clearReview();
-    if (TEditor* const editor = currentEditor()) {
-        editor->setFocus(Qt::OtherFocusReason);
-    }
+    connect(targetEditor, &TEditor::aiInlinePatchAccepted,
+            aiChatPanel->controller(), &AiAgentController::acceptPatchReview, Qt::UniqueConnection);
+    connect(targetEditor, &TEditor::aiInlinePatchRejected,
+            aiChatPanel->controller(), &AiAgentController::rejectPatchReview, Qt::UniqueConnection);
+    targetEditor->presentAiInlinePatch(review);
+    targetEditor->setFocus(Qt::OtherFocusReason);
+    statusBar()->showMessage(review.isStreamingPreview
+        ? QStringLiteral("يعرض الملف التعديل الوارد من الوكيل مباشرة.")
+        : QStringLiteral("راجع التعديل داخل الملف قبل حفظه في المشروع."), 5000);
 }
 
 void Taif::syncAiEditorContext(TEditor* activeEditor)

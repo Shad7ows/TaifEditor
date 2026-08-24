@@ -43,6 +43,7 @@ public:
     void stopAutoSave();
     void flushSnapshot();
     void clearSnapshot();
+    void setPreviewSuspended(bool suspended);
 
     [[nodiscard]] QString documentId() const;
     [[nodiscard]] bool hasPendingPersistence() const;
@@ -90,4 +91,5 @@ private:
     bool m_dirty = false;
     bool m_initialized = false;
     bool m_shutdown = false;
+    bool m_previewSuspended = false;
 };

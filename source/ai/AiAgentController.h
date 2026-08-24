@@ -6,6 +6,8 @@
 #include <QPointer>
 #include <QProcess>
 #include <QTimer>
+#include <QSet>
+
 #include <QVector>
 
 class LmStudioClient;
@@ -70,7 +72,14 @@ private:
     void finalizeToolCalls();
     void stageToolApproval(const AiToolCall& call, const QString& reason = {});
     void stagePatchReview(const AiToolCall& call, bool automatic);
+    void stageDeferredInlinePatch(const AiPatchReviewRequest& review);
+    void presentDeferredInlineReviews();
+    void clearDeferredInlineReviews(bool emitResolution);
+
     void updateStreamingPatchPreview(const QString& toolCallId);
+    void updateAssistantTextPatchPreview();
+    [[nodiscard]] QString visibleAssistantTranscript() const;
+
     void presentNextPatchReview();
     void resolvePatchReview(const QString& reviewId, bool accepted);
     void executeApprovedTool(const AiToolApprovalRequest& request);
@@ -107,7 +116,14 @@ private:
     QStringList m_patchReviewOrder;
     QString m_visiblePatchReviewId;
     QHash<QString, AiPatchReviewRequest> m_streamingPatchPreviews;
+    // Workspace Auto patches are accumulated by canonical file path while the
+    // model continues its task. One composite review is emitted only at task end.
+    QHash<QString, QVector<AiPatchReviewRequest>> m_deferredInlinePatchReviews;
+    QStringList m_deferredInlinePatchOrder;
+
     QString m_currentAssistantText;
+    QString m_rawAssistantText;
+
     QPointer<QProcess> m_commandProcess;
     QTimer m_commandTimeout;
     bool m_workspaceAutoTaskActive = false;
@@ -119,6 +135,8 @@ private:
     QString m_completedStreamReason;
     quint64 m_lifecycleGeneration = 0;
     QHash<QString, int> m_toolSignatureCounts;
+    QSet<QString> m_toolStreamAnnouncements;
+
     static constexpr int kMaximumAutonomousSteps = 12;
     static constexpr int kMaximumRepeatedToolSignature = 3;
 };

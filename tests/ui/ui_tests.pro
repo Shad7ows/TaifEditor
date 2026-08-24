@@ -1,5 +1,5 @@
-QT += core gui widgets testlib network
 CONFIG += c++17 testcase
+QT += widgets network testlib
 TEMPLATE = app
 TARGET = TaifDockableToolsTests
 win32:QMAKE_CXXFLAGS += /utf-8
@@ -66,7 +66,6 @@ SOURCES += \
     ../../source/ai/LmStudioClient.cpp \
     ../../source/ai/AiAgentController.cpp \
     ../../source/ai/AiChatPanel.cpp \
-    ../../source/ai/AiPatchReviewWidget.cpp \
     ../../source/recovery/RecoveryStore.cpp \
     ../../source/recovery/RecoveryCoordinator.cpp \
     ../../source/recovery/TRecoveryDialog.cpp \
@@ -110,7 +109,6 @@ HEADERS += \
     ../../source/console/InlinePromptConsole.h \
     ../../source/console/terminal/ITerminalBackend.h \
     ../../source/console/terminal/TerminalScreenModel.h \
-    ../../source/console/terminal/VtStreamParser.h \
     ../../source/console/terminal/WindowsConPtyBackend.h \
     ../../source/console/terminal/TerminalSessionController.h \
     ../../source/console/terminal/TerminalView.h \
@@ -131,7 +129,6 @@ HEADERS += \
     ../../source/ai/LmStudioClient.h \
     ../../source/ai/AiAgentController.h \
     ../../source/ai/AiChatPanel.h \
-    ../../source/ai/AiPatchReviewWidget.h \
     ../../source/recovery/RecoveryStore.h \
     ../../source/recovery/RecoveryCoordinator.h \
     ../../source/recovery/TRecoveryDialog.h \

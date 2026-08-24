@@ -10,6 +10,7 @@
 #include "TSettings.h"
 #include "EditorPreferences.h"
 #include "EditorInfoSnapshot.h"
+#include "AiAgentTypes.h"
 
 class RecoveryCoordinator;
 class EditorAnalysisBinding;
@@ -35,6 +36,9 @@ class TMinimap;
 class THoverPopup;
 class QEvent;
 class QMouseEvent;
+class QFrame;
+class QLabel;
+class QPushButton;
 
 class TEditor : public QPlainTextEdit {
     Q_OBJECT
@@ -75,6 +79,14 @@ public:
     [[nodiscard]] int secondaryCursorCount() const;
     [[nodiscard]] int totalCursorCount() const;
     void clearSecondaryCursors();
+
+    /**
+     * Renders a targeted AI edit inside this editor as a temporary red/green
+     * projection. The file is never written until final approval.
+     */
+    void presentAiInlinePatch(const AiPatchReviewRequest& review);
+    void clearAiInlinePatch();
+    [[nodiscard]] QString aiInlineReviewId() const;
 
 public slots:
     void UpdateTabStopDistance(QFont);
@@ -123,6 +135,29 @@ private:
     EditorInteractionBinding* interactionBinding{};
     std::unique_ptr<MultiCursorController> multiCursorController{};
     bool multiCursorTransactionInProgress = false;
+
+    // Ephemeral AI review state. Preview source is restored verbatim on reject;
+    // no streamed content may be saved or sent to recovery storage.
+    bool m_aiInlineActive = false;
+    bool m_aiInlineFinal = false;
+    bool m_aiInlineWasReadOnly = false;
+    int m_aiInlineFocusedLine = -1;
+    QString m_aiInlineReviewId;
+    QString m_aiInlineOriginalText;
+    struct AiInlineHunk final {
+        int startLine = 0;
+        int endLine = 0;
+        QString replacement;
+    };
+    QVector<AiInlineHunk> m_aiInlineHunks;
+    QVector<QTextEdit::ExtraSelection> m_aiInlineRemovedSelections;
+    QVector<QTextEdit::ExtraSelection> m_aiInlineAddedSelections;
+    QTimer m_aiInlineRenderTimer;
+    std::optional<AiPatchReviewRequest> m_pendingAiInlineReview;
+    QFrame* m_aiInlineReviewBar = nullptr;
+    QLabel* m_aiInlineReviewLabel = nullptr;
+    QPushButton* m_aiInlineApplyButton = nullptr;
+    QPushButton* m_aiInlineRejectButton = nullptr;
     std::optional<SourceRange> ctrlHoverDefinitionRange{};
 
     struct NavigationHistoryEntry {
@@ -172,6 +207,11 @@ private:
     bool handleMultiCursorKeyPress(QKeyEvent* event);
     void applyMultiCursorNewline();
     void paintSecondaryCursors(QPainter& painter);
+    bool rebuildAiInlineProjection(const AiPatchReviewRequest& review);
+    void updateAiInlineSelections();
+    void updateAiInlineReviewBar();
+    void positionAiInlineReviewBar();
+    void applyAiInlinePatch(const AiPatchReviewRequest& review);
     void clearSecondaryCursorsForSingleCursorAction();
     void scheduleHover(const QPoint& viewportPosition);
     void showPendingHover();
@@ -207,6 +247,8 @@ signals:
     void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
     void breadcrumbContextChanged(EditorBreadcrumbContext context);
     void editorInformationChanged(EditorInfoSnapshot snapshot);
+    void aiInlinePatchAccepted(QString reviewId);
+    void aiInlinePatchRejected(QString reviewId);
 };
 
 
