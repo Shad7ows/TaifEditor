@@ -498,7 +498,7 @@ void AiAgentController::updateAssistantTextPatchPreview()
     if (startLine < 1 || startLine > sourceLines.size() + 1
         || (!insertion && (endLine < startLine || endLine > sourceLines.size()))
         || rangeLength >= sourceLines.size()
-        || replacement.count(QLatin1Char('\n')) + 1 > qMax(16, rangeLength * 8 + 16)) {
+        || replacement.count(QLatin1Char('\n')) + 1 > qMax(16 * 1024, rangeLength * 8 + 16)) {
         return;
     }
 
@@ -768,7 +768,7 @@ void AiAgentController::updateStreamingPatchPreview(const QString& toolCallId)
     // expected_text anchor. The final tool payload is validated separately.
     const int replacementLines = replacement.isEmpty() ? 0
         : replacement.count(QLatin1Char('\n')) + 1;
-    if (replacementLines > qMax(16, rangeLength * 8 + 16)) {
+    if (replacementLines > qMax(16 * 1024, rangeLength * 8 + 16)) {
         return;
     }
 
@@ -1466,7 +1466,7 @@ QString AiAgentController::systemPrompt() const
         "Before calling propose_file_patch, stream exactly one live preview event in assistant content using this literal format: "
         "[[TAIF_EDIT path=\"relative/path.alif\" start=N end=M]] followed immediately by only the replacement text, "
         "then [[/TAIF_EDIT]]. Emit the replacement progressively as you generate it; do not put Markdown fences, explanation, or source outside this event. "
-        "The preview event never writes a file; after it, call propose_file_patch with the same exact anchored edit for final validation. "
+        "call propose_file_patch with the same exact anchored edit for final validation. "
         "The project language is Alif, an Arabic RTL programming language.");
 
 }

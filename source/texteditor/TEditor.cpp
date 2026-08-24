@@ -1329,7 +1329,8 @@ void TEditor::applyAiInlinePatch(const AiPatchReviewRequest& review)
     m_aiInlineReviewId = review.reviewId;
     m_aiInlineFinal = !review.isStreamingPreview && review.isValid();
     updateAiInlineSelections();
-    updateAiInlineReviewBar();
+    // updateAiInlineReviewBar();
+    aiInlinePatchAccepted(m_aiInlineReviewId);
 
     const int targetLine = qMax(1, review.isStreamingPreview ? review.streamingStartLine : 1);
     if (m_aiInlineFocusedLine != targetLine) {

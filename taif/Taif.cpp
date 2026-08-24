@@ -115,7 +115,7 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
     connect(recoveryCoordinator, &RecoveryCoordinator::removalFailed, this,
             [this](const QString&, const QString& errorMessage) {
                 statusBar()->showMessage(errorMessage.isEmpty()
-                    ? QStringLiteral("تعذر حذف نسخة الاستعادة.") : errorMessage, 7000);
+                    ? QStringLiteral("تعذر حذف نسخة الاستعادة.") : errorMessage, 5000);
             });
     connect(recoveryCoordinator, &RecoveryCoordinator::flushCompleted, this,
             [this](const bool allPersisted) {
@@ -127,7 +127,7 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
                     setEnabled(true);
                     statusBar()->showMessage(
                         QStringLiteral("تعذر تأكيد حفظ نسخة الاستعادة. أعد المحاولة قبل الإغلاق."),
-                        7000);
+                        5000);
                     emit closeRejected();
                     return;
                 }
@@ -1901,7 +1901,7 @@ void Taif::showAiPatchReview(const AiPatchReviewRequest& review)
         }
     }
     if (targetEditor == nullptr) {
-        statusBar()->showMessage(QStringLiteral("تعذر فتح الملف لمراجعة تعديل الوكيل داخل المحرر."), 7000);
+        statusBar()->showMessage(QStringLiteral("تعذر فتح الملف لمراجعة تعديل الوكيل داخل المحرر."), 5000);
         return;
     }
 
