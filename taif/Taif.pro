@@ -21,16 +21,15 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/settings  \
 
 SOURCES += \
+    Taif.cpp \
+    main.cpp \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
     ../source/texteditor/autocomplete/AutoCompleteUI.cpp \
     ../source/texteditor/highlighter/TLexer.cpp \
     ../source/texteditor/highlighter/TSyntaxDefinition.cpp \
     ../source/texteditor/highlighter/TSyntaxHighlighter.cpp \
-    Taif.cpp \
-    main.cpp \
     ../source/texteditor/TEditor.cpp \
     ../source/components/TMinimap.cpp \
-    ../source/components/TFlatButton.cpp \
     ../source/components/TSearchPanel.cpp \
     ../source/console/TConsole.cpp \
     ../source/console/ProcessWorker.cpp \
@@ -39,6 +38,7 @@ SOURCES += \
     ../source/settings/TSettings.cpp   \
 
 HEADERS += \
+    Taif.h  \
     ../source/texteditor/autocomplete/AutoComplete.h \
     ../source/texteditor/autocomplete/AutoCompleteUI.h \
     ../source/texteditor/highlighter/TLexer.h \
@@ -46,10 +46,8 @@ HEADERS += \
     ../source/texteditor/highlighter/TSyntaxHighlighter.h \
     ../source/texteditor/highlighter/TSyntaxThemes.h \
     ../source/texteditor/highlighter/TToken.h \
-    Taif.h  \
     ../source/texteditor/TEditor.h \
     ../source/components/TMinimap.h \
-    ../source/components/TFlatButton.h \
     ../source/components/TSearchPanel.h \
     ../source/console/TConsole.h \
     ../source/console/ProcessWorker.h \
