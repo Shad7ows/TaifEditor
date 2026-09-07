@@ -1,4 +1,4 @@
-#include "TLexer.h"
+#include "AlifLexer.h"
 
 #include <QtCore/QHash>
 

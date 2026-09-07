@@ -1,4 +1,4 @@
-#include "TLexer.h"
+#include "AlifLexer.h"
 
 #include <QtTest/QTest>
 #include <QtCore/QFile>
@@ -184,4 +184,4 @@ void TaifLexerTest::statusCorpusLexesToEndOfFile() {
 }
 
 QTEST_GUILESS_MAIN(TaifLexerTest)
-#include "TLexerTest.moc"
+#include "AlifLexerTest.moc"

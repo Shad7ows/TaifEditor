@@ -7,8 +7,8 @@ TARGET = TLexerTests
 INCLUDEPATH += ../../source/aliflang/lexer
 
 SOURCES += \
-    TLexerTest.cpp \
-    ../../source/aliflang/lexer/TLexer.cpp
+    AlifLexerTest.cpp \
+    ../../source/aliflang/lexer/AlifLexer.cpp
 
 HEADERS += \
-    ../../source/aliflang/lexer/TLexer.h
+    ../../source/aliflang/lexer/AlifLexer.h
