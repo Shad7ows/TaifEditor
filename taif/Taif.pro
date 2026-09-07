@@ -20,6 +20,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/pages \
                 ../source/settings  \
                 ../source/aliflang/lexer  \
+                ../source/aliflang/parser  \
 
 SOURCES += \
     Taif.cpp \
@@ -37,8 +38,8 @@ SOURCES += \
     ../source/menubar/TMenu.cpp    \
     ../source/pages/TWelcomeWindow.cpp  \
     ../source/settings/TSettings.cpp   \
-    ../source/aliflang/lexer/TLexer.cpp \
     ../source/aliflang/lexer/AlifLexer.cpp \
+    ../source/aliflang/parser/AlifParser.cpp \
 
 HEADERS += \
     Taif.h  \
@@ -57,8 +58,8 @@ HEADERS += \
     ../source/menubar/TMenu.h  \
     ../source/pages/TWelcomeWindow.h \
     ../source/settings/TSettings.h \
-    ../source/aliflang/lexer/TLexer.h \
     ../source/aliflang/lexer/AlifLexer.h \
+    ../source/aliflang/parser/AlifParser.h \
 
 
 
