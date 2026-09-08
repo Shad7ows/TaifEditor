@@ -282,13 +282,20 @@ private:
     [[nodiscard]] AstNodeId makeAst(const AstNodeKind kind, const SourceRange& range,
                                     const QString& text,
                                     const QVector<AstNodeId>& children,
-                                    const SyntaxNodeId syntaxNode) {
+                                    const SyntaxNodeId syntaxNode,
+                                    QVector<AstChildRole> childRoles = {},
+                                    const qsizetype assignmentTargetCount = -1) {
         AstNode node;
         node.id = m_ast->m_nodes.size();
         node.kind = kind;
         node.range = range;
         node.text = text;
         node.children = children;
+        if (childRoles.size() != children.size()) {
+            childRoles.fill(AstChildRole::Unknown, children.size());
+        }
+        node.childRoles = std::move(childRoles);
+        node.assignmentTargetCount = assignmentTargetCount;
         node.syntaxNode = syntaxNode;
         m_ast->m_nodes.append(std::move(node));
         return m_ast->m_nodes.size() - 1;
@@ -300,10 +307,12 @@ private:
                                         const qsizetype end,
                                         const QString& text = {},
                                         const QVector<AstNodeId>& astChildren = {},
-                                        const QVector<SyntaxNodeId>& syntaxChildren = {}) {
-        const SyntaxNodeId syntax = makeSyntax(syntaxKind, start, end, syntaxChildren);
+                                        const QVector<SyntaxNodeId>& syntaxChildren = {},
+                                        QVector<AstChildRole> childRoles = {},
+                                        const qsizetype assignmentTargetCount = -1) {        const SyntaxNodeId syntax = makeSyntax(syntaxKind, start, end, syntaxChildren);
         const AstNodeId ast = makeAst(astKind, rangeFrom(start, end), text,
-                                      astChildren, syntax);
+                                      astChildren, syntax, std::move(childRoles),
+                                      assignmentTargetCount);
         return {ast, syntax};
     }
 
@@ -350,6 +359,8 @@ private:
                                                                SyntaxKind::BreakStatement);
         case TokenKind::KwContinue: return parseControlStatement(AstNodeKind::ContinueStatement,
                                                                   SyntaxKind::ContinueStatement);
+        case TokenKind::KwPass: return parseControlStatement(AstNodeKind::PassStatement,
+                                                              SyntaxKind::PassStatement);
         case TokenKind::Invalid:
             return parseInvalidStatement();
         default:
@@ -384,8 +395,12 @@ private:
             children.append(expression.ast);
             syntaxChildren.append(expression.syntax);
         }
+        QVector<AstChildRole> roles;
+        if (!children.isEmpty()) {
+            roles.append(AstChildRole::ReturnValue);
+        }
         return makeParsed(AstNodeKind::ReturnStatement, SyntaxKind::ReturnStatement,
-                          start, m_mainPosition, {}, children, syntaxChildren);
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseDeleteStatement() {
@@ -393,7 +408,8 @@ private:
         consume();
         const ParsedNode expression = parseExpression();
         return makeParsed(AstNodeKind::DeleteStatement, SyntaxKind::DeleteStatement,
-                          start, m_mainPosition, {}, {expression.ast}, {expression.syntax});
+                          start, m_mainPosition, {}, {expression.ast}, {expression.syntax},
+                          {AstChildRole::DeletedValue});
     }
 
     [[nodiscard]] ParsedNode parseImportStatement() {
@@ -401,7 +417,8 @@ private:
         consume();
         const ParsedNode path = parseDottedName();
         return makeParsed(AstNodeKind::ImportStatement, SyntaxKind::ImportStatement,
-                          start, m_mainPosition, {}, {path.ast}, {path.syntax});
+                          start, m_mainPosition, {}, {path.ast}, {path.syntax},
+                          {AstChildRole::ImportPath});
     }
 
     [[nodiscard]] ParsedNode parseFromImportStatement() {
@@ -421,8 +438,12 @@ private:
             syntaxChildren.append(imported.syntax);
         } while (consumeIf(TokenKind::Comma));
 
+        QVector<AstChildRole> roles;
+        roles.append(AstChildRole::ImportPath);
+        roles.fill(AstChildRole::ImportName, children.size() - 1);
+        roles.prepend(AstChildRole::ImportPath);
         return makeParsed(AstNodeKind::FromImportStatement, SyntaxKind::FromImportStatement,
-                          start, m_mainPosition, {}, children, syntaxChildren);
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseDottedName() {
@@ -470,7 +491,9 @@ private:
         return makeParsed(AstNodeKind::FunctionDeclaration, SyntaxKind::FunctionDeclaration,
                           start, m_mainPosition, name.ast != InvalidAstNodeId
                               ? m_ast->node(name.ast).text : QString(),
-                          children, syntaxChildren);
+                          children, syntaxChildren,
+                          {AstChildRole::DeclarationName, AstChildRole::ParameterList,
+                           AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseClassDeclaration() {
@@ -495,9 +518,15 @@ private:
         const ParsedNode suite = parseSuite();
         children.append(suite.ast);
         syntaxChildren.append(suite.syntax);
+        QVector<AstChildRole> roles;
+        roles.append(AstChildRole::DeclarationName);
+        while (roles.size() + 1 < children.size()) {
+            roles.append(AstChildRole::Base);
+        }
+        roles.append(AstChildRole::Body);
         return makeParsed(AstNodeKind::ClassDeclaration, SyntaxKind::ClassDeclaration,
                           start, m_mainPosition, m_ast->node(name.ast).text,
-                          children, syntaxChildren);
+                          children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseParameterList() {
@@ -518,15 +547,20 @@ private:
             QVector<AstNodeId> children {name.ast};
             QVector<SyntaxNodeId> parameterSyntax {name.syntax};
             if (consumeIf(TokenKind::Equal)) {
-                const ParsedNode defaultValue = parseExpression();
+                const ParsedNode defaultValue = parseExpression(0, false);
                 children.append(defaultValue.ast);
                 parameterSyntax.append(defaultValue.syntax);
+            }
+            QVector<AstChildRole> parameterRoles {AstChildRole::ParameterName};
+            if (children.size() > 1) {
+                parameterRoles.append(AstChildRole::DefaultValue);
             }
             const ParsedNode parameter = makeParsed(AstNodeKind::Parameter,
                                                      SyntaxKind::NamePattern,
                                                      parameterStart, m_mainPosition,
                                                      prefix + m_ast->node(name.ast).text,
-                                                     children, parameterSyntax);
+                                                     children, parameterSyntax,
+                                                     parameterRoles);
             parameters.append(parameter.ast);
             syntaxChildren.append(parameter.syntax);
             if (!consumeIf(TokenKind::Comma)) {
@@ -578,17 +612,58 @@ private:
                           start, m_mainPosition, {}, children, syntaxChildren);
     }
 
+    [[nodiscard]] ParsedNode parseBindingTarget() {
+        const qsizetype start = m_mainPosition;
+        if (!at(TokenKind::Identifier)) {
+            report(QStringLiteral("عقد005"),
+                   QStringLiteral("متوقع متغير او مترابطة قبل 'في'"), current().range);
+            if (!at(TokenKind::KwIn) && !isExpressionBoundary(current().kind)) {
+                consume();
+            }
+            return makeParsed(AstNodeKind::ErrorExpression, SyntaxKind::ErrorNode,
+                              start, m_mainPosition);
+        }
+
+        const ParsedNode first = parseNameExpression();
+        if (!at(TokenKind::Comma)) {
+            return first;
+        }
+
+        QVector<AstNodeId> children {first.ast};
+        QVector<SyntaxNodeId> syntaxChildren {first.syntax};
+        while (consumeIf(TokenKind::Comma)) {
+            if (at(TokenKind::KwIn) || isExpressionBoundary(current().kind)) {
+                break;
+            }
+            if (!at(TokenKind::Identifier)) {
+                report(QStringLiteral("عقد005"),
+                       QStringLiteral("متوقع متغير او مترابطة قبل 'في'"),
+                       current().range);
+                break;
+            }
+            const ParsedNode item = parseNameExpression();
+            children.append(item.ast);
+            syntaxChildren.append(item.syntax);
+        }
+        if (children.size() == 1) {
+            return first;
+        }
+        return makeParsed(AstNodeKind::TupleExpression, SyntaxKind::TupleExpression,
+                          start, m_mainPosition, {}, children, syntaxChildren);
+        }
+
     [[nodiscard]] ParsedNode parseForStatement() {
         const qsizetype start = m_mainPosition;
         consume();
-        const ParsedNode target = parseExpression();
+        const ParsedNode target = parseBindingTarget();
         expect(TokenKind::KwIn, QStringLiteral("في حالة لكل"));
         const ParsedNode iterable = parseExpression();
         const ParsedNode suite = parseSuite();
         return makeParsed(AstNodeKind::ForStatement, SyntaxKind::ForStatement,
                           start, m_mainPosition, {},
                           {target.ast, iterable.ast, suite.ast},
-                          {target.syntax, iterable.syntax, suite.syntax});
+                          {target.syntax, iterable.syntax, suite.syntax},
+                          {AstChildRole::Target, AstChildRole::Iterable, AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseWhileStatement() {
@@ -598,7 +673,8 @@ private:
         const ParsedNode suite = parseSuite();
         return makeParsed(AstNodeKind::WhileStatement, SyntaxKind::WhileStatement,
                           start, m_mainPosition, {}, {condition.ast, suite.ast},
-                          {condition.syntax, suite.syntax});
+                          {condition.syntax, suite.syntax},
+                          {AstChildRole::Condition, AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseTryStatement() {
@@ -695,16 +771,21 @@ private:
 
     [[nodiscard]] ParsedNode parseAssignmentOrExpressionStatement() {
         const qsizetype start = m_mainPosition;
-        const ParsedNode first = parseExpression();
-        QVector<AstNodeId> targets {first.ast};
-        QVector<SyntaxNodeId> targetSyntax {first.syntax};
-        bool hasTupleTargets = false;
+        const ParsedNode left = parseExpression();
 
-        while (consumeIf(TokenKind::Comma)) {
-            hasTupleTargets = true;
-            const ParsedNode target = parseExpression();
-            targets.append(target.ast);
-            targetSyntax.append(target.syntax);
+        QVector<AstNodeId> targets;
+        QVector<SyntaxNodeId> targetSyntax;
+        const bool leftIsTuple = left.ast != InvalidAstNodeId
+                                 && m_ast->node(left.ast).kind == AstNodeKind::TupleExpression;
+        if (leftIsTuple && isAssignmentOperator(current().kind)) {
+            const AstNode& tuple = m_ast->node(left.ast);
+            for (const AstNodeId child : tuple.children) {
+                targets.append(child);
+                targetSyntax.append(m_ast->node(child).syntaxNode);
+            }
+        } else {
+            targets.append(left.ast);
+            targetSyntax.append(left.syntax);
         }
 
         if (isAssignmentOperator(current().kind)) {
@@ -713,27 +794,23 @@ private:
             const ParsedNode right = parseExpression();
             targets.append(right.ast);
             targetSyntax.append(right.syntax);
+            QVector<AstChildRole> roles;
+            roles.fill(AstChildRole::Target, targets.size() - 1);
+            roles.append(AstChildRole::Value);
             return makeParsed(AstNodeKind::AssignmentStatement,
                               SyntaxKind::AssignmentStatement,
                               start, m_mainPosition, assignmentOperator,
-                              targets, targetSyntax);
+                              targets, targetSyntax, roles, targets.size() - 1);
         }
 
-        if (hasTupleTargets) {
-            const ParsedNode tuple = makeParsed(AstNodeKind::TupleExpression,
-                                                SyntaxKind::TupleExpression,
-                                                start, m_mainPosition, {},
-                                                targets, targetSyntax);
-            return makeParsed(AstNodeKind::ExpressionStatement,
-                              SyntaxKind::ExpressionStatement,
-                              start, m_mainPosition, {}, {tuple.ast}, {tuple.syntax});
-        }
         return makeParsed(AstNodeKind::ExpressionStatement,
                           SyntaxKind::ExpressionStatement,
-                          start, m_mainPosition, {}, {first.ast}, {first.syntax});
+                          start, m_mainPosition, {}, {left.ast}, {left.syntax});
     }
 
-    [[nodiscard]] ParsedNode parseExpression(const int minimumBindingPower = 0) {
+    [[nodiscard]] ParsedNode parseExpression(const int minimumBindingPower = 0,
+                                             const bool allowBraceLessTuple = true) {
+
         ParsedNode left = parsePrefixExpression();
         while (!isExpressionBoundary(current().kind)) {
             if (const ParsedNode postfix = parsePostfixExpression(left);
@@ -760,12 +837,52 @@ private:
             }
             const int rightBindingPower = operatorKind == TokenKind::Power
                 ? bindingPower : bindingPower + 1;
-            const ParsedNode right = parseExpression(rightBindingPower);
+            const ParsedNode right = parseExpression(rightBindingPower, allowBraceLessTuple);
             left = makeParsed(AstNodeKind::BinaryExpression, SyntaxKind::BinaryExpression,
                               startFor(left), m_mainPosition, operatorText,
                               {left.ast, right.ast}, {left.syntax, right.syntax});
         }
+
+        if (at(TokenKind::KwIf)) {
+            const qsizetype conditionalStart = startFor(left);
+            consume();
+            const ParsedNode condition = parseExpression(0, false);
+            expect(TokenKind::KwElse, QStringLiteral("in an inline conditional expression"));
+            const ParsedNode alternative = parseExpression(minimumBindingPower,
+                                                           allowBraceLessTuple);
+            left = makeParsed(AstNodeKind::BinaryExpression, SyntaxKind::BinaryExpression,
+                              conditionalStart, m_mainPosition,
+                              QStringLiteral("اذا/والا"),
+                              {left.ast, condition.ast, alternative.ast},
+                              {left.syntax, condition.syntax, alternative.syntax});
+        }
+
+        if (allowBraceLessTuple && at(TokenKind::Comma)) {
+            left = parseTupleSequence(left);
+        }
         return left;
+    }
+
+    [[nodiscard]] ParsedNode parseTupleSequence(const ParsedNode& first) {
+        const qsizetype start = startFor(first);
+        QVector<AstNodeId> children {first.ast};
+        QVector<SyntaxNodeId> syntaxChildren {first.syntax};
+        while (consumeIf(TokenKind::Comma)) {
+            if (at(TokenKind::RParen) || at(TokenKind::RBracket) || at(TokenKind::RBrace)
+                || at(TokenKind::Newline) || at(TokenKind::Semicolon)
+                || at(TokenKind::Dedent) || at(TokenKind::EndOfFile)) {
+                // Trailing comma: the tuple ends here without another element.
+                break;
+            }
+            const ParsedNode item = parseExpression();
+            children.append(item.ast);
+            syntaxChildren.append(item.syntax);
+        }
+        if (children.size() <= 1) {
+            return first;
+        }
+        return makeParsed(AstNodeKind::TupleExpression, SyntaxKind::TupleExpression,
+                          start, m_mainPosition, {}, children, syntaxChildren);
     }
 
     [[nodiscard]] qsizetype startFor(const ParsedNode& parsed) const {
@@ -811,7 +928,7 @@ private:
             consume();
         }
 
-        const ParsedNode value = parseExpression();
+        const ParsedNode value = parseExpression(0, false);
         if (argumentKind == AstNodeKind::ExpressionStatement) {
             return value;
         }
@@ -833,8 +950,12 @@ private:
             }
         }
         expect(TokenKind::RParen, QStringLiteral("بعد استدعاء الوسيطات"), &syntaxChildren);
+        QVector<AstChildRole> roles;
+        roles.append(AstChildRole::Callee);
+        roles.fill(AstChildRole::Argument, children.size() - 1);
+        roles.prepend(AstChildRole::Callee);
         return makeParsed(AstNodeKind::CallExpression, SyntaxKind::CallExpression,
-                          start, m_mainPosition, {}, children, syntaxChildren);
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseMemberExpression(const ParsedNode& base) {
@@ -843,7 +964,8 @@ private:
         const ParsedNode member = parseNameExpression();
         return makeParsed(AstNodeKind::MemberExpression, SyntaxKind::MemberExpression,
                           start, m_mainPosition, m_ast->node(member.ast).text,
-                          {base.ast, member.ast}, {base.syntax, member.syntax});
+                          {base.ast, member.ast}, {base.syntax, member.syntax},
+                          {AstChildRole::MemberBase, AstChildRole::MemberName});
     }
 
     [[nodiscard]] ParsedNode parseIndexOrSliceExpression(const ParsedNode& base) {
@@ -963,9 +1085,31 @@ private:
         QVector<SyntaxNodeId> syntaxChildren;
         bool isTuple = false;
         if (!at(TokenKind::RParen)) {
-            const ParsedNode first = parseExpression();
+            const ParsedNode first = parseExpression(0, true);
             children.append(first.ast);
             syntaxChildren.append(first.syntax);
+
+            if (at(TokenKind::KwFor)) {
+                const qsizetype comprehensionStart = startFor(first);
+                consume();
+                QVector<AstNodeId> comprehensionChildren;
+                QVector<SyntaxNodeId> comprehensionSyntax;
+                const ParsedNode target = parseBindingTarget();
+                expect(TokenKind::KwIn, QStringLiteral("في حاوية توليدية"),
+                       &comprehensionSyntax);
+                const ParsedNode iterable = parseExpression(0, true);
+                comprehensionChildren = {first.ast, target.ast, iterable.ast};
+                comprehensionSyntax.append({target.syntax, iterable.syntax});
+                expect(TokenKind::RParen, QStringLiteral("لإغلاق تعبير قوسي"),
+                       &comprehensionSyntax);
+                return makeParsed(AstNodeKind::ComprehensionExpression,
+                                  SyntaxKind::ComprehensionExpression,
+                                  comprehensionStart, m_mainPosition, {},
+                                  comprehensionChildren, comprehensionSyntax,
+                                  {AstChildRole::Element, AstChildRole::Target,
+                                   AstChildRole::Iterable});
+            }
+
             while (consumeIf(TokenKind::Comma)) {
                 isTuple = true;
                 if (at(TokenKind::RParen)) {
@@ -1003,7 +1147,7 @@ private:
             if (at(TokenKind::KwFor)) {
                 const qsizetype comprehensionStart = startFor(item);
                 consume();
-                const ParsedNode target = parseExpression();
+                const ParsedNode target = parseBindingTarget();
                 expect(TokenKind::KwIn, QStringLiteral("في تعبير توليدي"), &syntaxChildren);
                 const ParsedNode iterable = parseExpression();
                 const ParsedNode comprehension = makeParsed(
@@ -1011,8 +1155,8 @@ private:
                     SyntaxKind::ComprehensionExpression,
                     comprehensionStart, m_mainPosition, {},
                     {item.ast, target.ast, iterable.ast},
-                    {item.syntax, target.syntax, iterable.syntax});
-                children = {comprehension.ast};
+                    {item.syntax, target.syntax, iterable.syntax},
+                    {AstChildRole::Element, AstChildRole::Target, AstChildRole::Iterable});                children = {comprehension.ast};
                 syntaxChildren.append(comprehension.syntax);
                 break;
             }
@@ -1032,12 +1176,12 @@ private:
         QVector<SyntaxNodeId> syntaxChildren;
         bool isMap = false;
         while (!at(TokenKind::RBrace) && !at(TokenKind::EndOfFile)) {
-            const ParsedNode keyOrValue = parseExpression();
+            const ParsedNode keyOrValue = parseExpression(0, false);
             children.append(keyOrValue.ast);
             syntaxChildren.append(keyOrValue.syntax);
             if (consumeIf(TokenKind::Colon)) {
                 isMap = true;
-                const ParsedNode value = parseExpression();
+                const ParsedNode value = parseExpression(0, false);
                 children.append(value.ast);
                 syntaxChildren.append(value.syntax);
             }
@@ -1057,7 +1201,22 @@ private:
         QVector<AstNodeId> children;
         QVector<SyntaxNodeId> syntaxChildren;
         while (!at(TokenKind::Colon) && !at(TokenKind::EndOfFile)) {
-            const ParsedNode parameter = parseNameExpression();
+            const qsizetype parameterStart = m_mainPosition;
+            const ParsedNode name = parseNameExpression();
+            QVector<AstNodeId> parameterChildren {name.ast};
+            QVector<SyntaxNodeId> parameterSyntax {name.syntax};
+            QVector<AstChildRole> parameterRoles {AstChildRole::ParameterName};
+            if (consumeIf(TokenKind::Equal)) {
+                const ParsedNode defaultValue = parseExpression(0, false);
+                parameterChildren.append(defaultValue.ast);
+                parameterSyntax.append(defaultValue.syntax);
+                parameterRoles.append(AstChildRole::DefaultValue);
+            }
+            const ParsedNode parameter = makeParsed(
+                AstNodeKind::Parameter, SyntaxKind::NamePattern,
+                parameterStart, m_mainPosition,
+                name.ast != InvalidAstNodeId ? m_ast->node(name.ast).text : QString(),
+                parameterChildren, parameterSyntax, parameterRoles);
             children.append(parameter.ast);
             syntaxChildren.append(parameter.syntax);
             if (!consumeIf(TokenKind::Comma)) {

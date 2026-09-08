@@ -32,11 +32,13 @@ private slots:
     void emptySourceCreatesCompleteSnapshots();
     void parserNormalizesMissingEndOfFile();
     void declarationsAndSuitesCreateSemanticNodes();
+    void forHeaderTreatsInAsAStructuralDelimiter();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
     void formattedStringCreatesStructuredAst();
     void recoveryPreservesLaterDeclarations();
     void lexerDiagnosticsAreRetained();
     void reparseFallsBackToAnEquivalentFreshSnapshot();
+    void passStatementIsParsedWithoutError();
     void statusCorpusProducesAFiniteTree();
 };
 
@@ -84,6 +86,17 @@ void TaifParserTest::declarationsAndSuitesCreateSemanticNodes() {
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::AssignmentStatement));
 }
 
+void TaifParserTest::forHeaderTreatsInAsAStructuralDelimiter() {
+    const QString source = QStringLiteral(
+        "لكل ب في مدى(5):\n"
+        "\tاطبع(ب)\n");
+    const ParseResult result = TaifParser().parse(source);
+
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QVERIFY(hasAstKind(*result.ast, AstNodeKind::ForStatement));
+    QVERIFY(hasAstKind(*result.ast, AstNodeKind::CallExpression));
+}
+
 void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {
     const QString source = QStringLiteral(
         "س = -2 + 3 * 4 ^ 2\n"
@@ -121,7 +134,7 @@ void TaifParserTest::recoveryPreservesLaterDeclarations() {
     const ParseResult result = TaifParser().parse(source);
 
     QVERIFY(!result.parserDiagnostics.isEmpty());
-    QVERIFY(hasDiagnostic(result, QStringLiteral("PAR001")));
+    QVERIFY(hasDiagnostic(result, QStringLiteral("عقد001")));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::FunctionDeclaration));
     QCOMPARE(result.syntaxTree->tokens().constLast().kind, TokenKind::EndOfFile);
 }
@@ -155,6 +168,19 @@ void TaifParserTest::reparseFallsBackToAnEquivalentFreshSnapshot() {
     QCOMPARE(incremental.result.parserDiagnostics.size(), fresh.parserDiagnostics.size());
 }
 
+void TaifParserTest::passStatementIsParsedWithoutError() {
+    const QString source = QStringLiteral(
+        "دالة اختبار():\n"
+        "\tاذا صح:\n"
+        "\t\tمرر\n"
+        "\tوالا:\n"
+        "\t\tاطبع(1)\n");
+    const ParseResult result = TaifParser().parse(source);
+
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QVERIFY(hasAstKind(*result.ast, AstNodeKind::PassStatement));
+}
+
 void TaifParserTest::statusCorpusProducesAFiniteTree() {
     QFile file(QFINDTESTDATA("../lexer/data/Status.alif"));
     QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(file.errorString()));
@@ -165,7 +191,9 @@ void TaifParserTest::statusCorpusProducesAFiniteTree() {
     QVERIFY(result.ast != nullptr);
     QCOMPARE(result.documentRevision, quint64(7));
     QCOMPARE(result.syntaxTree->tokens().constLast().kind, TokenKind::EndOfFile);
-    QVERIFY(result.parserDiagnostics.size() < 256);
+    for (const ParseDiagnostic& diagnostic : result.parserDiagnostics) {
+        QVERIFY(diagnostic.severity != ParseDiagnosticSeverity::Error);
+    }
     QVERIFY(result.ast->nodes().size() > 100);
 }
 

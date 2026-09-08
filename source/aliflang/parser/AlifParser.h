@@ -49,6 +49,7 @@ enum class SyntaxKind : quint16 {
     DeleteStatement,
     BreakStatement,
     ContinueStatement,
+    PassStatement,
     AssignmentStatement,
     ExpressionStatement,
     ParameterList,
@@ -126,6 +127,7 @@ enum class AstNodeKind : quint16 {
     DeleteStatement,
     BreakStatement,
     ContinueStatement,
+    PassStatement,
     AssignmentStatement,
     ExpressionStatement,
     Parameter,
@@ -159,6 +161,32 @@ enum class AstNodeKind : quint16 {
     ErrorStatement
 };
 
+enum class AstChildRole : quint8 {
+    Unknown,
+    DeclarationName,
+    ParameterList,
+    ParameterName,
+    DefaultValue,
+    Body,
+    Base,
+    Condition,
+    Target,
+    Value,
+    Iterable,
+    Element,
+    Callee,
+    Argument,
+    MemberBase,
+    MemberName,
+    ImportPath,
+    ImportName,
+    ReturnValue,
+    DeletedValue,
+    FormattedPart,
+    FormatExpression,
+    FormatSpecifier
+};
+
 /**
  * Compact semantic node used by the future symbol-table tier. `text` holds an
  * identifier, literal spelling, operator spelling, or declared name according
@@ -170,6 +198,8 @@ struct AstNode final {
     SourceRange range;
     QString text;
     QVector<AstNodeId> children;
+    QVector<AstChildRole> childRoles;
+    qsizetype assignmentTargetCount = -1;
     SyntaxNodeId syntaxNode = InvalidSyntaxNodeId;
 };
 
@@ -245,3 +275,4 @@ public:
 Q_DECLARE_METATYPE(ParseDiagnostic)
 Q_DECLARE_METATYPE(SyntaxKind)
 Q_DECLARE_METATYPE(AstNodeKind)
+Q_DECLARE_METATYPE(AstChildRole)

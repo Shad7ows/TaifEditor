@@ -172,15 +172,15 @@ void TaifLexerTest::statusCorpusLexesToEndOfFile() {
 
     bool foundFString = false;
     bool foundIndent = false;
-    bool foundArabicSemicolon = false;
+    bool foundSemicolon = false;
     for (const Token& token : result.tokens) {
         foundFString = foundFString || token.kind == TokenKind::FStringStart;
         foundIndent = foundIndent || token.kind == TokenKind::Indent;
-        foundArabicSemicolon = foundArabicSemicolon || token.kind == TokenKind::Semicolon;
+        foundSemicolon = foundSemicolon || token.kind == TokenKind::Semicolon;
     }
     QVERIFY(foundFString);
     QVERIFY(foundIndent);
-    QVERIFY(foundArabicSemicolon);
+    QVERIFY(foundSemicolon);
 }
 
 QTEST_GUILESS_MAIN(TaifLexerTest)
