@@ -191,9 +191,7 @@ void TaifParserTest::statusCorpusProducesAFiniteTree() {
     QVERIFY(result.ast != nullptr);
     QCOMPARE(result.documentRevision, quint64(7));
     QCOMPARE(result.syntaxTree->tokens().constLast().kind, TokenKind::EndOfFile);
-    for (const ParseDiagnostic& diagnostic : result.parserDiagnostics) {
-        QVERIFY(diagnostic.severity != ParseDiagnosticSeverity::Error);
-    }
+    QVERIFY(result.parserDiagnostics.isEmpty());
     QVERIFY(result.ast->nodes().size() > 100);
 }
 

@@ -21,6 +21,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/settings  \
                 ../source/aliflang/lexer  \
                 ../source/aliflang/parser  \
+                ../source/aliflang/semantic  \
 
 SOURCES += \
     Taif.cpp \
@@ -40,6 +41,7 @@ SOURCES += \
     ../source/settings/TSettings.cpp   \
     ../source/aliflang/lexer/AlifLexer.cpp \
     ../source/aliflang/parser/AlifParser.cpp \
+    ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
     Taif.h  \
@@ -60,6 +62,7 @@ HEADERS += \
     ../source/settings/TSettings.h \
     ../source/aliflang/lexer/AlifLexer.h \
     ../source/aliflang/parser/AlifParser.h \
+    ../source/aliflang/semantic/AlifSymbolTable.h \
 
 
 
