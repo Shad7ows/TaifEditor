@@ -60,6 +60,8 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
                 if (highlighter) {
                     highlighter->setSemanticSnapshot(std::move(snapshot));
                 }
+                // Completion is refreshed only from a current immutable model.
+                performCompletion();
             });
     lineNumberArea = new LineNumberArea(this);
     minimap = new TMinimap(this, this);
