@@ -14,6 +14,7 @@ RESOURCES += \
 INCLUDEPATH +=  ../source/texteditor \
                 ../source/texteditor/highlighter \
                 ../source/texteditor/autocomplete \
+                ../source/texteditor/analysis \
                 ../source/components \
                 ../source/console \
                 ../source/menubar   \
@@ -22,8 +23,12 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/lexer  \
                 ../source/aliflang/parser  \
                 ../source/aliflang/semantic  \
+                ../source/aliflang/presentation  \
 
 SOURCES += \
+    ../source/aliflang/presentation/AlifSemanticPresentationAdapter.cpp \
+    ../source/texteditor/analysis/EditorAnalysisController.cpp \
+    ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     Taif.cpp \
     main.cpp \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -44,6 +49,10 @@ SOURCES += \
     ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
+    ../source/aliflang/presentation/AlifAnalysis.h \
+    ../source/aliflang/presentation/AlifSemanticPresentationAdapter.h \
+    ../source/texteditor/analysis/EditorAnalysisController.h \
+    ../source/texteditor/analysis/SemanticCompletionProvider.h \
     Taif.h  \
     ../source/texteditor/autocomplete/AutoComplete.h \
     ../source/texteditor/autocomplete/AutoCompleteUI.h \
