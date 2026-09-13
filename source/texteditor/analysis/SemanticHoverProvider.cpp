@@ -165,7 +165,7 @@ QString precedingCommentDocumentation(const Symbol& symbol, const LexResult& lex
 
 QString signatureForSymbol(const Symbol& symbol, const ParseResult& parse) {
     if (symbol.kind == SymbolKind::Class) {
-        return QStringLiteral("صنف %1").arg(symbol.name);
+        return QStringLiteral("%1").arg(symbol.name);
     }
     if (symbol.kind != SymbolKind::Function || !parse.ast
         || symbol.declarationNode == InvalidAstNodeId) {
@@ -173,7 +173,7 @@ QString signatureForSymbol(const Symbol& symbol, const ParseResult& parse) {
     }
     const QVector<AstNode>& nodes = parse.ast->nodes();
     if (symbol.declarationNode < 0 || symbol.declarationNode >= nodes.size()) {
-        return QStringLiteral("دالة %1").arg(symbol.name);
+        return QStringLiteral("%1").arg(symbol.name);
     }
     const AstNodeId parameterListId = childWithRole(
         nodes.at(symbol.declarationNode), AstChildRole::ParameterList);
@@ -191,7 +191,7 @@ QString signatureForSymbol(const Symbol& symbol, const ParseResult& parse) {
             }
         }
     }
-    return QStringLiteral("دالة %1(%2)").arg(symbol.name, parameters.join(QStringLiteral("، ")));
+    return QStringLiteral("%1(%2)").arg(symbol.name, parameters.join(QStringLiteral("، ")));
 }
 
 bool isIdentifierTokenAt(const LexResult& lex, const qsizetype offset) {

@@ -42,15 +42,11 @@ THoverPopup::THoverPopup(QWidget* parent) : QFrame(parent) {
     setFocusPolicy(Qt::NoFocus);
     setLayoutDirection(Qt::RightToLeft);
     setFrameShape(QFrame::NoFrame);
-    setMinimumWidth(350);
-    setMaximumWidth(520);
+    setMinimumWidth(345);
+    setFixedWidth(390);
+    setMaximumWidth(445);
+    setFixedHeight(180);
     setStyleSheet(R"(
-        QFrame {
-            background-color: red;
-            border: 1px solid #4b5263;
-            border-top: 2px solid #4793FF;
-            border-radius: 10px;
-        }
         QLabel {
             border: none;
             background: transparent;
@@ -70,7 +66,7 @@ THoverPopup::THoverPopup(QWidget* parent) : QFrame(parent) {
     // semantic glyph left, Arabic text in the right/main reading area.
     iconLabel = new QLabel(headerRow);
     iconLabel->setFixedWidth(35);
-    iconLabel->setMinimumHeight(38);
+    iconLabel->setFixedHeight(38);
     iconLabel->setAlignment(Qt::AlignCenter);
     iconLabel->setFont(QFont(QStringLiteral("Consolas"), 9, QFont::Bold));
     headerLayout->addWidget(iconLabel);
@@ -100,16 +96,7 @@ THoverPopup::THoverPopup(QWidget* parent) : QFrame(parent) {
     documentationLabel->setTextFormat(Qt::RichText);
     documentationLabel->setWordWrap(true);
     documentationLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    documentationLabel->setMaximumWidth(496);
-    documentationLabel->setStyleSheet(R"(
-        QLabel {
-            background-color: #2c313a;
-            border-top: 1px solid #4793FF;
-            border-radius: 6px;
-            padding: 8px;
-            font-family: 'Tajawal', sans-serif;
-        }
-)");
+    documentationLabel->setMaximumWidth(500);
     layout->addWidget(documentationLabel);
 }
 
@@ -121,7 +108,7 @@ void THoverPopup::paintEvent(QPaintEvent* event) {
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    constexpr qreal cornerRadius = 10.0;
+    constexpr qreal cornerRadius = 12.0;
     const QRectF panel = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
     QPainterPath panelPath;
     panelPath.addRoundedRect(panel, cornerRadius, cornerRadius);
@@ -134,9 +121,9 @@ void THoverPopup::paintEvent(QPaintEvent* event) {
 
     painter.save();
     painter.setClipPath(panelPath);
-    painter.setPen(QPen(QColor(71, 147, 255), 2));
-    painter.drawLine(QPointF(panel.left() + cornerRadius, panel.top() + 1.0),
-                     QPointF(panel.right() - cornerRadius, panel.top() + 1.0));
+    painter.setPen(QPen(QColor(71, 147, 255), 3));
+    painter.drawLine(QPointF(panel.left(), panel.top()),
+                     QPointF(panel.right(), panel.top()));
     painter.restore();
 }
 
@@ -151,22 +138,30 @@ void THoverPopup::setHoverInfo(const HoverInfo& info) {
             border-radius: 7px;
             border-left: 1px solid %1;
             font-family: Consolas;
-        }
-)")
-.arg(visual.color.name()));
-    headerLabel->setText(QStringLiteral(
-        "<div dir='rtl'><span style='color:%1; font-family:Tajawal,sans-serif; "
-        "font-size:12px; font-weight:bold;'>%2</span><br>"
-        "<span style='color:#f1f5f9; font-family:Consolas,Tajawal,sans-serif; "
-        "font-size:14px; font-weight:bold;'>%3</span></div>")
-        .arg(visual.color.name(), escapedWithBreaks(info.typeLabel),
-             escapedWithBreaks(info.signature)));
+        })").arg(visual.color.name()));
+
+    headerLabel->setText(QStringLiteral(R"(
+        <div dir='rtl'>
+        <span style='color:#f1f5f9; font-family:Consolas,Tajawal,sans-serif;
+        font-size:14px; font-weight:bold;'>%1</span>
+        </div>
+        )").arg(escapedWithBreaks(info.signature)));
+
     metadataLabel->setText(QStringLiteral(
         "<div dir='rtl'><span style='color:#9da5b4;'>النوع:</span> "
         "<span style='color:#dcdfe4;'>%1</span>"
         "&nbsp;&nbsp;&nbsp;<span style='color:#9da5b4;'>التعريف:</span> "
         "<span style='color:#dcdfe4;'>السطر %2</span></div>")
         .arg(escapedWithBreaks(info.typeLabel), QString::number(info.declarationLine)));
+
+    documentationLabel->setStyleSheet(QStringLiteral(R"(
+        QLabel {
+            background-color: #2c313a;
+            border-top: 1px solid %1;
+            border-radius: 6px;
+            padding: 8px;
+            font-family: 'Tajawal', sans-serif;
+        })").arg(visual.color.name()));
     documentationLabel->setText(QStringLiteral(
         "<div dir='rtl'><span style='color:%1; font-weight:bold;'>التوثيق</span><br>"
         "<span style='color:#dcdfe4; font-size:12px;'>%2</span></div>")
