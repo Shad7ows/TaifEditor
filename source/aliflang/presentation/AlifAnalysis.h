@@ -34,6 +34,7 @@ enum class PresentationClass : quint8 {
     FunctionDeclaration,
     ClassDeclaration,
     Parameter,
+    SelfReceiver,
     Local,
     Import,
     Builtin,

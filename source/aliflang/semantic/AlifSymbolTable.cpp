@@ -413,7 +413,7 @@ private:
                 continue;
             }
             const SymbolKind targetKind = m_model->m_scopes.at(scope).kind == ScopeKind::Class
-                                              ? SymbolKind::Field : SymbolKind::Local;
+                                              ? SymbolKind::Attribute : SymbolKind::Local;
             declaredTargets += declareTarget(ast.children.at(index), scope, targetKind);
         }
 
@@ -551,11 +551,11 @@ private:
                 const QVector<SymbolId> existing =
                     m_model->m_scopes.at(classScope).declarations.value(memberName.text);
                 for (const SymbolId existingId : existing) {
-                    if (m_model->m_symbols.at(existingId).kind == SymbolKind::Field) {
+                    if (m_model->m_symbols.at(existingId).kind == SymbolKind::Attribute) {
                         return {existingId};
                     }
                 }
-                return {declare(classScope, SymbolKind::Field, memberName.text,
+                return {declare(classScope, SymbolKind::Attribute, memberName.text,
                                 memberName.range, target.range, target.id)};
             }
         }
@@ -1012,7 +1012,7 @@ QVector<SymbolId> SemanticModel::membersOfClass(const SymbolId classSymbol) cons
         for (const SymbolId id : m_scopes.at(classScope).declarations.value(name)) {
             const Symbol* candidate = symbol(id);
             if (candidate != nullptr && (candidate->kind == SymbolKind::Function
-                                         || candidate->kind == SymbolKind::Field || candidate->kind == SymbolKind::Class)) {
+                                         || candidate->kind == SymbolKind::Attribute || candidate->kind == SymbolKind::Class)) {
                 members.append(id);
             }
         }

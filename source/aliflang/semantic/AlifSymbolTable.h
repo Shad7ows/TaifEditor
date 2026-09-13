@@ -30,7 +30,7 @@ enum class SymbolKind : quint8 {
     Module,
     Function,
     Class,
-    Field,
+    Attribute,
     Parameter,
     Local,
     ImportModule,

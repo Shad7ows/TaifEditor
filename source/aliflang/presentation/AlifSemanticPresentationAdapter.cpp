@@ -27,8 +27,12 @@ bool isPunctuation(const TokenKind kind) {
     return kind >= TokenKind::LParen && kind <= TokenKind::Semicolon;
 }
 
-PresentationClass classForSymbol(const SymbolKind kind) {
-    switch (kind) {
+PresentationClass classForSymbol(const Symbol& symbol) {
+    if (symbol.kind == SymbolKind::Parameter && symbol.name == QStringLiteral("هذا")
+        && symbol.instanceClass != InvalidSymbolId) {
+        return PresentationClass::SelfReceiver;
+    }
+    switch (symbol.kind) {
     case SymbolKind::Function: return PresentationClass::FunctionDeclaration;
     case SymbolKind::Class: return PresentationClass::ClassDeclaration;
     case SymbolKind::Parameter: return PresentationClass::Parameter;
@@ -97,7 +101,7 @@ QVector<PresentationSpan> SemanticPresentationAdapter::classify(
         if (symbol.declarationRange.begin.offset >= symbol.declarationRange.end.offset) {
             continue;
         }
-        spans.append({symbol.declarationRange, classForSymbol(symbol.kind),
+        spans.append({symbol.declarationRange, classForSymbol(symbol),
                       SemanticDiagnosticSeverity::Information});
     }
 
@@ -113,7 +117,7 @@ QVector<PresentationSpan> SemanticPresentationAdapter::classify(
         if (reference.state == ResolutionState::Resolved && reference.resolvedSymbol != InvalidSymbolId) {
             const Symbol* symbol = semanticModel->symbol(reference.resolvedSymbol);
             if (symbol != nullptr) {
-                spans.append({reference.range, classForSymbol(symbol->kind),
+                spans.append({reference.range, classForSymbol(*symbol),
                               SemanticDiagnosticSeverity::Information});
             }
         }
