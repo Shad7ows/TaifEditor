@@ -3,6 +3,7 @@
 #include "HoverPopup.h"
 
 #include <QAction>
+#include <QCursor>
 #include <QFile>
 #include <QMenu>
 #include <QMimeData>
@@ -58,6 +59,8 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
             this, [this](int, int, int) {
                 clearActiveCompletionContext();
                 dismissHover();
+                definitionNavigationHistory.clear();
+                clearCtrlHoverDefinitionLink();
             });
     connect(analysisController, &EditorAnalysisController::fastPassRequested,
             this, [this](const quint64 revision, const DirtyRange& dirty) {
@@ -371,6 +374,16 @@ void TEditor::contextMenuEvent(QContextMenuEvent *event)
 
     menu->addSeparator();
 
+    const QTextCursor contextCursor = cursorForPosition(event->pos());
+    const qsizetype definitionOffset = contextCursor.position();
+    QAction *definitionAction = new QAction("اذهب إلى التعريف", this);
+    definitionAction->setShortcut(QKeySequence(Qt::Key_F12));
+    definitionAction->setEnabled(definitionAt(definitionOffset).has_value());
+    connect(definitionAction, &QAction::triggered, this, [this, definitionOffset]() {
+        navigateToDefinition(definitionOffset);
+    });
+    menu->addAction(definitionAction);
+
     QAction *commentAction = new QAction("تعليق/إلغاء تعليق", this);
     commentAction->setShortcut(QKeySequence("Ctrl+/"));
     connect(commentAction, &QAction::triggered, this, &TEditor::toggleComment);
@@ -462,13 +475,31 @@ void TEditor::showEvent(QShowEvent *event)
     }
 }
 
+void TEditor::mousePressEvent(QMouseEvent* event) {
+    if (event->button() == Qt::LeftButton
+        && event->modifiers().testFlag(Qt::ControlModifier)) {
+        const QTextCursor clickedCursor = cursorForPosition(event->position().toPoint());
+        if (navigateToDefinition(clickedCursor.position())) {
+            event->accept();
+            return;
+        }
+    }
+    QPlainTextEdit::mousePressEvent(event);
+}
 void TEditor::mouseMoveEvent(QMouseEvent* event) {
-    scheduleHover(event->position().toPoint());
+    const QPoint viewportPosition = event->position().toPoint();
+    if (event->modifiers().testFlag(Qt::ControlModifier)) {
+        updateCtrlHoverDefinitionLink(viewportPosition);
+    } else {
+        clearCtrlHoverDefinitionLink();
+    }
+    scheduleHover(viewportPosition);
     QPlainTextEdit::mouseMoveEvent(event);
 }
 
 void TEditor::leaveEvent(QEvent* event) {
     dismissHover();
+    clearCtrlHoverDefinitionLink();
     QPlainTextEdit::leaveEvent(event);
 }
 
@@ -559,6 +590,99 @@ void TEditor::dismissHover() {
     if (hoverPopup) {
         hoverPopup->hide();
     }
+}
+
+void TEditor::updateCtrlHoverDefinitionLink(const QPoint& viewportPosition) {
+    const QTextCursor cursor = cursorForPosition(viewportPosition);
+    const std::optional<DefinitionLocation> location = definitionAt(cursor.position());
+    const std::optional<SourceRange> nextRange = location.has_value()
+                                                     ? std::optional<SourceRange>(location->sourceRange)
+                                                     : std::nullopt;
+    const bool rangeIsUnchanged = ctrlHoverDefinitionRange.has_value()
+                                      == nextRange.has_value()
+                                  && (!nextRange.has_value()
+                                      || (ctrlHoverDefinitionRange->begin.offset == nextRange->begin.offset
+                                          && ctrlHoverDefinitionRange->end.offset == nextRange->end.offset));
+    if (rangeIsUnchanged) {
+        return;
+    }
+    ctrlHoverDefinitionRange = nextRange;
+    applyLineAndWordHighlights();
+}
+
+void TEditor::clearCtrlHoverDefinitionLink() {
+    if (!ctrlHoverDefinitionRange.has_value()) {
+        return;
+    }
+    ctrlHoverDefinitionRange.reset();
+    applyLineAndWordHighlights();
+}
+
+std::optional<DefinitionLocation> TEditor::definitionAt(const qsizetype offset) const {
+    if (!analysisController || offset < 0 || offset >= document()->characterCount() - 1) {
+        return std::nullopt;
+    }
+    const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
+    if (!snapshot || snapshot->revision != analysisController->currentRevision()) {
+        return std::nullopt;
+    }
+    return semanticDefinitionProvider.definitionAt(offset, toPlainText(), snapshot);
+}
+
+bool TEditor::navigateToDefinition(const qsizetype offset) {
+    const std::optional<DefinitionLocation> location = definitionAt(offset);
+    if (!location.has_value()) {
+        return false;
+    }
+    const qsizetype documentLength = document()->characterCount() - 1;
+    if (location->declarationRange.begin.offset < 0
+        || location->declarationRange.end.offset > documentLength
+        || location->declarationRange.end.offset <= location->declarationRange.begin.offset) {
+        return false;
+    }
+
+    QTextCursor destination(document());
+    destination.setPosition(location->declarationRange.begin.offset);
+    destination.setPosition(location->declarationRange.end.offset, QTextCursor::KeepAnchor);
+    const QTextCursor current = textCursor();
+    if (current.anchor() == destination.anchor() && current.position() == destination.position()) {
+        return true;
+    }
+
+    constexpr qsizetype maximumHistoryEntries = 64;
+    if (definitionNavigationHistory.size() >= maximumHistoryEntries) {
+        definitionNavigationHistory.removeFirst();
+    }
+    definitionNavigationHistory.append({current.anchor(), current.position()});
+    dismissCompletionPopup();
+    dismissHover();
+    clearCtrlHoverDefinitionLink();
+    setTextCursor(destination);
+    ensureCursorVisible();
+    setFocus(Qt::OtherFocusReason);
+    return true;
+}
+
+bool TEditor::navigateBackFromDefinition() {
+    if (definitionNavigationHistory.isEmpty()) {
+        return false;
+    }
+    const NavigationHistoryEntry entry = definitionNavigationHistory.takeLast();
+    const qsizetype documentLength = document()->characterCount() - 1;
+    if (entry.anchor < 0 || entry.position < 0 || entry.anchor > documentLength
+        || entry.position > documentLength) {
+        return false;
+    }
+    QTextCursor destination(document());
+    destination.setPosition(entry.anchor);
+    destination.setPosition(entry.position, QTextCursor::KeepAnchor);
+    dismissCompletionPopup();
+    dismissHover();
+    clearCtrlHoverDefinitionLink();
+    setTextCursor(destination);
+    ensureCursorVisible();
+    setFocus(Qt::OtherFocusReason);
+    return true;
 }
 
 void TEditor::lineNumberAreaPaintEvent(QPaintEvent *event)
@@ -1194,12 +1318,27 @@ void TEditor::focusOutEvent(QFocusEvent *e)
 {
     dismissCompletionPopup();
     dismissHover();
+    clearCtrlHoverDefinitionLink();
     QPlainTextEdit::focusOutEvent(e);
 }
 
 void TEditor::keyPressEvent(QKeyEvent *e)
 {
     dismissHover();
+    if (e->key() == Qt::Key_Control) {
+        updateCtrlHoverDefinitionLink(viewport()->mapFromGlobal(QCursor::pos()));
+    }
+    if (e->key() == Qt::Key_F12 && e->modifiers() == Qt::NoModifier) {
+        navigateToDefinition(textCursor().position());
+        e->accept();
+        return;
+    }
+    if (e->key() == Qt::Key_Left && e->modifiers() == Qt::AltModifier) {
+        navigateBackFromDefinition();
+        e->accept();
+        return;
+    }
+
     // handleing Brackets and Quotes
     if (handleAutoPairing(e))
     {
@@ -1265,6 +1404,14 @@ void TEditor::keyPressEvent(QKeyEvent *e)
 
     performCompletion();
 }
+void TEditor::keyReleaseEvent(QKeyEvent *e) {
+    if (e->key() == Qt::Key_Control
+        || !e->modifiers().testFlag(Qt::ControlModifier)) {
+        clearCtrlHoverDefinitionLink();
+    }
+    QPlainTextEdit::keyReleaseEvent(e);
+}
+
 void TEditor::performCompletion()
 {
     const QTextCursor editorCursor = textCursor();
@@ -1850,6 +1997,18 @@ void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const
         extraSelections.append(selection);
     }
 
+    if (ctrlHoverDefinitionRange.has_value()) {
+        const SourceRange& range = *ctrlHoverDefinitionRange;
+        QTextEdit::ExtraSelection linkSelection;
+        linkSelection.cursor = QTextCursor(document());
+        linkSelection.cursor.setPosition(range.begin.offset);
+        linkSelection.cursor.setPosition(range.end.offset, QTextCursor::KeepAnchor);
+        const QColor linkBlue(71, 147, 255);
+        linkSelection.format.setForeground(linkBlue);
+        linkSelection.format.setUnderlineColor(linkBlue);
+        linkSelection.format.setUnderlineStyle(QTextCharFormat::SingleUnderline);
+        extraSelections.append(linkSelection);
+    }
 
     setExtraSelections(extraSelections);
 

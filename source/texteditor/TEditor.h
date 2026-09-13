@@ -14,6 +14,7 @@
 #include "EditorAnalysisController.h"
 #include "SemanticCompletionProvider.h"
 #include "SemanticHoverProvider.h"
+#include "SemanticDefinitionProvider.h"
 #include "CompletionContext.h"
 
 class LineNumberArea;
@@ -61,7 +62,7 @@ public slots:
     void highlightSelectedWordMatches();
     void startAsyncWordHighlight();
     static QList<MatchRange> searchWordMatches(const QString &searchText, const QString &documentText);
-    void applyLineAndWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos);
+    void applyLineAndWordHighlights(const QList<MatchRange> &matches = QList<MatchRange>(), const QString &searchText = QString(), int startPos = 0);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -73,11 +74,12 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void showEvent(QShowEvent *event) override;
+    void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void leaveEvent(QEvent* event) override;
 
     void keyPressEvent(QKeyEvent *e) override;
-    // We override focusOutEvent to close the popup if the user clicks away
+    void keyReleaseEvent(QKeyEvent *e) override;
     void focusOutEvent(QFocusEvent *e) override;
 
     void paintEvent(QPaintEvent *event) override;
@@ -87,11 +89,19 @@ private:
     EditorAnalysisController* analysisController{};
     std::unique_ptr<SemanticCompletionProvider> semanticCompletionProvider{};
     SemanticHoverProvider semanticHoverProvider{};
+    SemanticDefinitionProvider semanticDefinitionProvider{};
     THoverPopup* hoverPopup{};
     QTimer hoverTimer{};
     QPoint pendingHoverViewportPosition{};
     qsizetype pendingHoverOffset = -1;
     quint64 pendingHoverRevision = 0;
+    std::optional<SourceRange> ctrlHoverDefinitionRange{};
+
+    struct NavigationHistoryEntry {
+        qsizetype anchor = 0;
+        qsizetype position = 0;
+    };
+    QVector<NavigationHistoryEntry> definitionNavigationHistory{};
 
     LineNumberArea *lineNumberArea{};
     TMinimap *minimap{};
@@ -140,6 +150,11 @@ private:
     void scheduleHover(const QPoint& viewportPosition);
     void showPendingHover();
     void dismissHover();
+    void updateCtrlHoverDefinitionLink(const QPoint& viewportPosition);
+    void clearCtrlHoverDefinitionLink();
+    [[nodiscard]] std::optional<DefinitionLocation> definitionAt(qsizetype offset) const;
+    bool navigateToDefinition(qsizetype offset);
+    bool navigateBackFromDefinition();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
