@@ -12,5 +12,13 @@ public:
     [[nodiscard]] QVector<CompletionItem> suggestions(
         const QString& prefix,
         qsizetype cursorOffset,
-        const std::shared_ptr<const SemanticModel>& semantic) const;
+        const std::shared_ptr<const SemanticModel>& semantic,
+        bool moduleAndPreludeOnly = false) const;
+
+    [[nodiscard]] QVector<CompletionItem> memberSuggestions(
+        const QString& receiverName,
+        const QString& prefix,
+        qsizetype cursorOffset,
+        const std::shared_ptr<const SemanticModel>& semantic,
+        bool moduleAndPreludeOnly = false) const;
 };

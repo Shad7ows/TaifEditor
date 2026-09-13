@@ -45,6 +45,9 @@ public:
     /** GUI thread provides the owned snapshot after Tier 2 debounce fires. */
     void submitSourceSnapshot(quint64 revision, QString source);
 
+    /** User-initiated semantic completion request; bypasses the 300 ms timer only. */
+    void requestCompletionAnalysis(quint64 revision, QString source);
+
     /** Stop timers and worker safely before the owning editor is destroyed. */
     void shutdown();
 
@@ -71,6 +74,7 @@ private:
     QThread m_workerThread;
     AnalysisWorker* m_worker = nullptr;
     quint64 m_revision = 0;
+    quint64 m_dispatchedRevision = 0;
     DirtyRange m_dirty;
     LanguageAnalysisSnapshotPtr m_snapshot;
     std::shared_ptr<std::atomic<quint64>> m_latestRevision;

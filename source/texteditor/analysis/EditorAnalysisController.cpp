@@ -106,15 +106,24 @@ void EditorAnalysisController::documentChanged(const int position,
 
 void EditorAnalysisController::submitSourceSnapshot(const quint64 revision,
                                                      QString source) {
-    if (m_shutdown || revision != m_revision || source.isNull()) {
+    if (m_shutdown || revision != m_revision || source.isNull()
+        || m_dispatchedRevision == revision) {
         return;
     }
+    m_dispatchedRevision = revision;
     AnalysisRequest request;
     request.revision = revision;
     request.source = std::move(source);
     request.dirty = m_dirty;
     QMetaObject::invokeMethod(m_worker, "process", Qt::QueuedConnection,
                               Q_ARG(AnalysisRequest, request));
+}
+
+void EditorAnalysisController::requestCompletionAnalysis(const quint64 revision,
+                                                          QString source) {
+    // Completion is user initiated; it bypasses only the debounce timer and
+    // still runs asynchronously through the normal revision gate.
+    submitSourceSnapshot(revision, std::move(source));
 }
 
 void EditorAnalysisController::shutdown() {
