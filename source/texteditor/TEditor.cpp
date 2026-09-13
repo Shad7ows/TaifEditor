@@ -598,6 +598,10 @@ void TEditor::updateCtrlHoverDefinitionLink(const QPoint& viewportPosition) {
     const std::optional<SourceRange> nextRange = location.has_value()
                                                      ? std::optional<SourceRange>(location->sourceRange)
                                                      : std::nullopt;
+
+    if (location.has_value()) {
+        viewport()->setCursor(Qt::PointingHandCursor);
+    }
     const bool rangeIsUnchanged = ctrlHoverDefinitionRange.has_value()
                                       == nextRange.has_value()
                                   && (!nextRange.has_value()
@@ -611,6 +615,7 @@ void TEditor::updateCtrlHoverDefinitionLink(const QPoint& viewportPosition) {
 }
 
 void TEditor::clearCtrlHoverDefinitionLink() {
+    viewport()->setCursor(Qt::IBeamCursor);
     if (!ctrlHoverDefinitionRange.has_value()) {
         return;
     }
