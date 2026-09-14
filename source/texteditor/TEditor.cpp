@@ -492,11 +492,14 @@ void TEditor::mousePressEvent(QMouseEvent* event) {
 void TEditor::mouseMoveEvent(QMouseEvent* event) {
     const QPoint viewportPosition = event->position().toPoint();
     if (event->modifiers().testFlag(Qt::ControlModifier)) {
+        // While Ctrl is held the editor shows a definition link underline; suppress
+        // the semantic hover popup so it never overlaps with that interaction.
         updateCtrlHoverDefinitionLink(viewportPosition);
+        dismissHover();
     } else {
         clearCtrlHoverDefinitionLink();
+        scheduleHover(viewportPosition);
     }
-    scheduleHover(viewportPosition);
     QPlainTextEdit::mouseMoveEvent(event);
 }
 
