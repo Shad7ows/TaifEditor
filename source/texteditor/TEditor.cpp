@@ -27,6 +27,7 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
     QPlainTextEdit {
         background-color: #091021;
         color: #f1f5f9;
+        border: none;
     }
 )");
 
