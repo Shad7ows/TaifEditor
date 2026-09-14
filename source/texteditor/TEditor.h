@@ -4,6 +4,7 @@
 #include <QScrollBar>
 #include <QPoint>
 #include <QPlainTextEdit>
+#include <QTextEdit>
 #include <QCompleter>
 #include <memory>
 
@@ -62,7 +63,7 @@ public slots:
     void highlightSelectedWordMatches();
     void startAsyncWordHighlight();
     static QList<MatchRange> searchWordMatches(const QString &searchText, const QString &documentText);
-    void applyLineAndWordHighlights(const QList<MatchRange> &matches = QList<MatchRange>(), const QString &searchText = QString(), int startPos = 0);
+    void highlightSelectedMatches(const QList<MatchRange> &matches, const QString &searchText, int startPos);
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -111,6 +112,7 @@ private:
     QString lastHighlightedText{};
     int lastHighlightedPosition{-1};
     bool highlightSearchInProgress{false};
+    QList<MatchRange> cachedWordMatches{};
 
     void updateFoldRegions();
     void toggleFold(int blockNum);

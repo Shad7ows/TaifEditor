@@ -99,7 +99,10 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
 
     connect(this, &TEditor::blockCountChanged, this, &TEditor::updateLineNumberAreaWidth);
     connect(this, &TEditor::updateRequest, this, &TEditor::updateLineNumberArea);
-    connect(this, &TEditor::cursorPositionChanged, this, &TEditor::highlightSelectedWordMatches);
+    connect(this, &TEditor::cursorPositionChanged, this, [this]() {
+        viewport()->update(); // Repaint to update the current-line highlight position.
+        highlightSelectedWordMatches();
+    });
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
     // Set up debounce timer for highlightSelectedWordMatches
@@ -611,7 +614,7 @@ void TEditor::updateCtrlHoverDefinitionLink(const QPoint& viewportPosition) {
         return;
     }
     ctrlHoverDefinitionRange = nextRange;
-    applyLineAndWordHighlights();
+    highlightSelectedMatches(QList<MatchRange>{}, QString(), -1);
 }
 
 void TEditor::clearCtrlHoverDefinitionLink() {
@@ -620,7 +623,7 @@ void TEditor::clearCtrlHoverDefinitionLink() {
         return;
     }
     ctrlHoverDefinitionRange.reset();
-    applyLineAndWordHighlights();
+    highlightSelectedMatches(QList<MatchRange>{}, QString(), -1);
 }
 
 std::optional<DefinitionLocation> TEditor::definitionAt(const qsizetype offset) const {
@@ -964,7 +967,25 @@ void TEditor::toggleFold(int blockNumber)
 
 void TEditor::paintEvent(QPaintEvent *event)
 {
-    // Let the editor draw the actual text first
+    // Draw the current-line highlight background BEFORE text rendering.
+    // Drawing before the base paint ensures no artifacts: the highlight is painted
+    // as a pure background fill within Qt's dirty-region clip, then text renders
+    // on top of it. This is completely independent of ExtraSelection, so word-match
+    // highlights and Ctrl-hover links are never affected by cursor movement.
+    {
+        const QTextCursor cursor = textCursor();
+        if (!cursor.isNull() && !isReadOnly()) {
+            QPainter painter(viewport());
+            painter.setClipRect(event->rect(), Qt::IntersectClip);
+            const QRectF lineRect = blockBoundingGeometry(cursor.block()).translated(contentOffset());
+            const qreal width = viewport()->width();
+            // Use the exact line bounding rect height to avoid overdraw between lines.
+            const QRectF fillRect(0, lineRect.top(), width, lineRect.height());
+            painter.fillRect(fillRect, QColor(16, 23, 48));
+        }
+    }
+
+    // Let the editor draw the actual text on top of the highlight.
     QPlainTextEdit::paintEvent(event);
 
     QPainter painter(viewport());
@@ -1915,7 +1936,8 @@ void TEditor::startAsyncWordHighlight()
             highlightSearchInProgress = false;
             lastHighlightedText.clear();
             lastHighlightedPosition = -1;
-            applyLineAndWordHighlights(QList<MatchRange>{}, QString(), -1);
+            cachedWordMatches.clear();
+            highlightSelectedMatches(QList<MatchRange>{}, QString(), -1);
         }, Qt::QueuedConnection);
         return;
     }
@@ -1936,7 +1958,7 @@ void TEditor::startAsyncWordHighlight()
 
                                              // 2. Dispatch the results back to the GUI thread
                                              QMetaObject::invokeMethod(this, [this, matches, searchText, startPos]() {
-                                                 applyLineAndWordHighlights(matches, searchText, startPos);
+                                                 highlightSelectedMatches(matches, searchText, startPos);
                                              }, Qt::QueuedConnection);
                                          });
 }
@@ -1962,9 +1984,18 @@ QList<TEditor::MatchRange> TEditor::searchWordMatches(
     return matches;
 }
 
-// RUNS ON MAIN GUI THREAD: Translates basic indexes back into Qt cursors
-void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const QString &searchText, int startPos)
-{
+// RUNS ON MAIN GUI THREAD: Translates basic indexes back into Qt cursors.
+// The current-line highlight is drawn directly in paintEvent, so this method only
+// manages word-match highlights and the Ctrl-hover definition-link underline via
+// ExtraSelection. When called with empty matches (Ctrl+hover or mouse-move handlers),
+// re-applies cached word highlights to prevent them from being wiped out.
+void TEditor::highlightSelectedMatches(const QList<MatchRange> &matches,
+                                       const QString &searchText, int startPos) {
+    // If called with empty matches but we have cached ones (e.g. Ctrl+hover over a
+    // definition or mouse moved away from the word), use the cache to preserve highlights.
+    const QList<MatchRange>& effectiveMatches = matches.isEmpty() && !cachedWordMatches.isEmpty()
+                                                    ? cachedWordMatches : matches;
+
     QList<QTextEdit::ExtraSelection> extraSelections;
 
     // Configure the highlight format
@@ -1974,7 +2005,7 @@ void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const
     // Access to the text document and cursor layout is 100% safe here
     QTextDocument *doc = document();
 
-    for (const auto &match : matches)
+    for (const auto &match : effectiveMatches)
     {
         QTextEdit::ExtraSelection selection;
         selection.format = highlightFormat;
@@ -1984,21 +2015,6 @@ void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const
         selection.cursor.setPosition(match.start);
         selection.cursor.setPosition(match.start + match.length, QTextCursor::KeepAnchor);
 
-        extraSelections.append(selection);
-    }
-
-
-    // highlight current selected line
-    if (!isReadOnly())
-    {
-        QTextEdit::ExtraSelection selection;
-
-        QColor lineColor = QColor(16, 23, 48, 225);
-
-        selection.format.setBackground(lineColor);
-        selection.format.setProperty(QTextFormat::FullWidthSelection, true);
-        selection.cursor = textCursor();
-        selection.cursor.clearSelection();
         extraSelections.append(selection);
     }
 
@@ -2016,6 +2032,9 @@ void TEditor::applyLineAndWordHighlights(const QList<MatchRange> &matches, const
     }
 
     setExtraSelections(extraSelections);
+
+    // Cache the matches so future calls with empty/default args can preserve them.
+    cachedWordMatches = effectiveMatches;
 
     highlightSearchInProgress = false;
 
