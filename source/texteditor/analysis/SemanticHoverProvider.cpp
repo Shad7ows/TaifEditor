@@ -169,7 +169,7 @@ QString signatureForSymbol(const Symbol& symbol, const ParseResult& parse) {
     }
     if (symbol.kind != SymbolKind::Function || !parse.ast
         || symbol.declarationNode == InvalidAstNodeId) {
-        return QStringLiteral("%1 %2").arg(typeLabelForSymbol(symbol.kind), symbol.name);
+        return QStringLiteral("%1").arg(symbol.name);
     }
     const QVector<AstNode>& nodes = parse.ast->nodes();
     if (symbol.declarationNode < 0 || symbol.declarationNode >= nodes.size()) {

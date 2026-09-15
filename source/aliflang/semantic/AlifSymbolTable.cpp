@@ -167,14 +167,16 @@ private:
             QStringLiteral("عشري"), QStringLiteral("هذا"), QStringLiteral("مترابطة"),
             QStringLiteral("تحقق_اي"), QStringLiteral("افتح"), QStringLiteral("هل_نوع"),
             QStringLiteral("مقرون"), QStringLiteral("معكوس"), QStringLiteral("منطق"),
-            QStringLiteral("اصل"),
+            QStringLiteral("اصل"), QStringLiteral("اجمع"), QStringLiteral("اقصى"),
+            QStringLiteral("ادنى"), QStringLiteral("تعداد"), QStringLiteral("قرب"),
+            QStringLiteral("اطلق"),
             // Built-in Alif runtime-error types. They are valid names in
             // exception clauses and must not be reported as unresolved.
             QStringLiteral("خطأ_اسم"), QStringLiteral("خطأ_مفتاح"),
             QStringLiteral("خطأ_ملف_غير_موجود"), QStringLiteral("خطأ_ليس_مجلد"),
             QStringLiteral("خطأ_صلاحيات"), QStringLiteral("خطأ_ترميز"),
             QStringLiteral("خطأ_غير_منهي"), QStringLiteral("خطأ_نظام_تشغيل"),
-            QStringLiteral("خطأ_نوع"),
+            QStringLiteral("خطأ_نوع"), QStringLiteral("خطأ_قيمة"),
         };
         for (const QString& builtin : builtins) {
             declare(scope, SymbolKind::Builtin, builtin, range, range,
