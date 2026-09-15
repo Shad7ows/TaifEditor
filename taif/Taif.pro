@@ -16,6 +16,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/texteditor/autocomplete \
                 ../source/texteditor/analysis \
                 ../source/texteditor/hover \
+                ../source/texteditor/diagnostics  \
                 ../source/components \
                 ../source/console \
                 ../source/menubar   \
@@ -27,11 +28,13 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/presentation  \
 
 SOURCES += \
+    ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.cpp \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.cpp \
     ../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../source/texteditor/analysis/SemanticHoverProvider.cpp \
+    ../source/texteditor/diagnostics/DiagnosticsPanel.cpp \
     ../source/texteditor/hover/HoverPopup.cpp \
     Taif.cpp \
     main.cpp \
@@ -54,11 +57,13 @@ SOURCES += \
 
 HEADERS += \
     ../source/aliflang/presentation/AlifAnalysis.h \
+    ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.h \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.h \
     ../source/texteditor/analysis/EditorAnalysisController.h \
     ../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../source/texteditor/analysis/SemanticHoverProvider.h \
+    ../source/texteditor/diagnostics/DiagnosticsPanel.h \
     ../source/texteditor/hover/HoverPopup.h \
     Taif.h  \
     ../source/texteditor/autocomplete/AutoComplete.h \

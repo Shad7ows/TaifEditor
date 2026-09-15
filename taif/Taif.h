@@ -16,6 +16,9 @@ QT_BEGIN_NAMESPACE
 namespace Ui { class Taif; }
 QT_END_NAMESPACE
 
+class QDockWidget;
+class DiagnosticsPanel;
+
 class Taif : public QMainWindow
 {
     Q_OBJECT
@@ -71,6 +74,8 @@ private:
     void setupTimers();
     int needSave();
     TEditor* currentEditor();
+    void connectEditorDiagnostics(TEditor* editor);
+    void refreshDiagnosticsPanel();
     void addWatch(const QString &filePath);
     void removeWatch(const QString &filePath);
     void reloadEditor(TEditor *editor);
@@ -99,4 +104,6 @@ private:
     QTimer *saveSuppressTimer{};
     QLabel *cursorPositionLabel{};
     SearchPanel *searchBar{};
+    QDockWidget* diagnosticsDock{};
+    DiagnosticsPanel* diagnosticsPanel{};
 };

@@ -45,6 +45,10 @@ public:
     void stopAutoSave();
     void removeBackupFile();
 
+    [[nodiscard]] const QVector<EditorDiagnostic>& currentDiagnostics() const {
+        return m_currentDiagnostics;
+    }
+
     struct MatchRange {
         int start;
         int length;
@@ -60,6 +64,7 @@ public slots:
     void moveLineDown();
     void performAutoSave();
     void updateHighlighterTheme(std::shared_ptr<SyntaxTheme>);
+    void navigateToDiagnosticRange(SourceRange range);
     void highlightSelectedWordMatches();
     void startAsyncWordHighlight();
     static QList<MatchRange> searchWordMatches(const QString &searchText, const QString &documentText);
@@ -103,6 +108,8 @@ private:
         qsizetype position = 0;
     };
     QVector<NavigationHistoryEntry> definitionNavigationHistory{};
+    QVector<EditorDiagnostic> m_currentDiagnostics{};
+    quint64 m_diagnosticsRevision = 0;
 
     LineNumberArea *lineNumberArea{};
     TMinimap *minimap{};
@@ -177,6 +184,7 @@ private slots:
     void insertCompletion(const QString &completion, CompletionType type);
 signals:
     void openRequest(QString filePath);
+        void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
 };
 
 class LineNumberArea : public QWidget

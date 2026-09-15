@@ -11,5 +11,6 @@ public:
     [[nodiscard]] QVector<PresentationSpan> classify(
         const LexResult& lexicalResult,
         const ParseResult& parseResult,
-        const std::shared_ptr<const SemanticModel>& semanticModel) const;
+        const std::shared_ptr<const SemanticModel>& semanticModel,
+        const QVector<EditorDiagnostic>& diagnostics = {}) const;
 };
