@@ -387,8 +387,8 @@ void Taif::setupStyle() {
             background: transparent;
             border: none;
             border-radius: 3px;
-            padding: 2px;
-            margin: 9px;
+            padding: 1px;
+            margin: 8px;
             icon-size: 0px;
             width: 0px;
             height: 0px;
@@ -397,11 +397,11 @@ void Taif::setupStyle() {
         }
         QDockWidget#DiagnosticsDock::close-button {
             image: url(:/icons/resources/close.svg);
-            top: 7px; right: 7px; bottom: 7px;
+            top: 9px; right: 7px; bottom: 9px;
         }
         QDockWidget#DiagnosticsDock::float-button {
             image: url(:/icons/resources/picture-in-picture.svg);
-            top: 7px; right: 35px; bottom: 7px;
+            top: 9px; right: 35px; bottom: 9px;
         }
         QDockWidget#DiagnosticsDock::close-button:hover {
             background-color: #ef4444;
