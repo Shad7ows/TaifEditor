@@ -14,10 +14,10 @@ class DiagnosticsModel final : public QAbstractTableModel {
     Q_OBJECT
 public:
     enum Column : int {
-        SeverityColumn,
-        MessageColumn,
-        LocationColumn,
         CodeColumn,
+        LocationColumn,
+        MessageColumn,
+        SeverityColumn,
         ColumnCount
     };
 

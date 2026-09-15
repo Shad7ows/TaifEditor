@@ -373,18 +373,41 @@ void Taif::setupStyle() {
             color: #e2e8f0;
             font-family: "Tajawal", "Noto Kufi Arabic";
             border-top: 1px solid #334155;
+            padding: 1px;
         }
         QDockWidget#DiagnosticsDock::title {
             background-color: #1e293b;
             color: #e2e8f0;
-            text-align: right;
-            padding: 7px 10px;
+            text-align: left;
+            padding: 9px;
             border-bottom: 1px solid #334155;
         }
         QDockWidget#DiagnosticsDock::close-button,
         QDockWidget#DiagnosticsDock::float-button {
             background: transparent;
             border: none;
+            border-radius: 3px;
+            padding: 2px;
+            margin: 9px;
+            icon-size: 0px;
+            width: 0px;
+            height: 0px;
+            subcontrol-position: top right;
+            position: absolute;
+        }
+        QDockWidget#DiagnosticsDock::close-button {
+            image: url(:/icons/resources/close.svg);
+            top: 7px; right: 7px; bottom: 7px;
+        }
+        QDockWidget#DiagnosticsDock::float-button {
+            image: url(:/icons/resources/picture-in-picture.svg);
+            top: 7px; right: 35px; bottom: 7px;
+        }
+        QDockWidget#DiagnosticsDock::close-button:hover {
+            background-color: #ef4444;
+        }
+        QDockWidget#DiagnosticsDock::float-button:hover {
+            background-color: #334466;
         }
     )";
     setStyleSheet(styleSheet);

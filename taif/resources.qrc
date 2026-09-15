@@ -27,5 +27,6 @@
         <file>resources/chevron-up.svg</file>
         <file>resources/pencil-ruler.svg</file>
         <file>resources/settings.svg</file>
+        <file>resources/picture-in-picture.svg</file>
     </qresource>
 </RCC>

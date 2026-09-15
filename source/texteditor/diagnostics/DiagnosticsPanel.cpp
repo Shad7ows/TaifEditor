@@ -153,7 +153,6 @@ void DiagnosticsModel::rebuildVisibleRows() {
 
 DiagnosticsPanel::DiagnosticsPanel(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("DiagnosticsPanel"));
-    setLayoutDirection(Qt::RightToLeft);
     setMinimumHeight(150);
     setStyleSheet(
         "#DiagnosticsPanel { background-color: #0f172a; color: #e2e8f0; }"
