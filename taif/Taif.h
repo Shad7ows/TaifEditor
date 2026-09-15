@@ -75,9 +75,6 @@ private:
     void removeWatch(const QString &filePath);
     void reloadEditor(TEditor *editor);
     QString pathForEditor(TEditor *editor) const;
-    // void setupTabWidget(QTabWidget* tw);
-    // QTabWidget* tabWidgetForEditor(TEditor* editor) const;
-    // QTabWidget* getTargetTabWidget();
 
 private:
     QTabWidget *tabWidget{};
@@ -101,8 +98,5 @@ private:
     bool savingFromApp{};
     QTimer *saveSuppressTimer{};
     QLabel *cursorPositionLabel{};
-    // QLabel *encodingLabel{};
-    // QProcess *alifProcess{};
-    // QProcess *currentAlifProcess{};
     SearchPanel *searchBar{};
 };
