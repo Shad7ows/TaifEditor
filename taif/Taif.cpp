@@ -232,14 +232,6 @@ void Taif::setupConnections() {
     connect(searchBar, &SearchPanel::closed, this, &Taif::hideFindBar);
     connect(searchBar, &SearchPanel::replaceOne, this, &Taif::replaceOne);
     connect(searchBar, &SearchPanel::replaceAll, this, &Taif::replaceAll);
-
-    new QShortcut(QKeySequence::Find, this, SLOT(showFindBar()));
-    new QShortcut(QKeySequence::Save, this, SLOT(saveFile()));
-    new QShortcut(QKeySequence("Ctrl+G"), this, SLOT(goToLine()));
-    new QShortcut(QKeySequence("Ctrl+/"), this, [this](){ if (auto e = currentEditor()) e->toggleComment();});
-    new QShortcut(QKeySequence("Ctrl+D"), this, [this](){ if (auto e = currentEditor()) e->duplicateLine();});
-    new QShortcut(QKeySequence("Alt+Up"), this, [this](){ if (auto e = currentEditor()) e->moveLineUp(); });
-    new QShortcut(QKeySequence("Alt+Down"), this, [this](){ if (auto e = currentEditor()) e->moveLineDown(); });
 }
 
 void Taif::setupStyle() {
