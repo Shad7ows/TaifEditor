@@ -71,6 +71,7 @@ void Taif::setupUI() {
     tabWidget->setDocumentMode(true);
     tabWidget->setTabsClosable(true);
     tabWidget->setMovable(true);
+    setTabPosition(Qt::AllDockWidgetAreas, QTabWidget::North);
 
     menuBar = new TMenuBar(this);
     setMenuBar(menuBar);
@@ -337,33 +338,33 @@ void Taif::setupStyle() {
             border: none;
             background-color: #0f172a;
         }
-        QTabWidget QTabBar { /* شريط التبويبات */
+        QTabBar { /* شريط التبويبات */
             background-color: #0f172a;
             qproperty-drawBase: 0;
         }
-       QTabWidget QTabBar::tab {
+        QTabBar::tab {
             background: #0f172a;
             color: #94a3b8;
             padding: 3px 9px;
             min-width: 100px;
         }
-       QTabWidget QTabBar::tab:selected {
+        QTabBar::tab:selected {
             background: #0f172a;
             color: #3b82f6;
             border-bottom: 2px solid #3b82f6;
         }
-        QTabWidget QTabBar::tab:hover:!selected {
+        QTabBar::tab:hover:!selected {
             background: #334466;
             color: #f1f5f9;
         }
-        QTabWidget QTabBar::close-button {
+        QTabBar::close-button {
             image: url(:/icons/resources/close.svg);
             background: transparent;
             border-radius: 2px;
             padding: 1px;
             margin: 0px;
         }
-        QTabWidget QTabBar::close-button:hover {
+        QTabBar::close-button:hover {
             background: #ef4444;
         }
 
