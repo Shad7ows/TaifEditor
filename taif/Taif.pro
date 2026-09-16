@@ -30,6 +30,7 @@ INCLUDEPATH +=  ../source/texteditor \
 SOURCES += \
     ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.cpp \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.cpp \
+    ../source/console/DockableConsoleTool.cpp \
     ../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
@@ -59,6 +60,7 @@ HEADERS += \
     ../source/aliflang/presentation/AlifAnalysis.h \
     ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.h \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.h \
+    ../source/console/DockableConsoleTool.h \
     ../source/texteditor/analysis/EditorAnalysisController.h \
     ../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../source/texteditor/analysis/SemanticDefinitionProvider.h \

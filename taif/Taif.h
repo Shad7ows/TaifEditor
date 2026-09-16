@@ -18,6 +18,7 @@ QT_END_NAMESPACE
 
 class QDockWidget;
 class DiagnosticsPanel;
+class TConsole;
 
 class Taif : public QMainWindow
 {
@@ -76,6 +77,7 @@ private:
     TEditor* currentEditor();
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
+    void showAndRaiseDock(QDockWidget* dock);
     void addWatch(const QString &filePath);
     void removeWatch(const QString &filePath);
     void reloadEditor(TEditor *editor);
@@ -94,7 +96,10 @@ private:
     QFileSystemModel *fileSystemModel{};
 
     QSplitter *editorSplitter{};
-    QTabWidget *consoleTabWidget{};
+    QDockWidget* terminalDock{};
+    QDockWidget* alifOutputDock{};
+    TConsole* systemTerminal{};
+    TConsole* alifOutputConsole{};
 
     ProcessWorker* worker{};
     QThread* thread{};
