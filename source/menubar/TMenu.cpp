@@ -1,45 +1,65 @@
 #include "TMenu.h"
 
+#include <QAction>
+#include <QMenu>
+#include <QSignalBlocker>
+
 TMenuBar::TMenuBar(QWidget* parent) {
-    QMenu* fileMenu = addMenu("ملف");
-    QMenu* editMenu = addMenu("تحرير");
-    QMenu* runMenu = addMenu("تشغيل");
-    QMenu* helpMenu = addMenu("مساعدة");
+    QMenu* const fileMenu = addMenu(QStringLiteral("ملف"));
+    QMenu* const editMenu = addMenu(QStringLiteral("تحرير"));
+    QMenu* const viewMenu = addMenu(QStringLiteral("عرض"));
+    QMenu* const runMenu = addMenu(QStringLiteral("تشغيل"));
+    QMenu* const helpMenu = addMenu(QStringLiteral("مساعدة"));
 
     fileMenu->setMinimumWidth(200);
     editMenu->setMinimumWidth(200);
+    viewMenu->setMinimumWidth(200);
     runMenu->setMinimumWidth(200);
     helpMenu->setMinimumWidth(200);
 
-    QAction* newAction = new QAction("جديد", parent);
-    QAction* openFileAction = new QAction("فتح ملف", parent);
-    QAction* openFolderAction = new QAction("فتح مجلد", parent);
-    QAction* saveAction = new QAction("حفظ", parent);
-    QAction* saveAsAction = new QAction("حفظ باسم", parent);
-    QAction* settingsAction = new QAction("الإعدادات", parent);
-    QAction* exitAction = new QAction("خروج", parent);
+    newAction = new QAction(QStringLiteral("جديد"), parent);
+    openFileAction = new QAction(QStringLiteral("فتح ملف"), parent);
+    openFolderAction = new QAction(QStringLiteral("فتح مجلد"), parent);
+    saveAction = new QAction(QStringLiteral("حفظ"), parent);
+    saveAsAction = new QAction(QStringLiteral("حفظ باسم"), parent);
+    settingsAction = new QAction(QStringLiteral("الإعدادات"), parent);
+    exitAction = new QAction(QStringLiteral("خروج"), parent);
 
-    QAction* undoAction = new QAction("تراجع", parent);
-    QAction* redoAction = new QAction("إعادة", parent);
-    QAction* cutAction = new QAction("قص", parent);
-    QAction* copyAction = new QAction("نسخ", parent);
-    QAction* pasteAction = new QAction("لصق", parent);
-    QAction* findAction = new QAction("بحث", parent);
-    QAction* replaceAction = new QAction("بحث واستبدال", parent);
-    QAction* goToLineAction = new QAction("الذهاب إلى سطر", parent);
-    QAction* toggleCommentAction = new QAction("تعليق سطر", parent);
-    QAction* duplicateLineAction = new QAction("تكرار السطر", parent);
-    QAction* moveLineUpAction = new QAction("نقل السطر لأعلى", parent);
-    QAction* moveLineDownAction = new QAction("نقل السطر لأسفل", parent);
+    runAction = new QAction("تشغيل", parent);
+
+    undoAction = new QAction(QStringLiteral("تراجع"), parent);
+    redoAction = new QAction(QStringLiteral("إعادة"), parent);
+    cutAction = new QAction(QStringLiteral("قص"), parent);
+    copyAction = new QAction(QStringLiteral("نسخ"), parent);
+    pasteAction = new QAction(QStringLiteral("لصق"), parent);
+    findAction = new QAction(QStringLiteral("بحث"), parent);
+    replaceAction = new QAction(QStringLiteral("بحث واستبدال"), parent);
+    goToLineAction = new QAction(QStringLiteral("الذهاب إلى سطر"), parent);
+    toggleCommentAction = new QAction(QStringLiteral("تعليق سطر"), parent);
+    duplicateLineAction = new QAction(QStringLiteral("تكرار السطر"), parent);
+    moveLineUpAction = new QAction(QStringLiteral("نقل السطر لأعلى"), parent);
+    moveLineDownAction = new QAction(QStringLiteral("نقل السطر لأسفل"), parent);
+
+    alifOutputAction = new QAction(QStringLiteral("مخرجات ألف"), this);
+    alifOutputAction->setObjectName(QStringLiteral("ShowAlifOutputAction"));
+    alifOutputAction->setCheckable(true);
+    terminalAction = new QAction(QStringLiteral("الطرفية"), this);
+    terminalAction->setObjectName(QStringLiteral("ShowTerminalAction"));
+    terminalAction->setCheckable(true);
+    problemsAction = new QAction(QStringLiteral("الأخطاء"), this);
+    problemsAction->setObjectName(QStringLiteral("ShowProblemsAction"));
+    problemsAction->setCheckable(true);
+
+    aboutAction = new QAction(QStringLiteral("عن المحرر"), parent);
+    updateAction = new QAction(QStringLiteral("البحث عن تحديثات"), parent);
+
+
 
     // --- shortcuts --- //
     undoAction->setShortcut(QKeySequence::fromString("Ctrl+z"));
 
 
-    QAction* runAction = new QAction("تشغيل", parent);
 
-    QAction* aboutAction = new QAction("عن المحرر", parent);
-    QAction* updateAction = new QAction("البحث عن تحديثات", parent);
 
     fileMenu->addAction(newAction);
     fileMenu->addAction(openFileAction);
@@ -50,6 +70,8 @@ TMenuBar::TMenuBar(QWidget* parent) {
     fileMenu->addAction(settingsAction);
     fileMenu->addSeparator();
     fileMenu->addAction(exitAction);
+
+    runMenu->addAction(runAction);
 
     editMenu->addAction(undoAction);
     editMenu->addAction(redoAction);
@@ -67,10 +89,12 @@ TMenuBar::TMenuBar(QWidget* parent) {
     editMenu->addAction(moveLineUpAction);
     editMenu->addAction(moveLineDownAction);
 
-    runMenu->addAction(runAction);
+    viewMenu->addAction(alifOutputAction);
+    viewMenu->addAction(terminalAction);
+    viewMenu->addAction(problemsAction);
 
     helpMenu->addAction(aboutAction);
-    helpMenu->addAction(updateAction);
+    helpMenu->addAction(pasteAction);
 
 
 
@@ -81,6 +105,8 @@ TMenuBar::TMenuBar(QWidget* parent) {
     connect(saveAsAction, &QAction::triggered, this, &TMenuBar::saveAsRequested);
     connect(settingsAction, &QAction::triggered, this, &TMenuBar::settingsRequest);
     connect(exitAction, &QAction::triggered, this, &TMenuBar::exitRequested);
+
+    connect(runAction, &QAction::triggered, this, &TMenuBar::runRequested);
 
     connect(undoAction, &QAction::triggered, this, &TMenuBar::undoRequested);
     connect(redoAction, &QAction::triggered, this, &TMenuBar::redoRequested);
@@ -95,8 +121,30 @@ TMenuBar::TMenuBar(QWidget* parent) {
     connect(moveLineUpAction, &QAction::triggered, this, &TMenuBar::moveLineUpRequested);
     connect(moveLineDownAction, &QAction::triggered, this, &TMenuBar::moveLineDownRequested);
 
-    connect(runAction, &QAction::triggered, this, &TMenuBar::runRequested);
+    connect(alifOutputAction, &QAction::triggered, this, &TMenuBar::showAlifOutputRequested);
+    connect(terminalAction, &QAction::triggered, this, &TMenuBar::showTerminalRequested);
+    connect(problemsAction, &QAction::triggered, this, &TMenuBar::showProblemsRequested);
 
     connect(aboutAction, &QAction::triggered, this, &TMenuBar::aboutRequested);
     connect(updateAction, &QAction::triggered, this, &TMenuBar::updateRequested);
+}
+
+
+void TMenuBar::setOpenViewToolActions(const bool alifOutputOpen,
+                                      const bool terminalOpen,
+                                      const bool problemsOpen)
+{
+    const QSignalBlocker alifOutputActionBlocker(alifOutputAction);
+    const QSignalBlocker terminalActionBlocker(terminalAction);
+    const QSignalBlocker problemsActionBlocker(problemsAction);
+
+    if (alifOutputAction != nullptr) {
+        alifOutputAction->setChecked(alifOutputOpen);
+    }
+    if (terminalAction != nullptr) {
+        terminalAction->setChecked(terminalOpen);
+    }
+    if (problemsAction != nullptr) {
+        problemsAction->setChecked(problemsOpen);
+    }
 }

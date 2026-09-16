@@ -192,6 +192,24 @@ void Taif::setupConnections() {
     connect(menuBar, &TMenuBar::updateRequested, this, &Taif::checkForUpdates);
     connect(menuBar, &TMenuBar::openFolderRequested, this, &Taif::handleOpenFolderMenu);
 
+    connect(menuBar, &TMenuBar::showAlifOutputRequested, this,
+            [this]() { showAndRaiseDock(alifOutputDock); });
+    connect(menuBar, &TMenuBar::showTerminalRequested, this,
+            [this]() { showAndRaiseDock(terminalDock); });
+    connect(menuBar, &TMenuBar::showProblemsRequested, this,
+            [this]() { showAndRaiseDock(diagnosticsDock); });
+
+    const auto scheduleBottomToolActionStateSync = [this](const bool) {
+        QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
+    };
+    connect(diagnosticsDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    connect(alifOutputDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    connect(terminalDock, &QDockWidget::visibilityChanged,
+            this, scheduleBottomToolActionStateSync);
+    syncBottomToolActionState();
+
     connect(menuBar, &TMenuBar::undoRequested, this, [this](){ if (auto e = currentEditor()) e->undo(); });
     connect(menuBar, &TMenuBar::redoRequested, this, [this](){ if (auto e = currentEditor()) e->redo(); });
     connect(menuBar, &TMenuBar::cutRequested, this, [this](){ if (auto e = currentEditor()) e->cut(); });
@@ -914,6 +932,17 @@ void Taif::replaceAll() {
     }
 }
 
+void Taif::syncBottomToolActionState()
+{
+    if (menuBar == nullptr) {
+        return;
+    }
+
+    menuBar->setOpenViewToolActions(
+        alifOutputDock != nullptr && alifOutputDock->isVisible(),
+        terminalDock != nullptr && terminalDock->isVisible(),
+        diagnosticsDock != nullptr && diagnosticsDock->isVisible());
+}
 
 void Taif::showAndRaiseDock(QDockWidget* const dock) {
     if (dock == nullptr) {
@@ -924,6 +953,7 @@ void Taif::showAndRaiseDock(QDockWidget* const dock) {
         DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, dock);
     }
     DockableConsoleToolFactory::showAndActivate(dock);
+    QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
 }
 
 void Taif::toggleConsole() {
@@ -932,6 +962,7 @@ void Taif::toggleConsole() {
     }
     if (DockableConsoleToolFactory::isRenderedTab(terminalDock)) {
         terminalDock->hide();
+        syncBottomToolActionState();
         if (TEditor* editor = currentEditor()) {
             editor->setFocus();
         }

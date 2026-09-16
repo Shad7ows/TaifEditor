@@ -78,6 +78,7 @@ private:
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
     void showAndRaiseDock(QDockWidget* dock);
+    void syncBottomToolActionState();
     void addWatch(const QString &filePath);
     void removeWatch(const QString &filePath);
     void reloadEditor(TEditor *editor);

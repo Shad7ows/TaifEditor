@@ -12,6 +12,11 @@ class TMenuBar : public QMenuBar {
 public:
     TMenuBar(QWidget* parent = nullptr);
 
+    /** Updates View-menu checks to match the open/closed state of each dock. */
+    void setOpenViewToolActions(bool alifOutputOpen,
+                                bool terminalOpen,
+                                bool problemsOpen);
+
     QAction* newAction;
     QAction* openFileAction;
     QAction* openFolderAction;
@@ -19,8 +24,14 @@ public:
     QAction* saveAsAction;
     QAction* SettingsAction;
     QAction* exitAction;
-    QAction* runAction;
+    QAction* settingsAction;
     QAction* aboutAction;
+
+    QAction* runAction;
+
+    QAction* alifOutputAction;
+    QAction* terminalAction;
+    QAction* problemsAction;
 
     QAction* undoAction;
     QAction* redoAction;
@@ -35,6 +46,8 @@ public:
     QAction* moveLineUpAction;
     QAction* moveLineDownAction;
 
+    QAction* updateAction;
+
 signals:
     void newRequested();
     void openFileRequested();
@@ -46,6 +59,10 @@ signals:
     void runRequested();
     void aboutRequested();
     void updateRequested();
+
+    void showAlifOutputRequested();
+    void showTerminalRequested();
+    void showProblemsRequested();
 
     void undoRequested();
     void redoRequested();
