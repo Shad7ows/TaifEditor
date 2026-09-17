@@ -9,13 +9,18 @@
 
 namespace {
 
-QString symbolPrefix(const SymbolKind kind)
+struct SymbolPrefix final {
+    QIcon icon{};
+    QString prefix{};
+};
+
+SymbolPrefix symbolPrefix(const SymbolKind kind)
 {
     switch (kind) {
     case SymbolKind::Class:
-        return QStringLiteral("صنف ");
+        return SymbolPrefix(QIcon(":/icons/resources/brackets.svg"), QStringLiteral(" صنف "));
     case SymbolKind::Function:
-        return QStringLiteral("دالة ");
+        return SymbolPrefix(QIcon(":/icons/resources/parentheses.svg"), QStringLiteral(" دالة "));
     default:
         return {};
     }
@@ -33,13 +38,12 @@ TBreadcrumbBar::TBreadcrumbBar(QWidget* const parent)
     , m_layout(new QHBoxLayout(this))
 {
     setObjectName(QStringLiteral("BreadcrumbBar"));
-    setLayoutDirection(Qt::RightToLeft);
     setFrameShape(QFrame::NoFrame);
     setMinimumHeight(34);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setStyleSheet(QStringLiteral(R"(
         QFrame#BreadcrumbBar {
-            background-color: #0c1930;
+            background-color: #0f172a;
             border-bottom: 1px solid #244368;
         }
         QToolButton {
@@ -48,7 +52,7 @@ TBreadcrumbBar::TBreadcrumbBar(QWidget* const parent)
             border: 1px solid transparent;
             border-radius: 5px;
             padding: 3px 7px;
-            font-family: "Tajawal", "Noto Kufi Arabic";
+            font-family: "Noto Kufi Arabic", "Tajawal";
             font-size: 12px;
         }
         QToolButton:hover, QToolButton:focus {
@@ -61,7 +65,7 @@ TBreadcrumbBar::TBreadcrumbBar(QWidget* const parent)
             padding: 0 1px;
         }
         QToolButton#BreadcrumbSemanticSegment {
-            color: #93c5fd;
+            color: #cbd5ef;
         }
         QToolButton#BreadcrumbSemanticSegment:hover, QToolButton#BreadcrumbSemanticSegment:focus {
             color: #dbeafe;
@@ -71,8 +75,6 @@ TBreadcrumbBar::TBreadcrumbBar(QWidget* const parent)
 
     m_layout->setContentsMargins(8, 2, 8, 2);
     m_layout->setSpacing(1);
-    // The RTL frame mirrors this logical insertion order, placing the first segment at the right edge.
-    m_layout->setDirection(QBoxLayout::LeftToRight);
     rebuild();
 }
 
@@ -162,14 +164,17 @@ void TBreadcrumbBar::addFileSegment(const FileSegment& segment, const int index)
 {
     auto* const button = new QToolButton(this);
     button->setObjectName(QStringLiteral("BreadcrumbFileSegment%1").arg(index));
-    button->setText(segment.label);
+    button->setIcon(segment.isDirectory ?
+                        QIcon(":/icons/resources/folder.svg")
+                        : QIcon(":/icons/resources/file.svg"));
+    button->setIconSize(QSize(14, 14));
+    button->setText(QStringLiteral(" %1").arg(segment.label));
     button->setToolTip(segment.path.isEmpty() ? segment.label : segment.path);
     button->setAccessibleName(segment.isDirectory
         ? QStringLiteral("مجلد: %1").arg(segment.label)
         : QStringLiteral("ملف: %1").arg(segment.label));
-    button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     button->setAutoRaise(true);
-    button->setLayoutDirection(Qt::RightToLeft);
     button->setMaximumWidth(180);
     connect(button, &QToolButton::clicked, this, [this, path = segment.path]() {
         if (!path.isEmpty()) {
@@ -184,12 +189,13 @@ void TBreadcrumbBar::addSymbolSegment(const SemanticBreadcrumb& segment, const i
     auto* const button = new QToolButton(this);
     button->setObjectName(QStringLiteral("BreadcrumbSemanticSegment"));
     button->setProperty("breadcrumbIndex", index);
-    button->setText(symbolPrefix(segment.kind) + segment.name);
+    button->setIcon(symbolPrefix(segment.kind).icon);
+    button->setIconSize(QSize(14, 14));
+    button->setText(symbolPrefix(segment.kind).prefix + segment.name);
     button->setToolTip(button->text());
     button->setAccessibleName(QStringLiteral("رمز: %1").arg(button->text()));
-    button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     button->setAutoRaise(true);
-    button->setLayoutDirection(Qt::RightToLeft);
     button->setMaximumWidth(220);
     connect(button, &QToolButton::clicked, this, [this, range = segment.declarationRange]() {
         emit symbolSegmentActivated(range);
