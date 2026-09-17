@@ -50,7 +50,7 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
     semanticCompletionProvider = std::make_unique<SemanticCompletionProvider>();
     hoverPopup = new THoverPopup(this);
     hoverTimer.setSingleShot(true);
-    hoverTimer.setInterval(350);
+    hoverTimer.setInterval(450);
     connect(&hoverTimer, &QTimer::timeout, this, &TEditor::showPendingHover);
     setMouseTracking(true);
     viewport()->setMouseTracking(true);
