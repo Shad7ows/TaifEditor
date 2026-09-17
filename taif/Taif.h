@@ -54,7 +54,7 @@ private slots:
     void checkForUpdates();
 
     void updateWindowTitle();
-    void onModificationChanged(bool modified);
+
     void onFileTreeDoubleClicked(const QModelIndex &index);
     void closeTab(int index);
     void toggleSidebar();
@@ -82,11 +82,27 @@ private slots:
 
 private:
     void setupUI();
+    void connectSettingsSignals();
     void setupConnections();
     void setupStyle();
     void setupTimers();
-    int needSave();
+
+    enum class SaveDecision : quint8 {
+        Save,
+        Discard,
+        Cancel
+    };
+
+    [[nodiscard]] SaveDecision requestSaveDecision(TEditor* editor) const;
+    [[nodiscard]] bool prepareEditorForClose(TEditor* editor);
+    [[nodiscard]] bool saveEditor(TEditor* editor);
+    [[nodiscard]] bool saveEditorAs(TEditor* editor);
+    [[nodiscard]] bool writeEditorContents(TEditor* editor, const QString& filePath);
+    void finalizeSavedEditor(TEditor* editor, const QString& filePath);
+    void onEditorModificationChanged(TEditor* editor, bool modified);
+
     TEditor* currentEditor();
+
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
     void showAndRaiseDock(QDockWidget* dock);
@@ -114,6 +130,7 @@ private:
     QSplitter *editorSplitter{};
     TBreadcrumbBar* breadcrumbBar{};
     QMetaObject::Connection breadcrumbConnection{};
+    QMetaObject::Connection cursorPositionConnection{};
     QDockWidget* terminalDock{};
     QDockWidget* alifOutputDock{};
     TConsole* systemTerminal{};
@@ -129,4 +146,5 @@ private:
     SearchPanel *searchBar{};
     QDockWidget* diagnosticsDock{};
     DiagnosticsPanel* diagnosticsPanel{};
+    bool openWelcomeAfterClose = false;
 };

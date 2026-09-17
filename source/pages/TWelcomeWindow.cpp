@@ -1,7 +1,7 @@
 #include "TWelcomeWindow.h"
-
 #include "TSessionEditorDialog.h"
 #include "Taif.h"
+#include "TaifBootstrap.h"
 
 #include <QWidget>
 #include <QCheckBox>
@@ -75,15 +75,20 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     titleLabel->setObjectName(QStringLiteral("titleLabel"));
     QLabel* const subtitleLabel = new QLabel(QStringLiteral("طيف — محرر لغة ألف"), centralWidget);
 
+    // ضبط الخط هنا لا يملك تأثير على نافذة الترحيب
+    // وذلك لأن الخط والحجم تم ضبطه في setStyleSheet
+    // ومع ذلك سيتم الإحتفاظ بهذا الضبط في حال الإستخدام لاحقا
+    // او في حال فشل ضبط الخط باستخدام التنسيق styleSheet
     QFont titleFont = titleLabel->font();
-    const QStringList NotoKufiArabicFont = QFontDatabase::applicationFontFamilies(2);
-    if (!NotoKufiArabicFont.isEmpty()) {
-        titleFont.setFamily(NotoKufiArabicFont.constFirst());
+    const QString displayArabicFamily = TaifBootstrap::notoKufiFontFamily();
+    if (!displayArabicFamily.isEmpty()) {
+        titleFont.setFamily(displayArabicFamily);
     }
     titleFont.setPixelSize(18);
     titleFont.setBold(true);
     titleLabel->setFont(titleFont);
     subtitleLabel->setFont(titleFont);
+
     textLayout->addWidget(titleLabel);
     textLayout->addWidget(subtitleLabel);
     headerContent->addWidget(logoLabel);

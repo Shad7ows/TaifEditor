@@ -30,6 +30,9 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/presentation  \
 
 SOURCES += \
+    main.cpp \
+    Taif.cpp \
+    TaifBootstrap.cpp \
     ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.cpp \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.cpp \
     ../source/console/DockableConsoleTool.cpp \
@@ -42,8 +45,6 @@ SOURCES += \
     ../source/texteditor/diagnostics/TDiagnosticsPanel.cpp \
     ../source/texteditor/hover/HoverPopup.cpp \
     ../source/texteditor/navigation/TBreadcrumbBar.cpp \
-    Taif.cpp \
-    main.cpp \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
     ../source/texteditor/autocomplete/AutoCompleteUI.cpp \
     ../source/texteditor/highlighter/TLexer.cpp \
@@ -62,6 +63,8 @@ SOURCES += \
     ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
+    Taif.h  \
+    TaifBootstrap.h \
     ../source/aliflang/presentation/AlifAnalysis.h \
     ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.h \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.h \
@@ -76,7 +79,6 @@ HEADERS += \
     ../source/texteditor/hover/HoverPopup.h \
     ../source/texteditor/navigation/BreadcrumbTypes.h \
     ../source/texteditor/navigation/TBreadcrumbBar.h \
-    Taif.h  \
     ../source/texteditor/autocomplete/AutoComplete.h \
     ../source/texteditor/autocomplete/AutoCompleteUI.h \
     ../source/texteditor/highlighter/TLexer.h \
