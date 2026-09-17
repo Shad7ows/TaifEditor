@@ -44,7 +44,6 @@ TBreadcrumbBar::TBreadcrumbBar(QWidget* const parent)
     setStyleSheet(QStringLiteral(R"(
         QFrame#BreadcrumbBar {
             background-color: #0f172a;
-            border-bottom: 1px solid #244368;
         }
         QToolButton {
             color: #cbd5e1;
