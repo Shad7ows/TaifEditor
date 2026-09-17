@@ -22,6 +22,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/menubar   \
                 ../source/pages \
                 ../source/settings  \
+                ../source/session  \
                 ../source/aliflang/lexer  \
                 ../source/aliflang/parser  \
                 ../source/aliflang/semantic  \
@@ -31,6 +32,8 @@ SOURCES += \
     ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.cpp \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.cpp \
     ../source/console/DockableConsoleTool.cpp \
+    ../source/session/SessionStore.cpp \
+    ../source/session/TSessionEditorDialog.cpp \
     ../source/texteditor/analysis/EditorAnalysisController.cpp \
     ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
@@ -61,6 +64,8 @@ HEADERS += \
     ../source/aliflang/presentation/AlifDiagnosticPresentationAdapter.h \
     ../source/aliflang/presentation/AlifSemanticPresentationAdapter.h \
     ../source/console/DockableConsoleTool.h \
+    ../source/session/SessionStore.h \
+    ../source/session/TSessionEditorDialog.h \
     ../source/texteditor/analysis/EditorAnalysisController.h \
     ../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../source/texteditor/analysis/SemanticDefinitionProvider.h \
