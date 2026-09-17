@@ -17,6 +17,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/texteditor/analysis \
                 ../source/texteditor/hover \
                 ../source/texteditor/diagnostics  \
+                ../source/texteditor/navigation  \
                 ../source/components \
                 ../source/console \
                 ../source/menubar   \
@@ -38,8 +39,9 @@ SOURCES += \
     ../source/texteditor/analysis/SemanticCompletionProvider.cpp \
     ../source/texteditor/analysis/SemanticDefinitionProvider.cpp \
     ../source/texteditor/analysis/SemanticHoverProvider.cpp \
-    ../source/texteditor/diagnostics/DiagnosticsPanel.cpp \
+    ../source/texteditor/diagnostics/TDiagnosticsPanel.cpp \
     ../source/texteditor/hover/HoverPopup.cpp \
+    ../source/texteditor/navigation/TBreadcrumbBar.cpp \
     Taif.cpp \
     main.cpp \
     ../source/texteditor/autocomplete/AutoComplete.cpp \
@@ -70,8 +72,10 @@ HEADERS += \
     ../source/texteditor/analysis/SemanticCompletionProvider.h \
     ../source/texteditor/analysis/SemanticDefinitionProvider.h \
     ../source/texteditor/analysis/SemanticHoverProvider.h \
-    ../source/texteditor/diagnostics/DiagnosticsPanel.h \
+    ../source/texteditor/diagnostics/TDiagnosticsPanel.h \
     ../source/texteditor/hover/HoverPopup.h \
+    ../source/texteditor/navigation/BreadcrumbTypes.h \
+    ../source/texteditor/navigation/TBreadcrumbBar.h \
     Taif.h  \
     ../source/texteditor/autocomplete/AutoComplete.h \
     ../source/texteditor/autocomplete/AutoCompleteUI.h \

@@ -1,4 +1,4 @@
-#include "DiagnosticsPanel.h"
+#include "TDiagnosticsPanel.h"
 
 #include <QAbstractItemView>
 #include <QHBoxLayout>

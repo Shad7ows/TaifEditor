@@ -20,6 +20,7 @@ QT_END_NAMESPACE
 class QDockWidget;
 class DiagnosticsPanel;
 class TConsole;
+class TBreadcrumbBar;
 
 struct SessionRestoreResult final {
     QStringList openedFilePaths;
@@ -75,6 +76,9 @@ private slots:
     void replaceAll();
     void goToLine();
     void clearSearchHighlights();
+    void refreshBreadcrumbs();
+    void bindBreadcrumbsToEditor(TEditor* editor);
+    void revealBreadcrumbPath(const QString& path);
 
 private:
     void setupUI();
@@ -108,6 +112,8 @@ private:
     QFileSystemModel *fileSystemModel{};
 
     QSplitter *editorSplitter{};
+    TBreadcrumbBar* breadcrumbBar{};
+    QMetaObject::Connection breadcrumbConnection{};
     QDockWidget* terminalDock{};
     QDockWidget* alifOutputDock{};
     TConsole* systemTerminal{};

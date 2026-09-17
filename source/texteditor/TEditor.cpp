@@ -22,6 +22,7 @@
 
 TEditor::TEditor(TSettings *setting, QWidget *parent)
 {
+    qRegisterMetaType<EditorBreadcrumbContext>("EditorBreadcrumbContext");
     setAcceptDrops(true);
     this->setStyleSheet(R"(
     QPlainTextEdit {
@@ -64,6 +65,7 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
                                     ? analysisController->currentRevision() : 0;
                 emit diagnosticsChanged(m_currentDiagnostics, m_diagnosticsRevision);
                 dismissHover();
+                notifyBreadcrumbContextChanged();
                 definitionNavigationHistory.clear();
                 clearCtrlHoverDefinitionLink();
             });
@@ -97,7 +99,9 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
                 if (canRefreshActiveCompletion()) {
                     performCompletion();
                 }
+                notifyBreadcrumbContextChanged();
             });
+
     lineNumberArea = new LineNumberArea(this);
     minimap = new TMinimap(this, this);
 
@@ -114,6 +118,8 @@ TEditor::TEditor(TSettings *setting, QWidget *parent)
         viewport()->update(); // Repaint to update the current-line highlight position.
         highlightSelectedWordMatches();
     });
+    connect(this, &TEditor::cursorPositionChanged,
+            this, &TEditor::notifyBreadcrumbContextChanged);
     connect(this->document(), &QTextDocument::contentsChanged, this, &TEditor::updateFoldRegions);
 
     // Set up debounce timer for highlightSelectedWordMatches
@@ -2072,4 +2078,24 @@ void TEditor::highlightSelectedMatches(const QList<MatchRange> &matches,
     // Update Cache safely
     lastHighlightedText = searchText;
     lastHighlightedPosition = startPos;
+}
+
+EditorBreadcrumbContext TEditor::breadcrumbContextAtCursor() const {
+    EditorBreadcrumbContext context;
+    if (analysisController == nullptr) {
+        return context;
+    }
+
+    context.revision = analysisController->currentRevision();
+    context.cursorOffset = textCursor().position();
+    const LanguageAnalysisSnapshotPtr snapshot = analysisController->currentSnapshot();
+    if (snapshot != nullptr && snapshot->revision == context.revision
+        && snapshot->semantic != nullptr) {
+        context.symbolPath = snapshot->semantic->enclosingSymbolPathAt(context.cursorOffset);
+    }
+    return context;
+}
+
+void TEditor::notifyBreadcrumbContextChanged() {
+    emit breadcrumbContextChanged(breadcrumbContextAtCursor());
 }

@@ -1,13 +1,5 @@
 #pragma once
 
-#include <QTimer>
-#include <QScrollBar>
-#include <QPoint>
-#include <QPlainTextEdit>
-#include <QTextEdit>
-#include <QCompleter>
-#include <memory>
-
 #include "TSettings.h"
 #include "TSyntaxHighlighter.h"
 #include "AutoComplete.h"
@@ -17,6 +9,16 @@
 #include "SemanticHoverProvider.h"
 #include "SemanticDefinitionProvider.h"
 #include "CompletionContext.h"
+#include "BreadcrumbTypes.h"
+
+#include <QTimer>
+#include <QScrollBar>
+#include <QPoint>
+#include <QPlainTextEdit>
+#include <QTextEdit>
+#include <QCompleter>
+#include <memory>
+
 
 class LineNumberArea;
 class TMinimap;
@@ -48,6 +50,7 @@ public:
     [[nodiscard]] const QVector<EditorDiagnostic>& currentDiagnostics() const {
         return m_currentDiagnostics;
     }
+    [[nodiscard]] EditorBreadcrumbContext breadcrumbContextAtCursor() const;
 
     struct MatchRange {
         int start;
@@ -164,6 +167,7 @@ private:
     [[nodiscard]] std::optional<DefinitionLocation> definitionAt(qsizetype offset) const;
     bool navigateToDefinition(qsizetype offset);
     bool navigateBackFromDefinition();
+    void notifyBreadcrumbContextChanged();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
@@ -184,7 +188,8 @@ private slots:
     void insertCompletion(const QString &completion, CompletionType type);
 signals:
     void openRequest(QString filePath);
-        void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
+    void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
+    void breadcrumbContextChanged(EditorBreadcrumbContext context);
 };
 
 class LineNumberArea : public QWidget
