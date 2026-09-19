@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TSettings.h"
+#include "EditorPreferences.h"
 #include "TSyntaxHighlighter.h"
 #include "AutoComplete.h"
 #include "AutoCompleteUI.h"
@@ -67,6 +68,7 @@ public slots:
     void moveLineDown();
     void performAutoSave();
     void updateHighlighterTheme(std::shared_ptr<SyntaxTheme>);
+    void applyPreferences(const EditorPreferences& preferences);
     void navigateToDiagnosticRange(SourceRange range);
     void highlightSelectedWordMatches();
     void startAsyncWordHighlight();
@@ -135,7 +137,8 @@ private:
     };
     QVector<FoldRegion> foldRegions;
 
-    QTimer *autoSaveTimer;
+    QTimer *autoSaveTimer{};
+    EditorPreferences preferences{};
 
     friend class LineNumberArea;
     friend class TMinimap;

@@ -199,7 +199,7 @@ void WelcomeWindow::setupStyle() {
         QWidget {
             background-color: #0f172a;
             color: #f1f5f9;
-            font-family: "Tajawal", "Noto Kufi Arabic", Roboto, Helvetica, Arial, sans-serif;
+            font-family: "Tajawal", "Noto Kufi Arabic", Roboto, Helvetica, Arial;
         }
 
         /* very important for QScrollBar background */

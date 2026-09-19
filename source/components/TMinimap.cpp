@@ -1,5 +1,7 @@
 #include "TMinimap.h"
 #include "TEditor.h"
+#include "TaifBootstrap.h"
+
 #include <QPainter>
 #include <QTextBlock>
 #include <QScrollBar>
@@ -12,7 +14,7 @@ TPreviewTooltip::TPreviewTooltip(QWidget* parent)
 {
     setAttribute(Qt::WA_TranslucentBackground); // to ensure fully rounded rectangle of preview tooltip
     font = QFont();
-    font.setFamilies(QFontDatabase::applicationFontFamilies(2));
+    font = QFont(TaifBootstrap::monospaceFontFamily());
     font.insertSubstitution("Arial", "Courier New");
     font.setPixelSize(10);
     setFont(font);

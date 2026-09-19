@@ -18,9 +18,9 @@ SymbolPrefix symbolPrefix(const SymbolKind kind)
 {
     switch (kind) {
     case SymbolKind::Class:
-        return SymbolPrefix(QIcon(":/icons/resources/brackets.svg"), QStringLiteral(" صنف "));
+        return SymbolPrefix{QIcon(":/icons/resources/brackets.svg"), QStringLiteral(" صنف ")};
     case SymbolKind::Function:
-        return SymbolPrefix(QIcon(":/icons/resources/parentheses.svg"), QStringLiteral(" دالة "));
+        return SymbolPrefix{QIcon(":/icons/resources/parentheses.svg"), QStringLiteral(" دالة ")};
     default:
         return {};
     }

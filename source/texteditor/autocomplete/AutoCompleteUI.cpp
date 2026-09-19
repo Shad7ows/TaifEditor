@@ -110,7 +110,7 @@ TCompletionPopup::TCompletionPopup(QWidget* parent)
             border-top: 1px solid #4793FF;
             color: #9da5b4;
             padding: 8px;
-            font-family: 'Tajawal', sans-serif;
+            font-family: 'Tajawal', 'Noto Kufi Arabic';
         }
         )");
     infoLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);
@@ -145,7 +145,7 @@ void TCompletionPopup::currentChanged(const QModelIndex& current,
         <div dir='rtl'>
         <span style='font-weight:bold; color:%1; font-size:14px;'>%2</span>
         <br>
-        <span style='font-family:Tajawal,sans-serif; font-size:12px; color:#dcdfe4;'>%3</span>
+        <span style='font-family:Tajawal,'Noto Kufi Arabic'; font-size:12px; color:#dcdfe4;'>%3</span>
         </div>)")
         .arg(visual.color.name(), visual.category,
              summary.toHtmlEscaped().replace(QChar(u'\n'), QStringLiteral("<br>")));

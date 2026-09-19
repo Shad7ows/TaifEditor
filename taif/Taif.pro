@@ -30,6 +30,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/presentation  \
 
 SOURCES += \
+    ../source/settings/EditorPreferences.cpp \
     main.cpp \
     Taif.cpp \
     TaifBootstrap.cpp \
@@ -63,6 +64,7 @@ SOURCES += \
     ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
+    ../source/settings/EditorPreferences.h \
     Taif.h  \
     TaifBootstrap.h \
     ../source/aliflang/presentation/AlifAnalysis.h \

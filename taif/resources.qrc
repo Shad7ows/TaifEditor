@@ -32,5 +32,6 @@
         <file>resources/parentheses.svg</file>
         <file>resources/file.svg</file>
         <file>resources/folder.svg</file>
+        <file>resources/check.svg</file>
     </qresource>
 </RCC>

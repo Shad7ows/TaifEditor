@@ -84,6 +84,7 @@ private:
     void setupUI();
     void connectSettingsSignals();
     void setupConnections();
+    void applyEditorPreferences(const EditorPreferences& preferences);
     void setupStyle();
     void setupTimers();
 

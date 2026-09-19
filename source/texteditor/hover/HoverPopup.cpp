@@ -86,7 +86,7 @@ THoverPopup::THoverPopup(QWidget* parent) : QFrame(parent) {
         QLabel {
             border-top: 1px solid #3e4451;
             padding-top: 6px;
-            font-family: 'Tajawal', sans-serif;
+            font-family: 'Tajawal', 'Noto Kufi Arabic';
         }
 )");
     layout->addWidget(metadataLabel);
@@ -137,12 +137,12 @@ void THoverPopup::setHoverInfo(const HoverInfo& info) {
             background-color: #2c313a;
             border-radius: 7px;
             border-left: 1px solid %1;
-            font-family: Consolas;
+            font-family: Consolas, 'Noto Kufi Arabic';
         })").arg(visual.color.name()));
 
     headerLabel->setText(QStringLiteral(R"(
         <div dir='rtl'>
-        <span style='color:#f1f5f9; font-family:Consolas,Tajawal,sans-serif;
+        <span style='color:#f1f5f9; font-family:Consolas,Tajawal,'Noto Kufi Arabic';
         font-size:14px; font-weight:bold;'>%1</span>
         </div>
         )").arg(escapedWithBreaks(info.signature)));
@@ -160,7 +160,7 @@ void THoverPopup::setHoverInfo(const HoverInfo& info) {
             border-top: 1px solid %1;
             border-radius: 6px;
             padding: 8px;
-            font-family: 'Tajawal', sans-serif;
+            font-family: 'Tajawal', 'Noto Kufi Arabic';
         })").arg(visual.color.name()));
     documentationLabel->setText(QStringLiteral(
         "<div dir='rtl'><span style='color:%1; font-weight:bold;'>التوثيق</span><br>"
