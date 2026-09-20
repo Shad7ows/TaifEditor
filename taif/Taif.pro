@@ -33,6 +33,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/presentation  \
 
 SOURCES += \
+    ../source/console/OutputBuffer.cpp \
     ../source/recovery/RecoveryCoordinator.cpp \
     ../source/recovery/RecoveryStore.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
@@ -75,6 +76,7 @@ SOURCES += \
     ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
+    ../source/console/OutputBuffer.h \
     ../source/recovery/RecoveryCoordinator.h \
     ../source/recovery/RecoveryStore.h \
     ../source/recovery/TRecoveryDialog.h \
