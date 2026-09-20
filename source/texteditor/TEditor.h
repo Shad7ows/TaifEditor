@@ -29,6 +29,9 @@ class QMouseEvent;
 class RecoveryCoordinator;
 struct RecoveryEntry;
 struct RecoveryWriteResult;
+class EditorAnalysisBinding;
+class EditorRecoveryBinding;
+class EditorInteractionBinding;
 
 class TEditor : public QPlainTextEdit
 {
@@ -108,16 +111,16 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
-    TSyntaxHighlighter *highlighter{};
+    TSyntaxHighlighter* highlighter{};
+    EditorAnalysisBinding* analysisBinding{};
+    // Non-owning convenience reference; EditorAnalysisBinding owns the controller.
     EditorAnalysisController* analysisController{};
+
     std::unique_ptr<SemanticCompletionProvider> semanticCompletionProvider{};
     SemanticHoverProvider semanticHoverProvider{};
     SemanticDefinitionProvider semanticDefinitionProvider{};
     THoverPopup* hoverPopup{};
-    QTimer hoverTimer{};
-    QPoint pendingHoverViewportPosition{};
-    qsizetype pendingHoverOffset = -1;
-    quint64 pendingHoverRevision = 0;
+    EditorInteractionBinding* interactionBinding{};
     std::optional<SourceRange> ctrlHoverDefinitionRange{};
 
     struct NavigationHistoryEntry {
@@ -142,8 +145,6 @@ private:
     void toggleFold(int blockNum);
     void scheduleRecoveryCapture();
     void clearRecoverySnapshot();
-    void acknowledgeRecoverySnapshot(RecoveryWriteResult result);
-    void scheduleRecoveryRetry();
 
     struct FoldRegion
     {
@@ -153,17 +154,8 @@ private:
     };
     QVector<FoldRegion> foldRegions;
 
-    QTimer *autoSaveTimer{};
-    QTimer *recoveryMaximumTimer{};
-    QTimer *recoveryRetryTimer{};
-    RecoveryCoordinator* recoveryCoordinator{};
-    QString m_recoveryDocumentId;
-    quint64 m_currentDirtyRevision = 0;
-    quint64 m_lastRequestedRecoveryRevision = 0;
-    quint64 m_lastPersistedRecoveryRevision = 0;
-    int m_recoveryRetryCount = 0;
-    bool m_recoverySnapshotAwaitingAcknowledgement = false;
-    bool m_recoveryDirty = false;
+    EditorRecoveryBinding* recoveryBinding{};
+
     EditorPreferences preferences{};
 
     friend class LineNumberArea;

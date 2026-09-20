@@ -18,6 +18,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/texteditor/hover \
                 ../source/texteditor/diagnostics  \
                 ../source/texteditor/navigation  \
+                ../source/texteditor/services  \
                 ../source/components \
                 ../source/console \
                 ../source/menubar   \
@@ -37,6 +38,9 @@ SOURCES += \
     ../source/recovery/TRecoveryDialog.cpp \
     ../source/run/AlifRunController.cpp \
     ../source/settings/EditorPreferences.cpp \
+    ../source/texteditor/services/EditorAnalysisBinding.cpp \
+    ../source/texteditor/services/EditorInteractionBinding.cpp \
+    ../source/texteditor/services/EditorRecoveryBinding.cpp \
     TaifWindowController.cpp \
     main.cpp \
     Taif.cpp \
@@ -76,6 +80,9 @@ HEADERS += \
     ../source/recovery/TRecoveryDialog.h \
     ../source/run/AlifRunController.h \
     ../source/settings/EditorPreferences.h \
+    ../source/texteditor/services/EditorAnalysisBinding.h \
+    ../source/texteditor/services/EditorInteractionBinding.h \
+    ../source/texteditor/services/EditorRecoveryBinding.h \
     Taif.h  \
     TaifBootstrap.h \
     ../source/aliflang/presentation/AlifAnalysis.h \
