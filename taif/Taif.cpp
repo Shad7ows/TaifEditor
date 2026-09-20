@@ -1417,7 +1417,7 @@ bool Taif::openDocumentFile(const QString& requestedPath,
 #if defined(Q_OS_WIN)
     newEditor->setDocumentLineEnding(EditorStatusSnapshot::LineEnding::Crlf);
 #else
-    newEditor->setDocumentLineEnding(EditorInfoSnapshot::LineEnding::Lf);
+    newEditor->setDocumentLineEnding(EditorStatusSnapshot::LineEnding::Lf);
 #endif
     newEditor->document()->setModified(false);
     newEditor->removeBackupFile();
@@ -1873,7 +1873,7 @@ void Taif::finalizeSavedEditor(TEditor* const editor, const QString& filePath)
 #if defined(Q_OS_WIN)
     editor->setDocumentLineEnding(EditorStatusSnapshot::LineEnding::Crlf);
 #else
-    editor->setDocumentLineEnding(EditorInfoSnapshot::LineEnding::Lf);
+    editor->setDocumentLineEnding(EditorStatusSnapshot::LineEnding::Lf);
 #endif
     editor->document()->setModified(false);
     editor->removeBackupFile();
