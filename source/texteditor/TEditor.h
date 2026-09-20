@@ -11,6 +11,7 @@
 #include "SemanticDefinitionProvider.h"
 #include "CompletionContext.h"
 #include "BreadcrumbTypes.h"
+#include "EditorStatusSnapshot.h"
 
 #include <QTimer>
 #include <QScrollBar>
@@ -67,6 +68,8 @@ public:
         return m_currentDiagnostics;
     }
     [[nodiscard]] EditorBreadcrumbContext breadcrumbContextAtCursor() const;
+    [[nodiscard]] EditorStatusSnapshot informationSnapshot() const;
+    void setDocumentLineEnding(EditorStatusSnapshot::LineEnding lineEnding);
 
     struct MatchRange {
         int start;
@@ -157,6 +160,7 @@ private:
     EditorRecoveryBinding* recoveryBinding{};
 
     EditorPreferences preferences{};
+    EditorStatusSnapshot::LineEnding documentLineEnding = EditorStatusSnapshot::LineEnding::Unknown;
 
     friend class LineNumberArea;
     friend class TMinimap;
@@ -189,6 +193,7 @@ private:
     bool navigateToDefinition(qsizetype offset);
     bool navigateBackFromDefinition();
     void notifyBreadcrumbContextChanged();
+    void notifyEditorInformationChanged();
     QTextCursor textUnderCursor() const;
     void performCompletion();
     bool processSnippetNavigation();
@@ -211,6 +216,7 @@ signals:
     void openRequest(QString filePath);
     void diagnosticsChanged(QVector<EditorDiagnostic> diagnostics, quint64 revision);
     void breadcrumbContextChanged(EditorBreadcrumbContext context);
+    void editorInformationChanged(EditorStatusSnapshot snapshot);
 };
 
 class LineNumberArea : public QWidget

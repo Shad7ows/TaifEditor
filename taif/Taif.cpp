@@ -1,11 +1,11 @@
 #include "Taif.h"
-#include "TWelcomeWindow.h"
 #include "TConsole.h"
 #include "InlinePromptConsole.h"
 #include "DockableConsoleTool.h"
 #include "TSearchPanel.h"
 #include "TDiagnosticsPanel.h"
 #include "TBreadcrumbBar.h"
+#include "TStatusBar.h"
 #include "TRecoveryDialog.h"
 
 #include <QDockWidget>
@@ -270,10 +270,10 @@ void Taif::setupUI() {
         alifOutputDock->hide();
     }
 
-    cursorPositionLabel = new QLabel(this);
-    cursorPositionLabel->setStyleSheet("QLabel{ color: #f1f5f9;}");
-    cursorPositionLabel->setText("UTF-8  السطر: 1  العمود: 1");
-    statusBar()->addPermanentWidget(cursorPositionLabel);
+    editorInfoBar = new TStatusBar(statusBar());
+    statusBar()->addPermanentWidget(editorInfoBar, 1);
+    connect(editorInfoBar, &TStatusBar::diagnosticsActivated, this,
+            [this]() { showAndRaiseDock(diagnosticsDock); });
 }
 
 void Taif::connectSettingsSignals()
@@ -1406,7 +1406,13 @@ bool Taif::openDocumentFile(const QString& requestedPath,
     auto* const newEditor = new TEditor(setting, this);
     registerEditorRecovery(newEditor);
     newEditor->setPlainText(content);
+    newEditor->filePath = filePath;
     newEditor->setProperty("filePath", filePath);
+#if defined(Q_OS_WIN)
+    newEditor->setDocumentLineEnding(EditorStatusSnapshot::LineEnding::Crlf);
+#else
+    newEditor->setDocumentLineEnding(EditorInfoSnapshot::LineEnding::Lf);
+#endif
     newEditor->document()->setModified(false);
     newEditor->removeBackupFile();
 
@@ -1732,6 +1738,7 @@ void Taif::restoreRecoveryEntry(const RecoveryEntry& entry)
     editor->adoptRecoveryEntry(entry);
     editor->setPlainText(recoveredText);
     if (sourceUnchanged) {
+        editor->filePath = entry.sourcePath;
         editor->setProperty("filePath", entry.sourcePath);
     }
     editor->document()->setModified(true);
@@ -1759,7 +1766,13 @@ void Taif::finalizeSavedEditor(TEditor* const editor, const QString& filePath)
         return;
     }
 
+    editor->filePath = filePath;
     editor->setProperty("filePath", filePath);
+#if defined(Q_OS_WIN)
+    editor->setDocumentLineEnding(EditorStatusSnapshot::LineEnding::Crlf);
+#else
+    editor->setDocumentLineEnding(EditorInfoSnapshot::LineEnding::Lf);
+#endif
     editor->document()->setModified(false);
     editor->removeBackupFile();
     onEditorModificationChanged(editor, false);
@@ -1791,16 +1804,10 @@ void Taif::onCurrentTabChanged() {
         searchBar->hide();
     }
     updateWindowTitle();
-    updateCursorPosition();
 
-    if (cursorPositionConnection) {
-        disconnect(cursorPositionConnection);
-    }
     TEditor* const editor = currentEditor();
-    if (editor != nullptr) {
-        cursorPositionConnection = connect(editor, &QPlainTextEdit::cursorPositionChanged,
-                                           this, &Taif::updateCursorPosition);
-    }
+    bindInformationBarToEditor(editor);
+    refreshEditorInfoBar();
 
     refreshDiagnosticsPanel();
     // updateEditActionState(); //* review
@@ -1828,6 +1835,32 @@ void Taif::refreshDiagnosticsPanel() {
         diagnosticsPanel->setDiagnostics(editor->currentDiagnostics());
     } else {
         diagnosticsPanel->clearDiagnostics();
+    }
+}
+
+void Taif::bindInformationBarToEditor(TEditor* const editor) {
+    if (editorInformationConnection) {
+        disconnect(editorInformationConnection);
+    }
+    if (editor == nullptr || editorInfoBar == nullptr) {
+        return;
+    }
+    editorInformationConnection = connect(editor, &TEditor::editorInformationChanged, this,
+                                          [this, editor](const EditorStatusSnapshot& snapshot) {
+                                              if (editor == currentEditor() && editorInfoBar != nullptr) {
+                                                  editorInfoBar->setSnapshot(snapshot);
+                                              }
+                                          });
+}
+
+void Taif::refreshEditorInfoBar() {
+    if (editorInfoBar == nullptr) {
+        return;
+    }
+    if (TEditor* const editor = currentEditor()) {
+        editorInfoBar->setSnapshot(editor->informationSnapshot());
+    } else {
+        editorInfoBar->setSnapshot({});
     }
 }
 
@@ -1893,18 +1926,8 @@ void Taif::revealBreadcrumbPath(const QString& path)
     fileTreeView->setCurrentIndex(index);
 }
 
-void Taif::updateCursorPosition()
-{
-    TEditor* editor = currentEditor();
-    if (editor) {
-        const QTextCursor cursor = editor->textCursor();
-        int line = cursor.blockNumber() + 1;
-        int column = cursor.columnNumber() + 1;
-
-        cursorPositionLabel->setText(QString("UTF-8    السطر: %1   العمود: %2 ").arg(line).arg(column));
-    } else {
-        cursorPositionLabel->setText("");
-    }
+void Taif::updateCursorPosition() {
+    refreshEditorInfoBar();
 }
 
 

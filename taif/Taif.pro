@@ -34,6 +34,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/presentation  \
 
 SOURCES += \
+    ../source/components/TStatusBar.cpp \
     ../source/console/InlinePromptConsole.cpp \
     ../source/console/OutputBuffer.cpp \
     ../source/console/terminal/PosixPtyBackend.cpp \
@@ -84,6 +85,7 @@ SOURCES += \
     ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
+    ../source/components/TStatusBar.h \
     ../source/console/InlinePromptConsole.h \
     ../source/console/OutputBuffer.h \
     ../source/console/terminal/ITerminalBackend.h \
@@ -98,6 +100,7 @@ HEADERS += \
     ../source/recovery/TRecoveryDialog.h \
     ../source/run/AlifRunController.h \
     ../source/settings/EditorPreferences.h \
+    ../source/texteditor/EditorStatusSnapshot.h \
     ../source/texteditor/services/EditorAnalysisBinding.h \
     ../source/texteditor/services/EditorInteractionBinding.h \
     ../source/texteditor/services/EditorRecoveryBinding.h \

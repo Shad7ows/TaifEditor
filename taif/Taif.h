@@ -22,6 +22,7 @@ class QDockWidget;
 class DiagnosticsPanel;
 class TConsole;
 class TBreadcrumbBar;
+class TStatusBar;
 
 struct SessionRestoreResult final {
     QStringList openedFilePaths;
@@ -82,6 +83,8 @@ private slots:
     void goToLine();
     void clearSearchHighlights();
     void refreshBreadcrumbs();
+    void bindInformationBarToEditor(TEditor* editor);
+    void refreshEditorInfoBar();
     void bindBreadcrumbsToEditor(TEditor* editor);
     void revealBreadcrumbPath(const QString& path);
 
@@ -145,6 +148,7 @@ private:
     TBreadcrumbBar* breadcrumbBar{};
     QMetaObject::Connection breadcrumbConnection{};
     QMetaObject::Connection cursorPositionConnection{};
+    QMetaObject::Connection editorInformationConnection{};
     QDockWidget* terminalDock{};
     QDockWidget* alifOutputDock{};
     TConsole* systemTerminal{};
@@ -156,7 +160,7 @@ private:
     QFileSystemWatcher* fileWatcher{};
     bool savingFromApp{};
     QTimer *saveSuppressTimer{};
-    QLabel *cursorPositionLabel{};
+    TStatusBar* editorInfoBar{};
     SearchPanel *searchBar{};
     QDockWidget* diagnosticsDock{};
     DiagnosticsPanel* diagnosticsPanel{};
