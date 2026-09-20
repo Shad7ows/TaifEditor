@@ -189,8 +189,12 @@ bool AlifRunController::validateRequest(const Request& request, QString* const e
     return true;
 }
 
-void AlifRunController::flushPendingOutput()
-{
+void AlifRunController::flushPendingOutput() {
+    // QProcess may already have closed its device during destruction or after a
+    // failed start.  Reading then produces spurious QIODevice warnings.
+    if (!m_process.isOpen()) {
+        return;
+    }
     handleStandardOutput();
     handleStandardError();
 }

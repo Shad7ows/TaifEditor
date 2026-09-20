@@ -19,8 +19,9 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/texteditor/diagnostics  \
                 ../source/texteditor/navigation  \
                 ../source/texteditor/services  \
-                ../source/components \
                 ../source/console \
+                ../source/console/terminal \
+                ../source/components \
                 ../source/menubar   \
                 ../source/pages \
                 ../source/settings  \
@@ -33,7 +34,14 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/aliflang/presentation  \
 
 SOURCES += \
+    ../source/console/InlinePromptConsole.cpp \
     ../source/console/OutputBuffer.cpp \
+    ../source/console/terminal/PosixPtyBackend.cpp \
+    ../source/console/terminal/TerminalScreenModel.cpp \
+    ../source/console/terminal/TerminalSessionController.cpp \
+    ../source/console/terminal/TerminalView.cpp \
+    ../source/console/terminal/VtStreamParser.cpp \
+    ../source/console/terminal/WindowsConPtyBackend.cpp \
     ../source/recovery/RecoveryCoordinator.cpp \
     ../source/recovery/RecoveryStore.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
@@ -76,7 +84,15 @@ SOURCES += \
     ../source/aliflang/semantic/AlifSymbolTable.cpp \
 
 HEADERS += \
+    ../source/console/InlinePromptConsole.h \
     ../source/console/OutputBuffer.h \
+    ../source/console/terminal/ITerminalBackend.h \
+    ../source/console/terminal/PosixPtyBackend.h \
+    ../source/console/terminal/TerminalScreenModel.h \
+    ../source/console/terminal/TerminalSessionController.h \
+    ../source/console/terminal/TerminalView.h \
+    ../source/console/terminal/VtStreamParser.h \
+    ../source/console/terminal/WindowsConPtyBackend.h \
     ../source/recovery/RecoveryCoordinator.h \
     ../source/recovery/RecoveryStore.h \
     ../source/recovery/TRecoveryDialog.h \
