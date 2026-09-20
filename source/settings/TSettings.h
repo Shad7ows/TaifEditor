@@ -40,6 +40,7 @@ private slots:
     void applyDraft();
     void cancelDraft();
     void restorePageDefaults();
+    void markRecentFilesForClearing();
 
 
 private:
@@ -81,5 +82,6 @@ private:
     QVector<std::shared_ptr<SyntaxTheme>> availableThemes{};
     EditorPreferences baselinePreferences{};
     EditorPreferences draftPreferences{};
+    bool clearRecentFilesOnApply = false;
     bool synchronizingControls = false;
 };
