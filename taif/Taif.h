@@ -64,7 +64,11 @@ private slots:
 
     void updateCursorPosition();
     void onCurrentTabChanged();
+signals:
+    void returnToWelcomeRequested();
+    void closeRejected();
 
+private slots:
     void onFileChanged(const QString &path);
     void showFindBar();
     void showReplaceBar();
@@ -156,5 +160,4 @@ private:
     SearchPanel *searchBar{};
     QDockWidget* diagnosticsDock{};
     DiagnosticsPanel* diagnosticsPanel{};
-    bool openWelcomeAfterClose = false;
 };

@@ -104,6 +104,7 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
                     statusBar()->showMessage(
                         QStringLiteral("تعذر تأكيد حفظ نسخة الاستعادة. أعد المحاولة قبل الإغلاق."),
                         7000);
+                    emit closeRejected();
                     return;
                 }
 
@@ -581,7 +582,7 @@ void Taif::closeEvent(QCloseEvent* const event)
         for (int index = 0; index < tabWidget->count(); ++index) {
             if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
                 if (!prepareEditorForClose(editor)) {
-                    openWelcomeAfterClose = false;
+                    emit closeRejected();
                     event->ignore();
                     return;
                 }
@@ -600,10 +601,6 @@ void Taif::closeEvent(QCloseEvent* const event)
         }
     }
 
-    if (openWelcomeAfterClose) {
-        auto* const welcomeWindow = new WelcomeWindow();
-        welcomeWindow->show();
-    }
     event->accept();
 }
 
@@ -1764,8 +1761,7 @@ void Taif::openSettings()
 
 
 void Taif::exitApp() {
-    openWelcomeAfterClose = true;
-    close();
+    emit returnToWelcomeRequested();
 }
 
 void Taif::onCurrentTabChanged() {

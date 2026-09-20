@@ -37,6 +37,7 @@ SOURCES += \
     ../source/recovery/TRecoveryDialog.cpp \
     ../source/run/AlifRunController.cpp \
     ../source/settings/EditorPreferences.cpp \
+    TaifWindowController.cpp \
     main.cpp \
     Taif.cpp \
     TaifBootstrap.cpp \
@@ -109,6 +110,7 @@ HEADERS += \
     ../source/aliflang/lexer/AlifLexer.h \
     ../source/aliflang/parser/AlifParser.h \
     ../source/aliflang/semantic/AlifSymbolTable.h \
+    TaifWindowController.h
 
 
 

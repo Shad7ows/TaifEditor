@@ -49,4 +49,10 @@ private slots:
     void createSession();
     void manageSessions();
     void openSelectedSession(QListWidgetItem*);
+
+signals:
+    void newDocumentRequested();
+    void fileOpenRequested(QString filePath);
+    void folderOpenRequested(QString folderPath);
+    void sessionOpenRequested(SavedSession session);
 };

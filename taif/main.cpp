@@ -1,5 +1,4 @@
-#include "Taif.h"
-#include "TWelcomeWindow.h"
+#include "TaifWindowController.h"
 #include "TaifBootstrap.h"
 
 #include <QApplication>
@@ -17,16 +16,10 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    // هذه الدالة تسبب إغلاق البرنامج بشكل غير صحيح عند الضغط على خروج في قائمة ملف
-    // application.setQuitOnLastWindowClosed(true); //* review
-    if (!launchRequest.filePath.isEmpty()) {
-        Taif* const editor = new Taif(launchRequest.filePath);
-
-        editor->show();
-    } else {
-        WelcomeWindow* const welcomeWindow = new WelcomeWindow();
-        welcomeWindow->show();
-    }
+    // هذه الدالة قد تسبب إغلاق البرنامج بشكل غير صحيح عند الضغط على خروج في قائمة ملف
+    application.setQuitOnLastWindowClosed(true); //* review
+    TaifWindowController windowController(&application);
+    windowController.showInitial(launchRequest);
 
     return application.exec();
 }
