@@ -25,6 +25,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/settings  \
                 ../source/session  \
                 ../source/recovery  \
+                ../source/run  \
                 ../source/aliflang/lexer  \
                 ../source/aliflang/parser  \
                 ../source/aliflang/semantic  \
@@ -34,6 +35,7 @@ SOURCES += \
     ../source/recovery/RecoveryCoordinator.cpp \
     ../source/recovery/RecoveryStore.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
+    ../source/run/AlifRunController.cpp \
     ../source/settings/EditorPreferences.cpp \
     main.cpp \
     Taif.cpp \
@@ -71,6 +73,7 @@ HEADERS += \
     ../source/recovery/RecoveryCoordinator.h \
     ../source/recovery/RecoveryStore.h \
     ../source/recovery/TRecoveryDialog.h \
+    ../source/run/AlifRunController.h \
     ../source/settings/EditorPreferences.h \
     Taif.h  \
     TaifBootstrap.h \

@@ -3,7 +3,7 @@
 #include "TEditor.h"
 #include "TMenu.h"
 #include "TSearchPanel.h"
-#include "ProcessWorker.h"
+#include "AlifRunController.h"
 #include "SessionStore.h"
 #include "RecoveryCoordinator.h"
 
@@ -144,8 +144,8 @@ private:
     TConsole* systemTerminal{};
     TConsole* alifOutputConsole{};
 
-    ProcessWorker* worker{};
-    QThread* thread{};
+    AlifRunController* runController{};
+    QAction* runToolbarAction{};
 
     QFileSystemWatcher* fileWatcher{};
     bool savingFromApp{};
