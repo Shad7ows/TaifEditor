@@ -18,7 +18,6 @@
         <file>resources/TaifLogo.png</file>
         <file>resources/down-arrow.png</file>
         <file>resources/up-arrow.png</file>
-        <file>resources/panel-right-open.svg</file>
         <file>resources/close.svg</file>
         <file>resources/run.svg</file>
         <file>resources/left-arrow.png</file>
@@ -33,5 +32,6 @@
         <file>resources/file.svg</file>
         <file>resources/folder.svg</file>
         <file>resources/check.svg</file>
+        <file>resources/folder-tree.svg</file>
     </qresource>
 </RCC>

@@ -6,6 +6,8 @@
 #include "TDiagnosticsPanel.h"
 #include "TBreadcrumbBar.h"
 #include "TStatusBar.h"
+#include "TProjectExplorerWidget.h"
+#include "ProjectFileOperations.h"
 #include "TRecoveryDialog.h"
 
 #include <QDockWidget>
@@ -171,8 +173,8 @@ void Taif::setupUI() {
     setMenuBar(menuBar);
 
     mainSplitter = new QSplitter(Qt::Horizontal, this);
-    fileTreeView = new QTreeView(this);
-    fileSystemModel = new QFileSystemModel(this);
+    projectExplorer = new ProjectExplorerWidget(this);
+    projectExplorer->setVisible(false);
 
     editorSplitter = new QSplitter(Qt::Vertical, this);
     searchBar = new SearchPanel(this);
@@ -194,7 +196,7 @@ void Taif::setupUI() {
     mainToolBar->setIconSize(QSize(25, 25));
     this->addToolBar(Qt::RightToolBarArea, mainToolBar);
 
-    toggleSidebarAction = new QAction(QIcon(":/icons/resources/panel-right-open.svg"), "فتح القائمة", this);
+    toggleSidebarAction = new QAction(QIcon(":/icons/resources/folder-tree.svg"), "متصفح الملفات", this);
     toggleSidebarAction->setCheckable(true);
     toggleSidebarAction->setChecked(false);
     mainToolBar->addAction(toggleSidebarAction);
@@ -203,13 +205,6 @@ void Taif::setupUI() {
 
     mainToolBar->addAction(runToolbarAction);
     connect(runToolbarAction, &QAction::triggered, this, &Taif::runAlif);
-
-    fileSystemModel->setRootPath(QDir::homePath());
-    fileTreeView->setModel(fileSystemModel);
-    fileTreeView->header()->setVisible(false);
-    for(int i = 1; i <= 3; ++i) fileTreeView->hideColumn(i);
-    fileTreeView->setRootIndex(fileSystemModel->index(QDir::homePath()));
-    fileTreeView->setVisible(false);
 
     auto* const editorPane = new QWidget(editorSplitter);
     auto* const editorPaneLayout = new QVBoxLayout(editorPane);
@@ -222,7 +217,7 @@ void Taif::setupUI() {
     editorSplitter->addWidget(searchBar);
     editorSplitter->setSizes({1000, 45});
 
-    mainSplitter->addWidget(fileTreeView);
+    mainSplitter->addWidget(projectExplorer);
     mainSplitter->addWidget(editorSplitter);
     mainSplitter->setSizes({200, 700});
     this->setCentralWidget(mainSplitter);
@@ -313,7 +308,18 @@ void Taif::applyEditorPreferences(const EditorPreferences& requestedPreferences)
 
 void Taif::setupConnections() {
 
-    connect(fileTreeView, &QTreeView::doubleClicked, this, &Taif::onFileTreeDoubleClicked);
+    connect(projectExplorer, &ProjectExplorerWidget::fileActivationRequested,
+            this, &Taif::onProjectFileActivated);
+    connect(projectExplorer, &ProjectExplorerWidget::createFileRequested,
+            this, &Taif::createProjectFile);
+    connect(projectExplorer, &ProjectExplorerWidget::createFolderRequested,
+            this, &Taif::createProjectFolder);
+    connect(projectExplorer, &ProjectExplorerWidget::renameRequested,
+            this, &Taif::renameProjectPath);
+    connect(projectExplorer, &ProjectExplorerWidget::deleteRequested,
+            this, &Taif::deleteProjectPath);
+    connect(projectExplorer, &ProjectExplorerWidget::revealRequested,
+            this, &Taif::revealProjectPath);
     connect(tabWidget, &QTabWidget::tabCloseRequested, this, &Taif::closeTab);
     connect(toggleSidebarAction, &QAction::triggered, this, &Taif::toggleSidebar);
 
@@ -1525,12 +1531,14 @@ void Taif::loadFolder(const QString& requestedFolderPath) {
     const QString normalizedFolderPath = SessionStore::normalizePath(requestedFolderPath);
     if (!normalizedFolderPath.isEmpty() && QDir(normalizedFolderPath).exists()) {
         folderPath = normalizedFolderPath;
-        fileTreeView->setVisible(true);
-
-        fileTreeView->setRootIndex(fileSystemModel->index(folderPath));
+        projectExplorer->setProjectRoot(folderPath);
+        projectExplorer->setVisible(true);
+        toggleSidebarAction->setChecked(true);
     } else {
         folderPath.clear();
-        fileTreeView->setVisible(false);
+        projectExplorer->setProjectRoot({});
+        projectExplorer->setVisible(false);
+        toggleSidebarAction->setChecked(false);
     }
     refreshBreadcrumbs();
 }
@@ -1544,24 +1552,118 @@ void Taif::handleOpenFolderMenu()
 
 }
 
-void Taif::toggleSidebar()
-{
-    bool shouldBeVisible = !fileTreeView->isVisible();
-    fileTreeView->setVisible(shouldBeVisible);
+void Taif::toggleSidebar() {
+    const bool shouldBeVisible = !projectExplorer->isVisible();
+    projectExplorer->setVisible(shouldBeVisible);
     toggleSidebarAction->setChecked(shouldBeVisible);
 
-    if (shouldBeVisible && fileTreeView->rootIndex() == QModelIndex()) {
-        QString homePath = QDir::homePath();
-        fileTreeView->setRootIndex(fileSystemModel->index(homePath));
+    if (shouldBeVisible) {
+        projectExplorer->setFocus();
     }
 }
 
-void Taif::onFileTreeDoubleClicked(const QModelIndex &index)
-{
-    const QString filePath = fileSystemModel->filePath(index);
-    if (!fileSystemModel->isDir(index)) {
-        openFile(filePath);
+void Taif::onProjectFileActivated(const QString& filePath) {
+    QString failureMessage;
+    if (!openDocumentFile(filePath, true, true, true, &failureMessage)) {
+        QMessageBox::warning(this, QStringLiteral("خطأ"),
+                             failureMessage.isEmpty() ? QStringLiteral("لا يمكن فتح الملف.")
+                                                      : failureMessage);
     }
+}
+
+void Taif::createProjectFile(const QString& directoryPath, const QString& name) {
+    const ProjectFileOperationResult result = ProjectFileOperations::createFile(folderPath, directoryPath, name);
+    presentProjectOperationResult(result);
+    if (result.succeeded) {
+        projectExplorer->selectPath(result.destinationPath);
+        onProjectFileActivated(result.destinationPath);
+    }
+}
+
+void Taif::createProjectFolder(const QString& directoryPath, const QString& name)
+{
+    const ProjectFileOperationResult result = ProjectFileOperations::createFolder(folderPath, directoryPath, name);
+    presentProjectOperationResult(result);
+    if (result.succeeded) {
+        projectExplorer->selectPath(result.destinationPath);
+    }
+}
+
+void Taif::renameProjectPath(const QString& sourcePath, const QString& newName)
+{
+    if (hasOpenEditorAtOrBelow(sourcePath)) {
+        const auto reply = QMessageBox::question(this, QStringLiteral("إعادة تسمية عنصر مفتوح"),
+                                                 QStringLiteral("يوجد ملف مفتوح داخل هذا المسار. سيُحدَّث مساره في المحرر بعد نجاح إعادة التسمية. هل تريد المتابعة؟"),
+                                                 QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+    }
+    const ProjectFileOperationResult result = ProjectFileOperations::renamePath(folderPath, sourcePath, newName);
+    presentProjectOperationResult(result);
+    if (!result.succeeded) {
+        return;
+    }
+    const QString oldPrefix = ProjectFileOperations::normalizedPath(sourcePath);
+    const QString newPrefix = ProjectFileOperations::normalizedPath(result.destinationPath);
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor == nullptr) continue;
+        const QString editorPath = ProjectFileOperations::normalizedPath(editor->property("filePath").toString());
+        if (editorPath == oldPrefix || editorPath.startsWith(oldPrefix + QLatin1Char('/'), Qt::CaseInsensitive)) {
+            const QString suffix = editorPath.mid(oldPrefix.size());
+            const QString updatedPath = newPrefix + suffix;
+            editor->filePath = updatedPath;
+            editor->setProperty("filePath", updatedPath);
+            tabWidget->setTabText(index, QFileInfo(updatedPath).fileName());
+            tabWidget->setTabToolTip(index, updatedPath);
+        }
+    }
+    projectExplorer->selectPath(result.destinationPath);
+    projectExplorer->refresh();
+    refreshBreadcrumbs();
+}
+
+void Taif::deleteProjectPath(const QString& sourcePath)
+{
+    const QString normalizedSource = ProjectFileOperations::normalizedPath(sourcePath);
+    for (int index = tabWidget->count() - 1; index >= 0; --index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor == nullptr) continue;
+        const QString editorPath = ProjectFileOperations::normalizedPath(editor->property("filePath").toString());
+        if (editorPath == normalizedSource || editorPath.startsWith(normalizedSource + QLatin1Char('/'), Qt::CaseInsensitive)) {
+            if (!prepareEditorForClose(editor)) {
+                return;
+            }
+        }
+    }
+    const ProjectFileOperationResult result = ProjectFileOperations::moveToTrash(folderPath, sourcePath);
+    presentProjectOperationResult(result);
+    if (!result.succeeded) {
+        const auto fallback = QMessageBox::warning(this, QStringLiteral("تعذر النقل إلى سلة المحذوفات"),
+                                                   QStringLiteral("هل تريد الحذف نهائياً؟ لا يمكن التراجع عن هذا الإجراء."),
+                                                   QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (fallback != QMessageBox::Yes) return;
+        const ProjectFileOperationResult permanentResult = ProjectFileOperations::permanentlyDelete(folderPath, sourcePath);
+        presentProjectOperationResult(permanentResult);
+        if (!permanentResult.succeeded) return;
+    }
+    for (int index = tabWidget->count() - 1; index >= 0; --index) {
+        auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor == nullptr) continue;
+        const QString editorPath = ProjectFileOperations::normalizedPath(editor->property("filePath").toString());
+        if (editorPath == normalizedSource || editorPath.startsWith(normalizedSource + QLatin1Char('/'), Qt::CaseInsensitive)) {
+            tabWidget->removeTab(index);
+            editor->deleteLater();
+        }
+    }
+    projectExplorer->refresh();
+    refreshBreadcrumbs();
+}
+
+void Taif::revealProjectPath(const QString& sourcePath)
+{
+    presentProjectOperationResult(ProjectFileOperations::reveal(folderPath, sourcePath));
 }
 
 void Taif::saveFile()
@@ -1815,6 +1917,33 @@ void Taif::onCurrentTabChanged() {
     refreshBreadcrumbs();
 }
 
+bool Taif::hasOpenEditorAtOrBelow(const QString& path) const {
+    const QString normalizedPath = ProjectFileOperations::normalizedPath(path);
+    if (normalizedPath.isEmpty()) {
+        return false;
+    }
+    for (int index = 0; index < tabWidget->count(); ++index) {
+        const auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index));
+        if (editor == nullptr) continue;
+        const QString editorPath = ProjectFileOperations::normalizedPath(editor->property("filePath").toString());
+        if (editorPath == normalizedPath
+            || editorPath.startsWith(normalizedPath + QLatin1Char('/'), Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Taif::presentProjectOperationResult(const ProjectFileOperationResult& result) {
+    if (result.succeeded) {
+        statusBar()->showMessage(result.userMessage, 3500);
+        return;
+    }
+    QMessageBox::warning(this, QStringLiteral("عملية ملفات المشروع"),
+                         result.userMessage.isEmpty() ? QStringLiteral("تعذرت العملية.")
+                                                      : result.userMessage);
+}
+
 void Taif::connectEditorDiagnostics(TEditor* editor) {
     if (editor == nullptr) {
         return;
@@ -1916,14 +2045,9 @@ void Taif::revealBreadcrumbPath(const QString& path)
         || relativePath.startsWith(QStringLiteral("..\\"))) {
         return;
     }
-    const QModelIndex index = fileSystemModel->index(pathInfo.absoluteFilePath());
-    if (!index.isValid()) {
-        return;
-    }
-    fileTreeView->setVisible(true);
-    fileTreeView->expand(index);
-    fileTreeView->scrollTo(index);
-    fileTreeView->setCurrentIndex(index);
+    projectExplorer->setVisible(true);
+    toggleSidebarAction->setChecked(true);
+    projectExplorer->selectPath(pathInfo.absoluteFilePath());
 }
 
 void Taif::updateCursorPosition() {

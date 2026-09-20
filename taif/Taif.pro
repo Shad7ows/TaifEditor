@@ -28,6 +28,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/session  \
                 ../source/recovery  \
                 ../source/run  \
+                ../source/projectexplorer  \
                 ../source/aliflang/lexer  \
                 ../source/aliflang/parser  \
                 ../source/aliflang/semantic  \
@@ -43,6 +44,10 @@ SOURCES += \
     ../source/console/terminal/TerminalView.cpp \
     ../source/console/terminal/VtStreamParser.cpp \
     ../source/console/terminal/WindowsConPtyBackend.cpp \
+    ../source/projectexplorer/GitStatusService.cpp \
+    ../source/projectexplorer/ProjectFileOperations.cpp \
+    ../source/projectexplorer/ProjectFileProxyModel.cpp \
+    ../source/projectexplorer/TProjectExplorerWidget.cpp \
     ../source/recovery/RecoveryCoordinator.cpp \
     ../source/recovery/RecoveryStore.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
@@ -95,6 +100,11 @@ HEADERS += \
     ../source/console/terminal/TerminalView.h \
     ../source/console/terminal/VtStreamParser.h \
     ../source/console/terminal/WindowsConPtyBackend.h \
+    ../source/projectexplorer/GitStatusService.h \
+    ../source/projectexplorer/ProjectExplorerTypes.h \
+    ../source/projectexplorer/ProjectFileOperations.h \
+    ../source/projectexplorer/ProjectFileProxyModel.h \
+    ../source/projectexplorer/TProjectExplorerWidget.h \
     ../source/recovery/RecoveryCoordinator.h \
     ../source/recovery/RecoveryStore.h \
     ../source/recovery/TRecoveryDialog.h \
