@@ -127,6 +127,8 @@ private:
     TMenuBar* menuBar{};
     TSettings* setting{};
     RecoveryCoordinator* recoveryCoordinator{};
+    bool recoveryCloseFlushPending = false;
+    bool recoveryCloseFlushAcknowledged = false;
     QAction *toggleSidebarAction{};
     QString folderPath{};
     QAbstractItemModel* model{};

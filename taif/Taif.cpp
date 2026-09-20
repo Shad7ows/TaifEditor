@@ -29,6 +29,7 @@
 #include <QSpinBox>
 #include <QSet>
 #include <QSaveFile>
+#include <QStatusBar>
 
 
 Taif::Taif(const QString& filePath, QWidget* const parent,
@@ -87,9 +88,36 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
     connect(alifOutputConsole, &TConsole::commandEntered,
             runController, &AlifRunController::sendInput);
 
+    connect(recoveryCoordinator, &RecoveryCoordinator::removalFailed, this,
+            [this](const QString&, const QString& errorMessage) {
+                statusBar()->showMessage(errorMessage.isEmpty()
+                                         ? QStringLiteral("تعذر حذف نسخة الاستعادة.") : errorMessage, 7000);
+            });
+    connect(recoveryCoordinator, &RecoveryCoordinator::flushCompleted, this,
+            [this](const bool allPersisted) {
+                if (!recoveryCloseFlushPending) {
+                    return;
+                }
+                recoveryCloseFlushPending = false;
+                if (!allPersisted) {
+                    setEnabled(true);
+                    statusBar()->showMessage(
+                        QStringLiteral("تعذر تأكيد حفظ نسخة الاستعادة. أعد المحاولة قبل الإغلاق."),
+                        7000);
+                    return;
+                }
+
+                recoveryCloseFlushAcknowledged = true;
+                close();
+            });
+
     installEventFilter(this);
-    importKnownLegacyRecoveryEntries(filePath);
-    presentRecoveryEntries();
+    // Importing legacy adjacent backups can involve disk reads and atomic writes.
+    // Defer it until the event loop begins so construction and first paint stay responsive.
+    QTimer::singleShot(0, this, [this, filePath]() {
+        importKnownLegacyRecoveryEntries(filePath);
+        presentRecoveryEntries();
+    });
 
     if (!filePath.isEmpty()) {
         QString failureMessage;
@@ -542,18 +570,35 @@ void Taif::setupTimers() {
     connect(saveSuppressTimer, &QTimer::timeout, this, [this]{ savingFromApp = false; });
 }
 
-void Taif::closeEvent(QCloseEvent* const event) {
-    for (int index = 0; index < tabWidget->count(); ++index) {
-        if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
-            if (!prepareEditorForClose(editor)) {
-                openWelcomeAfterClose = false;
-                event->ignore();
-                return;
-            }
-        }
+void Taif::closeEvent(QCloseEvent* const event)
+{
+    if (recoveryCloseFlushPending) {
+        event->ignore();
+        return;
     }
 
-    flushRecoverySnapshots();
+    if (!recoveryCloseFlushAcknowledged) {
+        for (int index = 0; index < tabWidget->count(); ++index) {
+            if (auto* const editor = qobject_cast<TEditor*>(tabWidget->widget(index))) {
+                if (!prepareEditorForClose(editor)) {
+                    openWelcomeAfterClose = false;
+                    event->ignore();
+                    return;
+                }
+            }
+        }
+
+        if (recoveryCoordinator != nullptr) {
+            recoveryCloseFlushPending = true;
+            // Keep the document immutable until the flush result is known; an
+            // edit made during the close grace period would otherwise race the
+            // acknowledged final snapshot.
+            setEnabled(false);
+            flushRecoverySnapshots();
+            event->ignore();
+            return;
+        }
+    }
 
     if (openWelcomeAfterClose) {
         auto* const welcomeWindow = new WelcomeWindow();
@@ -1582,7 +1627,7 @@ void Taif::flushRecoverySnapshots()
             editor->flushRecoverySnapshot();
         }
     }
-    [[maybe_unused]] const bool recoveryFlushed = recoveryCoordinator->waitForIdle(1200);
+    recoveryCoordinator->requestFlush(1200);
 }
 
 void Taif::importKnownLegacyRecoveryEntries(const QString& launchFilePath)
@@ -1616,8 +1661,7 @@ void Taif::importKnownLegacyRecoveryEntries(const QString& launchFilePath)
     }
 }
 
-void Taif::presentRecoveryEntries()
-{
+void Taif::presentRecoveryEntries() {
     if (recoveryCoordinator == nullptr) {
         return;
     }
@@ -1633,7 +1677,7 @@ void Taif::presentRecoveryEntries()
         for (const RecoveryEntry& entry : selectedEntries) {
             recoveryCoordinator->removeEntry(entry.id);
         }
-        [[maybe_unused]] const bool removalsCompleted = recoveryCoordinator->waitForIdle(1000);
+        recoveryCoordinator->requestFlush(1000);
         return;
     }
     if (dialog.decision() == TRecoveryDialog::Decision::Restore) {
