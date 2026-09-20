@@ -154,20 +154,29 @@ void DiagnosticsModel::rebuildVisibleRows() {
 DiagnosticsPanel::DiagnosticsPanel(QWidget* parent) : QWidget(parent) {
     setObjectName(QStringLiteral("DiagnosticsPanel"));
     setMinimumHeight(150);
-    setStyleSheet(
-        "#DiagnosticsPanel { background-color: #0f172a; color: #e2e8f0; }"
-        "QLabel { font-family: 'Tajawal', 'Noto Kufi Arabic'; }"
-        "QToolButton { background-color: #1e293b; color: #cbd5e1; border: 1px solid #334155; "
-        "border-radius: 5px; padding: 4px 8px; font-family: 'Tajawal', 'Noto Kufi Arabic'; }"
-        "QToolButton:checked { background-color: #253b5f; border-color: #4793ff; color: #f1f5f9; }"
-        "QToolButton:hover { border-color: #4793ff; }"
-        "QTableView { background-color: #111c31; alternate-background-color: #16233b; "
-        "color: #e2e8f0; border: 1px solid #334155; gridline-color: #26354c; "
-        "selection-background-color: #253b5f; selection-color: #f8fafc; "
-        "font-family: 'Tajawal', 'Noto Kufi Arabic'; }"
-        "QHeaderView::section { background-color: #1e293b; color: #94a3b8; "
-        "border: none; border-bottom: 1px solid #334155; padding: 6px; "
-        "font-family: 'Tajawal', 'Noto Kufi Arabic'; }");
+    setStyleSheet(R"(
+        #DiagnosticsPanel { background-color: #0f172a; color: #e2e8f0; }
+        QLabel { font-family: 'Tajawal', 'Noto Kufi Arabic'; }
+        QToolButton { background-color: #1e293b; color: #cbd5e1; border: 1px solid #334155;
+        border-radius: 5px; padding: 4px 8px; font-family: 'Tajawal', 'Noto Kufi Arabic'; }
+        QToolButton:checked { background-color: #253b5f; border-color: #4793ff; color: #f1f5f9; }
+        QToolButton:hover { border-color: #4793ff; }
+        QTableView { background-color: #111c31; alternate-background-color: #16233b;
+        color: #e2e8f0; border: 1px solid #334155; gridline-color: #26354c;
+        selection-background-color: #253b5f; selection-color: #f8fafc;
+        font-family: 'Tajawal', 'Noto Kufi Arabic'; }
+        QHeaderView {
+            background-color: #1e293b;
+        }
+        QHeaderView::section {
+            background-color: #1e293b;
+            color: #94a3b8;
+            border: none;
+            border-bottom: 1px solid #334155;
+            padding: 6px;
+            font-family: 'Tajawal', 'Noto Kufi Arabic';
+        }
+)");
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(10, 8, 10, 8);

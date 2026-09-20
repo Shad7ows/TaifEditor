@@ -18,14 +18,19 @@ struct SavedSession final {
 
 class SessionStore final {
 public:
-    struct SettingsScope final {
-        QString organization = QStringLiteral("Alif");
-        QString application = QStringLiteral("Taif");
+    class SettingsScope final {
+    public:
+        SettingsScope() :
+            organization(QStringLiteral("Alif")),
+            application(QStringLiteral("Taif")) {};
+
+        QString organization{};
+        QString application{};
         /** Optional INI path used by isolated tests; empty selects normal user settings. */
-        QString fileName;
+        QString fileName{};
     };
 
-    explicit SessionStore(SettingsScope scope);
+    explicit SessionStore(SettingsScope scope = SettingsScope());
 
     [[nodiscard]] QVector<SavedSession> loadAll() const;
     bool saveAll(const QVector<SavedSession>& sessions, QString* errorMessage = nullptr) const;

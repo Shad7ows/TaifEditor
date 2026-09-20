@@ -5,6 +5,7 @@
 #include "TSearchPanel.h"
 #include "ProcessWorker.h"
 #include "SessionStore.h"
+#include "RecoveryCoordinator.h"
 
 #include <QMainWindow>
 #include <QStatusBar>
@@ -101,6 +102,11 @@ private:
     [[nodiscard]] bool writeEditorContents(TEditor* editor, const QString& filePath);
     void finalizeSavedEditor(TEditor* editor, const QString& filePath);
     void onEditorModificationChanged(TEditor* editor, bool modified);
+    void registerEditorRecovery(TEditor* editor);
+    void flushRecoverySnapshots();
+    void importKnownLegacyRecoveryEntries(const QString& launchFilePath);
+    void presentRecoveryEntries();
+    void restoreRecoveryEntry(const RecoveryEntry& entry);
 
     TEditor* currentEditor();
 
@@ -120,6 +126,7 @@ private:
     QTabWidget *tabWidget{};
     TMenuBar* menuBar{};
     TSettings* setting{};
+    RecoveryCoordinator* recoveryCoordinator{};
     QAction *toggleSidebarAction{};
     QString folderPath{};
     QAbstractItemModel* model{};

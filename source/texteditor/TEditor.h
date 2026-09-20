@@ -26,6 +26,8 @@ class TMinimap;
 class THoverPopup;
 class QEvent;
 class QMouseEvent;
+class RecoveryCoordinator;
+struct RecoveryEntry;
 
 class TEditor : public QPlainTextEdit
 {
@@ -47,6 +49,10 @@ public:
     void startAutoSave();
     void stopAutoSave();
     void removeBackupFile();
+    void setRecoveryCoordinator(RecoveryCoordinator* coordinator);
+    [[nodiscard]] QString recoveryDocumentId() const;
+    void flushRecoverySnapshot();
+    void adoptRecoveryEntry(const RecoveryEntry& entry);
 
     [[nodiscard]] const QVector<EditorDiagnostic>& currentDiagnostics() const {
         return m_currentDiagnostics;
@@ -128,6 +134,8 @@ private:
 
     void updateFoldRegions();
     void toggleFold(int blockNum);
+    void scheduleRecoveryCapture();
+    void clearRecoverySnapshot();
 
     struct FoldRegion
     {
@@ -138,6 +146,11 @@ private:
     QVector<FoldRegion> foldRegions;
 
     QTimer *autoSaveTimer{};
+    QTimer *recoveryMaximumTimer{};
+    RecoveryCoordinator* recoveryCoordinator{};
+    QString m_recoveryDocumentId;
+    quint64 m_recoveryRevision = 0;
+    bool m_recoveryDirty = false;
     EditorPreferences preferences{};
 
     friend class LineNumberArea;

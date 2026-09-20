@@ -17,18 +17,15 @@ constexpr auto kSessionsKey = "SavedSessions";
 constexpr auto kSchemaVersionKey = "schemaVersion";
 constexpr auto kEntriesKey = "entries";
 
-QString normalizedName(const QString& name)
-{
+QString normalizedName(const QString& name) {
     return name.trimmed();
 }
 
-QString nameKey(const QString& name)
-{
+QString nameKey(const QString& name) {
     return normalizedName(name).toCaseFolded();
 }
 
-void assignError(QString* const errorMessage, const QString& message)
-{
+void assignError(QString* const errorMessage, const QString& message) {
     if (errorMessage != nullptr) {
         *errorMessage = message;
     }
@@ -36,13 +33,10 @@ void assignError(QString* const errorMessage, const QString& message)
 
 } // namespace
 
-SessionStore::SessionStore(SettingsScope settingsScope)
-    : scope(std::move(settingsScope))
-{
-}
+SessionStore::SessionStore(SessionStore::SettingsScope settingsScope)
+    : scope(std::move(settingsScope)) {}
 
-QVector<SavedSession> SessionStore::loadAll() const
-{
+QVector<SavedSession> SessionStore::loadAll() const {
     QSettings settings = makeSettings();
     settings.beginGroup(settingsGroup());
     const QVariantList entries = settings.value(QString::fromLatin1(kEntriesKey)).toList();
