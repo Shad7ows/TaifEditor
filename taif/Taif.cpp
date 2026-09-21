@@ -1373,11 +1373,13 @@ void Taif::onFileChanged(const QString &path)
 
         if (editor->document()->isModified()) {
             if (i == tabWidget->currentIndex()) {
+                // The editor has unsaved changes. Prompt the user to decide whether
+                // to discard their edits and reload from disk, or keep their version.
                 QMessageBox msgBox(this);
                 msgBox.setWindowTitle("طيف");
                 msgBox.setText(QString("<div align='right'>%1"
                                        "<br><br>"
-                                       "تم تعديل هذا الملف في برنامح آخر."
+                                       "تم تعديل هذا الملف في برنامج آخر."
                                        "<br>"
                                        "هل تريد إعادة تحميل النسخة المعدلة من القرص؟</div>").arg(watchPath));
                 QPushButton *reloadBtn = msgBox.addButton("إعادة تحميل", QMessageBox::AcceptRole);
@@ -1565,6 +1567,9 @@ bool Taif::openDocumentFile(const QString& requestedPath,
         }
         settings.setValue(QStringLiteral("RecentFiles"), recentFiles);
     }
+
+    // Begin watching the file for external changes now that it is loaded.
+    addWatch(filePath);
 
     updateWindowTitle();
     if (activateTab) {
@@ -1886,9 +1891,27 @@ bool Taif::writeEditorContents(TEditor* const editor, const QString& requestedPa
         return false;
     }
 
+    // Suppress external-change detection for this save: the file is about to be
+    // rewritten by us, and QFileSystemWatcher would otherwise fire a spurious
+    // onFileChanged event (the path may even be temporarily removed/renamed on
+    // disk during QSaveFile::commit). The single-shot timer resets the flag so
+    // that genuine external changes are detected again shortly after.
+    // نتجاهل حدث التغيير الناتج عن حفظنا نحن (يصل بشكل غير متزامن)
+    if (fileWatcher) {
+        savingFromApp = true;
+        saveSuppressTimer->start(1000);
+    }
+
+    const QString normalizedFilePath = SessionStore::normalizePath(filePath);
+    removeWatch(normalizedFilePath);
 
     QSaveFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        // Restore the watch and suppression state on failure so that external
+        // changes are not permanently masked.
+        savingFromApp = false;
+        saveSuppressTimer->stop();
+        addWatch(normalizedFilePath);
         QMessageBox::warning(this, QStringLiteral("خطأ"), QStringLiteral("لا يمكن حفظ الملف."));
         return false;
     }
@@ -1897,11 +1920,19 @@ bool Taif::writeEditorContents(TEditor* const editor, const QString& requestedPa
     output << editor->toPlainText();
     output.flush();
     if (output.status() != QTextStream::Ok || !file.commit()) {
+        savingFromApp = false;
+        saveSuppressTimer->stop();
+        addWatch(normalizedFilePath);
         QMessageBox::warning(this, QStringLiteral("خطأ"), QStringLiteral("تعذر إتمام حفظ الملف بأمان."));
         return false;
     }
 
     finalizeSavedEditor(editor, filePath);
+
+    // Re-establish the watch after the save completes so that subsequent external
+    // modifications are detected. The savingFromApp flag (cleared by the timer)
+    // prevents this own-save from being mistaken for an external change.
+    addWatch(normalizedFilePath);
     return true;
 }
 
@@ -2306,6 +2337,10 @@ void Taif::closeTab(const int index) {
     if (editor == nullptr || !prepareEditorForClose(editor)) {
         return;
     }
+
+    // Stop watching the file before destroying the editor so that stale
+    // entries are not left in QFileSystemWatcher.
+    removeWatch(editor->property("filePath").toString());
 
     tabWidget->removeTab(index);
     editor->deleteLater();
