@@ -1,12 +1,12 @@
 #include "TWelcomeWindow.h"
 #include "TSessionEditorDialog.h"
+#include "TSessionManagerDialog.h"
 #include "TaifBootstrap.h"
 
 #include <QWidget>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QDialog>
-#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -21,7 +21,6 @@
 #include <QStackedLayout>
 #include <QVBoxLayout>
 
-#include <optional>
 #include <utility>
 
 constexpr int kSessionIdRole = Qt::UserRole;
@@ -66,14 +65,19 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     QVBoxLayout* const mainLayout = new QVBoxLayout(centralWidget);
     setCentralWidget(centralWidget);
 
-    QHBoxLayout* const headerContent = new QHBoxLayout();
+    QVBoxLayout* const headerContent = new QVBoxLayout();
     QLabel* const logoLabel = new QLabel(centralWidget);
-    logoLabel->setPixmap(QPixmap(QStringLiteral(":/icons/resources/TaifLogo.ico"))
-                             .scaled(90, 90, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logoLabel->setAlignment(Qt::AlignCenter);
+    QPixmap logo(QStringLiteral(":/icons/resources/TaifLogo.ico"));
+    logoLabel->setPixmap(logo.scaled(
+        153, 153,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation
+        ));
     QVBoxLayout* const textLayout = new QVBoxLayout();
-    QLabel* const titleLabel = new QLabel(QStringLiteral("أهلاً بك في محرر طيف"), centralWidget);
+    auto* const titleLabel = new QLabel(QStringLiteral("طــيــف\nمحرر لغة البرمجة العربية ألف نـ5"), centralWidget);
     titleLabel->setObjectName(QStringLiteral("titleLabel"));
-    QLabel* const subtitleLabel = new QLabel(QStringLiteral("طيف — محرر لغة ألف"), centralWidget);
+    titleLabel->setAlignment(Qt::AlignCenter);
 
     // ضبط الخط هنا لا يملك تأثير على نافذة الترحيب
     // وذلك لأن الخط والحجم تم ضبطه في setStyleSheet
@@ -87,12 +91,10 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     titleFont.setPixelSize(18);
     titleFont.setBold(true);
     titleLabel->setFont(titleFont);
-    subtitleLabel->setFont(titleFont);
 
     textLayout->addWidget(titleLabel);
-    textLayout->addWidget(subtitleLabel);
     headerContent->addWidget(logoLabel);
-    headerContent->addSpacing(15);
+    headerContent->addSpacing(12);
     headerContent->addLayout(textLayout);
 
     QVBoxLayout* const mainContentLayout = new QVBoxLayout();
@@ -109,6 +111,7 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     filesButtons->addWidget(openFolderButton);
     filesButtons->addStretch();
 
+    // عند الوراثة من الأب, يحصل خطأ في الشريط التمرير الجانبي حيث تختفي الخلفيات وتصبح شفافة
     recentFilesList = new QListWidget();
     recentFilesList->setObjectName(QStringLiteral("RecentFilesList"));
     QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
@@ -150,23 +153,23 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     mainContentLayout->addLayout(sessionsGroup);
 
     mainLayout->addStretch(1);
-    QHBoxLayout* const headerCenteringLayout = new QHBoxLayout();
+    QVBoxLayout* const headerCenteringLayout = new QVBoxLayout();
     headerCenteringLayout->addStretch();
     headerCenteringLayout->addLayout(headerContent);
     headerCenteringLayout->addStretch();
     mainLayout->addLayout(headerCenteringLayout);
-    mainLayout->addSpacing(30);
+    mainLayout->addSpacing(70);
     QHBoxLayout* const contentCentering = new QHBoxLayout();
     contentCentering->addStretch();
     contentCentering->addLayout(mainContentLayout);
     contentCentering->addStretch();
     mainLayout->addLayout(contentCentering);
-    mainLayout->addStretch(1);
+    mainLayout->addStretch(3);
 
     setWindowTitle(QStringLiteral("صفحة الترحيب — محرر طيف"));
     QScreen* screen = QGuiApplication::primaryScreen();
     QRect screenGeo = screen->availableGeometry();
-    int margin = 100;
+    int margin = 90;
     int widthFixedNum = 6;
     int x = screenGeo.right() - screenGeo.size().width() + margin * widthFixedNum / 2;
     int y = screenGeo.top() + 30 + margin / 2; // 30 is top system bar height
@@ -314,107 +317,18 @@ bool WelcomeWindow::editSession(SavedSession session, const bool isNew)
     return true;
 }
 
-void WelcomeWindow::createSession()
-{
+void WelcomeWindow::createSession() {
     editSession({}, true);
 }
 
-void WelcomeWindow::manageSessions()
-{
-    QDialog dialog(this);
-    dialog.setObjectName(QStringLiteral("SessionManagementDialog"));
-    dialog.setWindowTitle(QStringLiteral("إدارة الجلسات"));
-    dialog.setModal(true);
-    dialog.setLayoutDirection(Qt::RightToLeft);
-    dialog.resize(540, 420);
-
-    auto* const layout = new QVBoxLayout(&dialog);
-    auto* const list = new QListWidget(&dialog);
-    list->setObjectName(QStringLiteral("ManagedSessionsList"));
-    auto* const controls = new QHBoxLayout();
-    auto* const openButton = new QPushButton(QStringLiteral("فتح"), &dialog);
-    auto* const editButton = new QPushButton(QStringLiteral("تعديل"), &dialog);
-    auto* const deleteButton = new QPushButton(QStringLiteral("حذف"), &dialog);
-    auto* const createButton = new QPushButton(QStringLiteral("جلسة جديدة"), &dialog);
-    controls->addWidget(openButton);
-    controls->addWidget(editButton);
-    controls->addWidget(deleteButton);
-    controls->addStretch();
-    controls->addWidget(createButton);
-    auto* const buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
-    buttons->button(QDialogButtonBox::Close)->setText(QStringLiteral("إغلاق"));
-
-    layout->addWidget(list, 1);
-    layout->addLayout(controls);
-    layout->addWidget(buttons);
-
-    const auto populate = [this, list]() {
-        list->clear();
-        for (const SavedSession& session : sessionStore.loadAll()) {
-            addSessionItem(list, session);
-        }
-    };
-    const auto selectedSession = [this, list]() -> std::optional<SavedSession> {
-        const QVector<SavedSession> sessions = sessionStore.loadAll();
-        if (const SavedSession* const selected = sessionForItem(sessions, list->currentItem())) {
-            return *selected;
-        }
-        return std::nullopt;
-    };
-
-    connect(createButton, &QPushButton::clicked, &dialog, [this, populate]() {
-        if (editSession({}, true)) {
-            populate();
-        }
-    });
-    connect(editButton, &QPushButton::clicked, &dialog, [this, selectedSession, populate]() {
-        if (const auto selected = selectedSession(); selected.has_value() && editSession(*selected, false)) {
-            populate();
-        }
-    });
-    connect(deleteButton, &QPushButton::clicked, &dialog, [this, selectedSession, populate]() {
-        const auto selected = selectedSession();
-        if (!selected.has_value()) {
-            return;
-        }
-        const auto answer = QMessageBox::question(
-            this, QStringLiteral("حذف جلسة"),
-            QStringLiteral("هل تريد حذف الجلسة «%1»؟\nلن يتم حذف أي ملفات.")
-                .arg(selected->displayName),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
-        if (answer != QMessageBox::Yes) {
-            return;
-        }
-        QString errorMessage;
-        if (!sessionStore.remove(selected->id, &errorMessage)) {
-            QMessageBox::warning(this, QStringLiteral("تعذر حذف الجلسة"), errorMessage);
-            return;
-        }
-        refreshSessions();
-        populate();
-    });
-    std::optional<SavedSession> sessionToOpen;
-    connect(openButton, &QPushButton::clicked, &dialog,
-            [&dialog, &sessionToOpen, selectedSession]() {
-                if (const auto selected = selectedSession(); selected.has_value()) {
-                    sessionToOpen = *selected;
-                    dialog.accept();
-                }
-            });
-    connect(list, &QListWidget::itemDoubleClicked, &dialog,
-            [&dialog, &sessionToOpen, selectedSession](QListWidgetItem*) {
-                if (const auto selected = selectedSession(); selected.has_value()) {
-                    sessionToOpen = *selected;
-                    dialog.accept();
-                }
-            });
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    populate();
+void WelcomeWindow::manageSessions() {
+    SessionManagerDialog dialog(sessionStore, this);
+    connect(&dialog, &SessionManagerDialog::sessionsChanged,
+            this, &WelcomeWindow::refreshSessions);
     dialog.exec();
     refreshSessions();
-    if (sessionToOpen.has_value()) {
-        openSession(*sessionToOpen);
+    if (const auto session = dialog.sessionToOpen(); session.has_value()) {
+        openSession(*session);
     }
 }
 

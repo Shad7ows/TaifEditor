@@ -1,5 +1,4 @@
 #include "TProjectExplorerWidget.h"
-
 #include "GitStatusService.h"
 #include "ProjectFileProxyModel.h"
 
@@ -184,7 +183,6 @@ ProjectExplorerWidget::ProjectExplorerWidget(QWidget* const parent)
 {
     setObjectName(QStringLiteral("ProjectExplorerWidget"));
     setAccessibleName(QStringLiteral("مستكشف ملفات المشروع"));
-    setLayoutDirection(Qt::RightToLeft);
     setMinimumWidth(180);
 
     m_fileSystemModel = new QFileSystemModel(this);
@@ -208,16 +206,16 @@ ProjectExplorerWidget::ProjectExplorerWidget(QWidget* const parent)
     m_rootLabel = new QLabel(QStringLiteral("لا يوجد مشروع مفتوح"), this);
     m_rootLabel->setObjectName(QStringLiteral("ProjectExplorerRootLabel"));
     m_rootLabel->setAccessibleName(QStringLiteral("جذر المشروع"));
-    m_rootLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_rootLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_rootLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     m_refreshButton = new QToolButton(this);
     m_refreshButton->setObjectName(QStringLiteral("ProjectExplorerRefreshButton"));
-    m_refreshButton->setText(QStringLiteral("↻"));
+    m_refreshButton->setIcon(QIcon(":/icons/resources/folder-sync.svg"));
     m_refreshButton->setToolTip(QStringLiteral("تحديث الملفات وحالة Git"));
     m_refreshButton->setAccessibleName(m_refreshButton->toolTip());
     m_showHiddenButton = new QToolButton(this);
     m_showHiddenButton->setObjectName(QStringLiteral("ProjectExplorerHiddenButton"));
-    m_showHiddenButton->setText(QStringLiteral("∙∙∙"));
+    m_showHiddenButton->setIcon(QIcon(":/icons/resources/eye.svg"));
     m_showHiddenButton->setCheckable(true);
     m_showHiddenButton->setToolTip(QStringLiteral("إظهار الملفات المخفية"));
     m_showHiddenButton->setAccessibleName(m_showHiddenButton->toolTip());
@@ -267,7 +265,7 @@ ProjectExplorerWidget::ProjectExplorerWidget(QWidget* const parent)
         }
         QLabel#ProjectExplorerRootLabel {
             color: #e2e8f0;
-            font-weight: 600;
+            font-weight: 500;
             padding: 3px 4px;
         }
         QLabel#ProjectExplorerEmptyLabel {

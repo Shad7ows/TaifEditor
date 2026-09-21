@@ -145,7 +145,7 @@ GitPanelWidget::GitPanelWidget(GitRepositoryService* const service, QWidget* con
         QScrollBar:vertical { background:#0b1220; width:10px; margin:2px; }
         QScrollBar::handle:vertical { background:#263a57; border-radius:4px; min-height:28px; }
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }
-        QLabel#GitRepositoryLabel { color:#e2e8f0; font-weight:700; }
+        QLabel#GitRepositoryLabel { color:#e2e8f0; font-weight:500; }
         QLabel#GitBranchLabel, QLabel#GitSyncLabel { color:#93c5fd; }
         QLabel#GitStateLabel { color:#94a3b8; }
         QLabel#GitPanelSectionTitle { color:#60a5fa; font-weight:700; padding-top:5px; }

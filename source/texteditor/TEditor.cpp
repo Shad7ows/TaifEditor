@@ -16,6 +16,7 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QStack>
+#include <QStringConverter>
 #include <QTextBlock>
 #include <QThreadPool>
 #include <QGuiApplication>
@@ -218,6 +219,7 @@ EditorStatusSnapshot TEditor::informationSnapshot() const {
         snapshot.selectedLines = qMax(1, selectionEnd.blockNumber() - selectionStart.blockNumber() + 1);
     }
 
+    snapshot.encoding = documentEncodingName;
     snapshot.lineEnding = documentLineEnding;
     snapshot.indentationWidth = preferences.tabWidth;
     snapshot.usesSpaces = !cursor.block().text().startsWith(QLatin1Char('\t'));
@@ -269,6 +271,17 @@ void TEditor::setDocumentLineEnding(const EditorStatusSnapshot::LineEnding lineE
     notifyEditorInformationChanged();
 }
 
+void TEditor::setDocumentEncoding(const QString& encodingName)
+{
+    if (encodingName.isEmpty()) {
+        return;
+    }
+    const QByteArray nameBytes = encodingName.toUtf8();
+    if (!QStringDecoder(nameBytes).isValid()) {
+        return;
+    }
+    documentEncodingName = encodingName;
+}
 
 void TEditor::UpdateTabStopDistance(QFont font)
 {
@@ -2074,14 +2087,6 @@ bool TEditor::handleQuoteCompletion(QChar quoteChar)
             setTextCursor(cursor);
             return true;
         }
-    }
-
-    // Check if we're inside a word (for smart quotes)
-    bool insideWord = false;
-    if (pos > 0)
-    {
-        QChar prevChar = doc->characterAt(pos - 1);
-        insideWord = prevChar.isLetterOrNumber() || prevChar == '_';
     }
 
     // Insert the quote pair

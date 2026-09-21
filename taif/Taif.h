@@ -102,7 +102,7 @@ private slots:
     void clearSearchHighlights();
     void refreshBreadcrumbs();
     void bindInformationBarToEditor(TEditor* editor);
-    void refreshEditorInfoBar();
+    void refreshStatusBar();
     void bindBreadcrumbsToEditor(TEditor* editor);
     void revealBreadcrumbPath(const QString& path);
 
@@ -185,7 +185,7 @@ private:
     QFileSystemWatcher* fileWatcher{};
     bool savingFromApp{};
     QTimer *saveSuppressTimer{};
-    TStatusBar* editorInfoBar{};
+    TStatusBar* editorStatusBar{};
     SearchPanel *searchBar{};
     QDockWidget* diagnosticsDock{};
     DiagnosticsPanel* diagnosticsPanel{};

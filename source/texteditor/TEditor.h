@@ -70,6 +70,7 @@ public:
     [[nodiscard]] EditorBreadcrumbContext breadcrumbContextAtCursor() const;
     [[nodiscard]] EditorStatusSnapshot informationSnapshot() const;
     void setDocumentLineEnding(EditorStatusSnapshot::LineEnding lineEnding);
+    void setDocumentEncoding(const QString& encodingName);
 
     struct MatchRange {
         int start;
@@ -161,6 +162,7 @@ private:
 
     EditorPreferences preferences{};
     EditorStatusSnapshot::LineEnding documentLineEnding = EditorStatusSnapshot::LineEnding::Unknown;
+    QString documentEncodingName{QStringLiteral("UTF-8")};
 
     friend class LineNumberArea;
     friend class TMinimap;

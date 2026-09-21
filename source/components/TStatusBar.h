@@ -28,6 +28,7 @@ protected:
 
 private:
     [[nodiscard]] QWidget* createSegment(const QString& objectName, QLabel*& label);
+    void requestInterpreterInfo();
     void refreshPresentation();
     void applyResponsiveVisibility();
     [[nodiscard]] static QString compactCount(qsizetype value);
@@ -37,18 +38,20 @@ private:
 
     EditorStatusSnapshot m_snapshot;
     QHBoxLayout* m_layout = nullptr;
-    QWidget* m_documentSegment = nullptr;
+    QWidget* m_interpreterSegment = nullptr;
     QWidget* m_diagnosticsSegment = nullptr;
     QWidget* m_analysisSegment = nullptr;
     QWidget* m_recoverySegment = nullptr;
     QWidget* m_selectionSegment = nullptr;
     QWidget* m_cursorSegment = nullptr;
     QWidget* m_formatSegment = nullptr;
-    QLabel* m_documentLabel = nullptr;
+    QLabel* m_interpreterLabel = nullptr;
     QToolButton* m_diagnosticsButton = nullptr;
     QLabel* m_analysisLabel = nullptr;
     QLabel* m_recoveryLabel = nullptr;
     QLabel* m_selectionLabel = nullptr;
     QLabel* m_cursorLabel = nullptr;
     QLabel* m_formatLabel = nullptr;
+    QString m_interpreterInfo = QStringLiteral("مفسر ألف: يتم البحث");
+    QString m_interpreterToolTip;
 };

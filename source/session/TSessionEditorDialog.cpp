@@ -15,9 +15,7 @@ namespace {
 
 constexpr auto kSessionFileFilter = "ملفات ألف (*.alif *.aliflib *.txt);;كل الملفات (*)";
 
-void applySessionDialogStyle(QDialog* const dialog)
-{
-    dialog->setLayoutDirection(Qt::RightToLeft);
+void applySessionDialogStyle(QDialog* const dialog) {
     dialog->setStyleSheet(QStringLiteral(R"(
         QDialog {
             background-color: #0f172a;
@@ -38,11 +36,13 @@ void applySessionDialogStyle(QDialog* const dialog)
         QListWidget::item { padding: 6px; border-radius: 4px; }
         QListWidget::item:selected { background-color: #1d4ed8; }
         QPushButton {
+            min-width: 30px;
+            max-width: 60px;
             background-color: #1e3a5f;
             color: #e2e8f0;
             border: 1px solid #35577c;
             border-radius: 6px;
-            padding: 6px 12px;
+            padding: 7px 7px;
         }
         QPushButton:hover { background-color: #2563eb; border-color: #60a5fa; }
         QPushButton:disabled { color: #64748b; background-color: #18263b; }
@@ -64,38 +64,42 @@ SessionEditorDialog::SessionEditorDialog(QWidget* const parent)
     rootLayout->setContentsMargins(18, 18, 18, 18);
     rootLayout->setSpacing(10);
 
-    auto* const nameLabel = new QLabel(QStringLiteral("اسم الجلسة"), this);
+    QLabel* const nameLabel = new QLabel(QStringLiteral("اسم الجلسة"), this);
     nameInput = new QLineEdit(this);
     nameInput->setObjectName(QStringLiteral("SessionNameInput"));
-    nameInput->setPlaceholderText(QStringLiteral("مثال: مشروع السيارة"));
+    nameInput->setPlaceholderText(QStringLiteral("مثال: مشروع التحكم بالنظام"));
 
-    auto* const filesLabel = new QLabel(QStringLiteral("ملفات الجلسة"), this);
+    QLabel* const filesLabel = new QLabel(QStringLiteral("ملفات الجلسة"), this);
     filesList = new QListWidget(this);
     filesList->setObjectName(QStringLiteral("SessionFilesList"));
     filesList->setSelectionMode(QAbstractItemView::SingleSelection);
     filesList->setMinimumHeight(250);
 
-    auto* const controlsLayout = new QHBoxLayout();
-    auto* const addButton = new QPushButton(QStringLiteral("إضافة ملفات"), this);
+    QHBoxLayout* const controlsLayout = new QHBoxLayout();
+    QPushButton* const addButton = new QPushButton(QStringLiteral("＋"), this);
     addButton->setObjectName(QStringLiteral("AddSessionFilesButton"));
-    removeButton = new QPushButton(QStringLiteral("إزالة"), this);
+    removeButton = new QPushButton(QIcon(":/icons/resources/trash.svg"), QStringLiteral(""), this);
+    QIcon trashIcon{};
+    trashIcon.addFile(":/icons/resources/trash.svg", {}, QIcon::Normal);
+    trashIcon.addFile(":/icons/resources/trash-disabled.svg", {}, QIcon::Disabled);
+    removeButton->setIcon(trashIcon);
     removeButton->setObjectName(QStringLiteral("RemoveSessionFileButton"));
-    moveUpButton = new QPushButton(QStringLiteral("لأعلى"), this);
+    moveUpButton = new QPushButton(QStringLiteral("↑"), this);
     moveUpButton->setObjectName(QStringLiteral("MoveSessionFileUpButton"));
-    moveDownButton = new QPushButton(QStringLiteral("لأسفل"), this);
+    moveDownButton = new QPushButton(QStringLiteral("↓"), this);
     moveDownButton->setObjectName(QStringLiteral("MoveSessionFileDownButton"));
     controlsLayout->addWidget(addButton);
     controlsLayout->addWidget(removeButton);
-    controlsLayout->addStretch();
     controlsLayout->addWidget(moveUpButton);
     controlsLayout->addWidget(moveDownButton);
+    controlsLayout->addStretch();
 
     validationLabel = new QLabel(this);
     validationLabel->setObjectName(QStringLiteral("SessionValidationLabel"));
     validationLabel->setWordWrap(true);
     validationLabel->hide();
 
-    auto* const buttons = new QDialogButtonBox(
+    QDialogButtonBox* const buttons = new QDialogButtonBox(
         QDialogButtonBox::Save | QDialogButtonBox::Cancel, Qt::Horizontal, this);
     buttons->button(QDialogButtonBox::Save)->setText(QStringLiteral("حفظ"));
     buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("إلغاء"));
@@ -158,7 +162,7 @@ void SessionEditorDialog::accept()
 void SessionEditorDialog::addFiles()
 {
     const QStringList paths = QFileDialog::getOpenFileNames(
-        this, QStringLiteral("إضافة ملفات إلى الجلسة"), {}, QString::fromLatin1(kSessionFileFilter));
+        this, QStringLiteral("إضافة ملفات إلى الجلسة"), {}, QString::fromUtf8(kSessionFileFilter));
     for (const QString& path : paths) {
         appendPath(path);
     }

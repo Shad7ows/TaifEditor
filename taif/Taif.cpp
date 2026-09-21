@@ -17,6 +17,7 @@
 #include <QVBoxLayout>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QStringConverter>
 #include <QShortcut>
 #include <QGuiApplication>
 #include <QScreen>
@@ -184,7 +185,7 @@ void Taif::setupUI() {
 
     QScreen* screen = QGuiApplication::primaryScreen();
     QRect screenGeo = screen->availableGeometry();
-    int margin = 100;
+    int margin = 90;
     int widthFixedNum = 6;
     int x = screenGeo.right() - screenGeo.size().width() + margin * widthFixedNum / 2;
     int y = screenGeo.top() + 30 + margin / 2; // 30 is top system bar height
@@ -243,13 +244,14 @@ void Taif::setupUI() {
 
     //* Git Section deactivated, active when enable this system
     // gitPanel = new GitPanelWidget(projectExplorer->gitRepositoryService(), this);
-    // gitDock = new QDockWidget(QStringLiteral("Git"), this);
+    // gitDock = new QDockWidget(QStringLiteral("التحكم بالنسخة"), this);
     // gitDock->setObjectName(QStringLiteral("GitDock"));
+    // gitDock->setLayoutDirection(Qt::RightToLeft);
     // gitDock->setWidget(gitPanel);
     // gitDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::LeftDockWidgetArea);
     // gitDock->setStyleSheet(QStringLiteral(R"(
     //     QDockWidget#GitDock { background:#0f172a; color:#e2e8f0; border:1px solid #1e3a5f; }
-    //     QDockWidget#GitDock::title { background:#111d33; color:#dbeafe; padding:7px 9px; border-bottom:1px solid #263a57; text-align:right; }
+    //     QDockWidget#GitDock::title { background:#111d33; color:#dbeafe; padding:7px 9px; border-bottom:1px solid #263a57;}
     //     QDockWidget#GitDock::close-button, QDockWidget#GitDock::float-button { background:transparent; border:none; }
     //     QDockWidget#GitDock::close-button:hover, QDockWidget#GitDock::float-button:hover { background:#1e3a5f; }
     // )"));
@@ -296,9 +298,9 @@ void Taif::setupUI() {
         alifOutputDock->hide();
     }
 
-    editorInfoBar = new TStatusBar(statusBar());
-    statusBar()->addPermanentWidget(editorInfoBar, 1);
-    connect(editorInfoBar, &TStatusBar::diagnosticsActivated, this,
+    editorStatusBar = new TStatusBar(statusBar());
+    statusBar()->addPermanentWidget(editorStatusBar, 1);
+    connect(editorStatusBar, &TStatusBar::diagnosticsActivated, this,
             [this]() { showAndRaiseDock(diagnosticsDock); });
 }
 
@@ -576,6 +578,9 @@ void Taif::setupStyle() {
             border-top: 1px solid #1e293b;
             font-size: 11px;
             padding-left: 10px;
+        }
+        QStatusBar::item {
+            border: none;
         }
 
         /* --- نوافذ قابلة للدكن --- */
@@ -1414,6 +1419,48 @@ void Taif::openFile(QString filePath)
     }
 }
 
+const QByteArray detectFileEncoding(const QByteArray &bytes) {
+    if (bytes.startsWith("\xEF\xBB\xBF")) {
+        return "UTF-8";
+    }
+    if (bytes.size() >= 2 && (uchar(bytes[0]) == 0xFF || uchar(bytes[0]) == 0xFE)) {
+        const bool littleEndian = (uchar(bytes[0]) == 0xFF);
+        return littleEndian ? QByteArray("UTF-16LE") : QByteArray("UTF-16BE");
+    }
+    if (!bytes.isEmpty()) {
+        QStringDecoder utf8Dec(QStringEncoder::Utf8);
+        const QString decoded = utf8Dec.decode(bytes);
+        if (utf8Dec.hasError() == false && !decoded.isEmpty()) {
+            return "UTF-8";
+        }
+    }
+    for (const QByteArray& name : {"Windows-1256", "ISO 8859-6", "CP866",
+                                   "Windows-1252", "ISO 8859-1"}) {
+        QStringDecoder dec(name);
+        if (dec.isValid() == false) {
+            continue;
+        }
+        const QString decoded = dec.decode(bytes);
+        int replacementRun = 0;
+        bool mostlyValid = true;
+        for (const QChar ch : decoded) {
+            if (ch.unicode() == 0xFFFD) {
+                ++replacementRun;
+                if (decoded.size() > 0 && replacementRun > decoded.size() * 5 / 100) {
+                    mostlyValid = false;
+                    break;
+                }
+            } else {
+                replacementRun = 0;
+            }
+        }
+        if (mostlyValid && !decoded.isEmpty()) {
+            return name;
+        }
+    }
+    return "UTF-8";
+}
+
 bool Taif::openDocumentFile(const QString& requestedPath,
                             const bool promptForBackupRecovery,
                             const bool activateTab,
@@ -1440,18 +1487,22 @@ bool Taif::openDocumentFile(const QString& requestedPath,
     }
 
     QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    if (!file.open(QIODevice::ReadOnly)) {
         if (failureMessage != nullptr) {
             *failureMessage = QStringLiteral("لا يمكن فتح الملف: %1").arg(filePath);
         }
         return false;
     }
-    QTextStream stream(&file);
-    const QString content = stream.readAll();
+    const QByteArray rawBytes = file.readAll();
     file.close();
+
+    const QByteArray detectedEncodingName = detectFileEncoding(rawBytes);
+    QStringDecoder decoder(detectedEncodingName);
+    const QString content = decoder.decode(rawBytes);
 
     auto* const newEditor = new TEditor(setting, this);
     registerEditorRecovery(newEditor);
+    newEditor->setDocumentEncoding(QString::fromLatin1(detectedEncodingName));
     newEditor->setPlainText(content);
     newEditor->filePath = filePath;
     newEditor->setProperty("filePath", filePath);
@@ -2026,7 +2077,7 @@ void Taif::onCurrentTabChanged() {
 
     TEditor* const editor = currentEditor();
     bindInformationBarToEditor(editor);
-    refreshEditorInfoBar();
+    refreshStatusBar();
 
     refreshDiagnosticsPanel();
     // updateEditActionState(); //* review
@@ -2088,25 +2139,25 @@ void Taif::bindInformationBarToEditor(TEditor* const editor) {
     if (editorInformationConnection) {
         disconnect(editorInformationConnection);
     }
-    if (editor == nullptr || editorInfoBar == nullptr) {
+    if (editor == nullptr || editorStatusBar == nullptr) {
         return;
     }
     editorInformationConnection = connect(editor, &TEditor::editorInformationChanged, this,
                                           [this, editor](const EditorStatusSnapshot& snapshot) {
-                                              if (editor == currentEditor() && editorInfoBar != nullptr) {
-                                                  editorInfoBar->setSnapshot(snapshot);
+                                              if (editor == currentEditor() && editorStatusBar != nullptr) {
+                                                  editorStatusBar->setSnapshot(snapshot);
                                               }
                                           });
 }
 
-void Taif::refreshEditorInfoBar() {
-    if (editorInfoBar == nullptr) {
+void Taif::refreshStatusBar() {
+    if (editorStatusBar == nullptr) {
         return;
     }
     if (TEditor* const editor = currentEditor()) {
-        editorInfoBar->setSnapshot(editor->informationSnapshot());
+        editorStatusBar->setSnapshot(editor->informationSnapshot());
     } else {
-        editorInfoBar->setSnapshot({});
+        editorStatusBar->setSnapshot({});
     }
 }
 
@@ -2168,7 +2219,7 @@ void Taif::revealBreadcrumbPath(const QString& path)
 }
 
 void Taif::updateCursorPosition() {
-    refreshEditorInfoBar();
+    refreshStatusBar();
 }
 
 

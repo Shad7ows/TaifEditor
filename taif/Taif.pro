@@ -53,6 +53,7 @@ SOURCES += \
     ../source/recovery/RecoveryStore.cpp \
     ../source/recovery/TRecoveryDialog.cpp \
     ../source/run/AlifRunController.cpp \
+    ../source/session/TSessionManagerDialog.cpp \
     ../source/settings/EditorPreferences.cpp \
     ../source/texteditor/services/EditorAnalysisBinding.cpp \
     ../source/texteditor/services/EditorInteractionBinding.cpp \
@@ -112,6 +113,7 @@ HEADERS += \
     ../source/recovery/RecoveryStore.h \
     ../source/recovery/TRecoveryDialog.h \
     ../source/run/AlifRunController.h \
+    ../source/session/TSessionManagerDialog.h \
     ../source/settings/EditorPreferences.h \
     ../source/texteditor/EditorStatusSnapshot.h \
     ../source/texteditor/services/EditorAnalysisBinding.h \

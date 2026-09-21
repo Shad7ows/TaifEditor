@@ -59,7 +59,6 @@ void TConsole::enableNativeTerminal()
                             .arg(exitCode).toUtf8());
                 }
             });
-    setLayoutDirection(Qt::LeftToRight);
     setAccessibleName(QStringLiteral("الطرفية الأصلية للنظام"));
 }
 
@@ -130,12 +129,7 @@ void TConsole::clear()
     QPlainTextEdit::clear();
 }
 
-void TConsole::setConsoleRTL()
-{
-    if (m_terminalView != nullptr) {
-        setLayoutDirection(Qt::LeftToRight);
-        return;
-    }
+void TConsole::setConsoleRTL() {
     setLayoutDirection(Qt::RightToLeft);
     QTextOption option = document()->defaultTextOption();
     option.setTextDirection(Qt::RightToLeft);

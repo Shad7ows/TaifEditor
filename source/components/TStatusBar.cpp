@@ -2,6 +2,7 @@
 
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QProcess>
 #include <QResizeEvent>
 #include <QStyle>
 #include <QToolButton>
@@ -16,25 +17,34 @@ QString localizedNumber(const qsizetype value)
     return QString::number(value);
 }
 
+QString decodeProcessOutput(const QByteArray& bytes)
+{
+#if defined(Q_OS_WIN)
+    return QString::fromLocal8Bit(bytes);
+#else
+    return QString::fromUtf8(bytes);
+#endif
+}
+
 } // namespace
 
 TStatusBar::TStatusBar(QWidget* const parent)
     : QWidget(parent)
 {
-    setObjectName(QStringLiteral("EditorInfoBar"));
+    setObjectName(QStringLiteral("StatusBar"));
     setAccessibleName(QStringLiteral("شريط معلومات المحرر"));
-    setLayoutDirection(Qt::RightToLeft);
     setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Preferred);
+    setLayoutDirection(Qt::LeftToRight);
 
     m_layout = new QHBoxLayout(this);
-    m_layout->setContentsMargins(8, 2, 8, 2);
-    m_layout->setSpacing(4);
+    m_layout->setContentsMargins(10, 2, 10, 2);
+    m_layout->setSpacing(12);
 
-    m_documentSegment = createSegment(QStringLiteral("InfoDocumentSegment"), m_documentLabel);
+    m_interpreterSegment = createSegment(QStringLiteral("InfoInterpreterSegment"), m_interpreterLabel);
     m_diagnosticsSegment = new QWidget(this);
     m_diagnosticsSegment->setObjectName(QStringLiteral("InfoDiagnosticsSegment"));
     auto* const diagnosticsLayout = new QHBoxLayout(m_diagnosticsSegment);
-    diagnosticsLayout->setContentsMargins(8, 2, 8, 2);
+    diagnosticsLayout->setContentsMargins(2, 1, 2, 1);
     diagnosticsLayout->setSpacing(0);
     m_diagnosticsButton = new QToolButton(m_diagnosticsSegment);
     m_diagnosticsButton->setObjectName(QStringLiteral("InformationDiagnosticsButton"));
@@ -49,7 +59,7 @@ TStatusBar::TStatusBar(QWidget* const parent)
     m_cursorSegment = createSegment(QStringLiteral("InfoCursorSegment"), m_cursorLabel);
     m_formatSegment = createSegment(QStringLiteral("InfoFormatSegment"), m_formatLabel);
 
-    m_layout->addWidget(m_documentSegment);
+    m_layout->addWidget(m_interpreterSegment);
     m_layout->addWidget(m_diagnosticsSegment);
     m_layout->addWidget(m_analysisSegment);
     m_layout->addWidget(m_recoverySegment);
@@ -59,27 +69,28 @@ TStatusBar::TStatusBar(QWidget* const parent)
     m_layout->addStretch(1);
 
     setStyleSheet(QStringLiteral(R"(
-        QWidget#EditorInfoBar {
-            background-color: #0b1324;
-            border-top: 1px solid #334155;
-            color: #cbd5e1;
+        QWidget#StatusBar,
+        QWidget#StatusBar QLabel,
+        QWidget#StatusBar QToolButton {
             font-family: "Tajawal", "Noto Kufi Arabic";
-            font-size: 12px;
+            font-size: 13px;
         }
-        QWidget#InfoDocumentSegment, QWidget#InfoDiagnosticsSegment,
+        QWidget#StatusBar {
+            background-color: #0f172a;
+            border-top: 1px solid #1e293b;
+            color: #94a3b8;
+        }
+        QWidget#InfoInterpreterSegment, QWidget#InfoDiagnosticsSegment,
         QWidget#InfoAnalysisSegment, QWidget#InfoRecoverySegment,
         QWidget#InfoSelectionSegment, QWidget#InfoCursorSegment,
         QWidget#InfoFormatSegment {
-            background-color: #111d33;
-            border: 1px solid #263a57;
-            border-radius: 5px;
+            background: transparent;
+            border: none;
         }
         QLabel {
-            color: #dbeafe;
-            padding: 2px 3px;
-        }
-        QLabel#InfoDocumentSegmentLabel[modified="true"] {
-            color: #fbbf24;
+            background: transparent;
+            color: #cbd5e1;
+            padding: 1px 2px;
         }
         QLabel#InfoAnalysisSegmentLabel[attention="true"],
         QLabel#InfoRecoverySegmentLabel[attention="true"] {
@@ -89,12 +100,12 @@ TStatusBar::TStatusBar(QWidget* const parent)
             border: none;
             background: transparent;
             color: #93c5fd;
-            padding: 2px 3px;
+            padding: 1px 2px;
         }
         QToolButton#InformationDiagnosticsButton:hover {
-            background-color: #1d4ed8;
-            color: #ffffff;
-            border-radius: 4px;
+            background-color: #172554;
+            color: #e0f2fe;
+            border-radius: 3px;
         }
         QToolButton#InformationDiagnosticsButton[hasErrors="true"] {
             color: #fca5a5;
@@ -105,6 +116,7 @@ TStatusBar::TStatusBar(QWidget* const parent)
     )"));
 
     refreshPresentation();
+    requestInterpreterInfo();
 }
 
 void TStatusBar::setSnapshot(const EditorStatusSnapshot& snapshot) {
@@ -125,20 +137,59 @@ QWidget* TStatusBar::createSegment(const QString& objectName, QLabel*& label) {
     auto* const segment = new QWidget(this);
     segment->setObjectName(objectName);
     auto* const layout = new QHBoxLayout(segment);
-    layout->setContentsMargins(8, 2, 8, 2);
+    layout->setContentsMargins(2, 1, 2, 1);
     layout->setSpacing(0);
     label = new QLabel(segment);
     label->setObjectName(objectName + QStringLiteral("Label"));
-    label->setLayoutDirection(Qt::LeftToRight);
     layout->addWidget(label);
     return segment;
 }
 
+void TStatusBar::requestInterpreterInfo() {
+#if defined(Q_OS_WIN)
+    const QString program = QStringLiteral("alif/alif.exe");
+#else
+    const QString program = QStringLiteral("./alif/alif");
+#endif
+    const QString command = QStringLiteral("%1 -ن").arg(program);
+    auto* const process = new QProcess(this);
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+
+    connect(process, &QProcess::errorOccurred, this,
+            [this, process, command](const QProcess::ProcessError error) {
+                if (error != QProcess::FailedToStart) {
+                    return;
+                }
+                m_interpreterInfo = QStringLiteral("مفسر ألف: غير متاح");
+                m_interpreterToolTip = QStringLiteral("تعذر تشغيل %1: %2")
+                                           .arg(command, process->errorString());
+                refreshPresentation();
+                process->deleteLater();
+            });
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, process, command](const int exitCode, const QProcess::ExitStatus exitStatus) {
+                const QString output = decodeProcessOutput(process->readAllStandardOutput()).simplified();
+                const QString error = decodeProcessOutput(process->readAllStandardError()).simplified();
+                if (exitStatus == QProcess::NormalExit && exitCode == 0 && !output.isEmpty()) {
+                    m_interpreterInfo = output;
+                    m_interpreterToolTip = output;
+                } else {
+                    m_interpreterInfo = QStringLiteral("مفسر ألف: غير متاح");
+                    m_interpreterToolTip = error.isEmpty()
+                                               ? QStringLiteral("فشل %1 برمز الخروج %2.").arg(command).arg(exitCode)
+                                               : error;
+                }
+                refreshPresentation();
+                process->deleteLater();
+            });
+    process->start(program, {QStringLiteral("-ن")});
+}
+
+
 void TStatusBar::refreshPresentation() {
+    m_interpreterLabel->setText(m_interpreterInfo);
+    m_interpreterLabel->setToolTip(m_interpreterToolTip);
     if (!m_snapshot.hasEditor) {
-        m_documentLabel->setText(QStringLiteral("لا يوجد ملف نشط"));
-        m_documentLabel->setProperty("modified", false);
-        m_documentLabel->setToolTip(QString());
         m_diagnosticsButton->setText(QStringLiteral("المشكلات: —"));
         m_diagnosticsButton->setToolTip(QStringLiteral("افتح ملفاً لعرض المشكلات."));
         m_analysisLabel->setText(QStringLiteral("التحليل: —"));
@@ -149,17 +200,6 @@ void TStatusBar::refreshPresentation() {
         applyResponsiveVisibility();
         return;
     }
-
-    const QString documentName = m_snapshot.documentName.isEmpty()
-        ? QStringLiteral("بدون عنوان") : m_snapshot.documentName;
-    m_documentLabel->setText(QStringLiteral("%1%2")
-        .arg(m_snapshot.modified ? QStringLiteral("● ") : QString())
-        .arg(documentName));
-    m_documentLabel->setProperty("modified", m_snapshot.modified);
-    m_documentLabel->style()->unpolish(m_documentLabel);
-    m_documentLabel->style()->polish(m_documentLabel);
-    m_documentLabel->setToolTip(m_snapshot.documentPath.isEmpty()
-        ? QStringLiteral("مستند غير محفوظ") : m_snapshot.documentPath);
 
     m_diagnosticsButton->setText(QStringLiteral("أخطاء %1 · تحذيرات %2")
         .arg(m_snapshot.errorCount).arg(m_snapshot.warningCount));
@@ -212,23 +252,22 @@ void TStatusBar::refreshPresentation() {
 
     m_formatLabel->setText(QStringLiteral("%1 · %2 · %3 %4")
         .arg(m_snapshot.encoding, lineEndingText(m_snapshot.lineEnding),
-             m_snapshot.usesSpaces ? QStringLiteral("مسافات") : QStringLiteral("Tabs"),
+             m_snapshot.usesSpaces ? QStringLiteral("مسافات") : QStringLiteral("مسافات_طويلة"),
              QString::number(m_snapshot.indentationWidth)));
     m_formatLabel->setToolTip(QStringLiteral("الترميز %1، نهاية السطر %2، الإزاحة %3 بعرض %4")
         .arg(m_snapshot.encoding, lineEndingText(m_snapshot.lineEnding),
-             m_snapshot.usesSpaces ? QStringLiteral("مسافات") : QStringLiteral("Tabs"),
+             m_snapshot.usesSpaces ? QStringLiteral("مسافات") : QStringLiteral("مسافات_طويلة"),
              QString::number(m_snapshot.indentationWidth)));
 
     applyResponsiveVisibility();
 }
 
-void TStatusBar::applyResponsiveVisibility()
-{
+void TStatusBar::applyResponsiveVisibility() {
     const int availableWidth = width();
     const bool compact = availableWidth > 0 && availableWidth < kCompactWidth;
     const bool dense = availableWidth > 0 && availableWidth < kDenseWidth;
 
-    m_documentSegment->setVisible(!compact);
+    m_interpreterSegment->setVisible(true);
     m_analysisSegment->setVisible(!dense);
     m_recoverySegment->setVisible(!dense);
     m_selectionSegment->setVisible(!compact);
@@ -237,19 +276,17 @@ void TStatusBar::applyResponsiveVisibility()
     m_formatSegment->setVisible(true);
 }
 
-QString TStatusBar::compactCount(const qsizetype value)
-{
+QString TStatusBar::compactCount(const qsizetype value) {
     if (value >= 1000000) {
-        return QString::number(static_cast<double>(value) / 1000000.0, 'f', 1) + QStringLiteral("M");
+        return QString::number(static_cast<double>(value) / 1000000.0, 'f', 1) + QStringLiteral("مليون");
     }
     if (value >= 1000) {
-        return QString::number(static_cast<double>(value) / 1000.0, 'f', 1) + QStringLiteral("K");
+        return QString::number(static_cast<double>(value) / 1000.0, 'f', 1) + QStringLiteral("ألف");
     }
     return localizedNumber(value);
 }
 
-QString TStatusBar::lineEndingText(const EditorStatusSnapshot::LineEnding lineEnding)
-{
+QString TStatusBar::lineEndingText(const EditorStatusSnapshot::LineEnding lineEnding) {
     switch (lineEnding) {
     case EditorStatusSnapshot::LineEnding::Lf: return QStringLiteral("LF");
     case EditorStatusSnapshot::LineEnding::Crlf: return QStringLiteral("CRLF");

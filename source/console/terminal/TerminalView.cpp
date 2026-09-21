@@ -27,7 +27,6 @@ TerminalView::TerminalView(QWidget* const parent)
     setObjectName(QStringLiteral("NativeTerminalView"));
     setAccessibleName(QStringLiteral("عرض الطرفية الأصلية"));
     setFocusPolicy(Qt::StrongFocus);
-    setLayoutDirection(Qt::LeftToRight);
     setAttribute(Qt::WA_InputMethodEnabled, true);
     setMouseTracking(true);
     setFrameShape(QFrame::NoFrame);

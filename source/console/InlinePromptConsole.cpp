@@ -13,7 +13,8 @@
 
 namespace {
 
-const QString kPrompt = QStringLiteral("ألف › ");
+// هنا يمكن تعيين سابقة تظهر عندما يطلب البرنامج مدخلات من المستخدم
+const QString kPrompt = QString(); // QStringLiteral("ألف › ");
 const QString kPendingTruncationNotice =
     QStringLiteral("\n[تم اختصار جزء من المخرجات بسبب حد المخزن المؤقت]\n");
 const QString kRenderedTruncationNotice =
@@ -30,7 +31,6 @@ InlinePromptConsole::InlinePromptConsole(QWidget* const parent)
     setReadOnly(false);
     setUndoRedoEnabled(false);
     setWordWrapMode(QTextOption::WordWrap);
-    setLayoutDirection(Qt::RightToLeft);
     setTextInteractionFlags(Qt::TextEditorInteraction);
     document()->setMaximumBlockCount(kMaximumRenderedLines);
 
@@ -38,11 +38,6 @@ InlinePromptConsole::InlinePromptConsole(QWidget* const parent)
     font.setPixelSize(15);
     setFont(font);
     setStyleSheet(QStringLiteral("QPlainTextEdit { background: #03091A; color: #DEE8FF; border: none; }"));
-
-    QTextOption option = document()->defaultTextOption();
-    option.setTextDirection(Qt::RightToLeft);
-    option.setAlignment(Qt::AlignRight);
-    document()->setDefaultTextOption(option);
 
     m_flushTimer.setSingleShot(true);
     m_flushTimer.setInterval(16);

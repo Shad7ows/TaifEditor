@@ -33,5 +33,9 @@
         <file>resources/folder.svg</file>
         <file>resources/check.svg</file>
         <file>resources/folder-tree.svg</file>
+        <file>resources/trash.svg</file>
+        <file>resources/trash-disabled.svg</file>
+        <file>resources/eye.svg</file>
+        <file>resources/folder-sync.svg</file>
     </qresource>
 </RCC>
