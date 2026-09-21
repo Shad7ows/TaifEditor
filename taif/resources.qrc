@@ -37,5 +37,6 @@
         <file>resources/trash-disabled.svg</file>
         <file>resources/eye.svg</file>
         <file>resources/folder-sync.svg</file>
+        <file>resources/AlifLogo.svg</file>
     </qresource>
 </RCC>
