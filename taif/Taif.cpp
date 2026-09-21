@@ -1384,6 +1384,39 @@ void Taif::onFileChanged(const QString &path)
                                        "هل تريد إعادة تحميل النسخة المعدلة من القرص؟</div>").arg(watchPath));
                 QPushButton *reloadBtn = msgBox.addButton("إعادة تحميل", QMessageBox::AcceptRole);
                 /*QPushButton *keepBtn =*/ msgBox.addButton("أبقي نسختي", QMessageBox::RejectRole);
+                // نمط مطابق لنمط المحرر (داكن + خط عربي)
+                msgBox.setStyleSheet(R"(
+                    QMessageBox {
+                        background-color: #0f172a;
+                        font-family: "Tajawal", "Noto Kufi Arabic";
+                    }
+                    QLabel {
+                        color: #f1f5f9;
+                        font-size: 13px;
+                    }
+                    QDialogButtonBox {
+                        spacing: 10px;
+                    }
+                    QDialogButtonBox QPushButton {
+                        background-color: #1e293b;
+                        color: #f1f5f9;
+                        border: 1px solid #334155;
+                        border-radius: 4px;
+                        padding: 6px 20px;
+                        font-family: "Tajawal", "Noto Kufi Arabic";
+                        font-size: 13px;
+                    }
+                    QDialogButtonBox QPushButton:hover {
+                        background-color: #334155;
+                    }
+                    QDialogButtonBox QPushButton:pressed {
+                        background-color: #0f172a;
+                    }
+                    QDialogButtonBox QPushButton:focus {
+                        border: 1px solid #3b82f6;
+                    }
+                )");
+
                 msgBox.exec();
                 if (msgBox.clickedButton() == reloadBtn) {
                     reloadEditor(editor);
