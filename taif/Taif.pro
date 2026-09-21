@@ -29,6 +29,7 @@ INCLUDEPATH +=  ../source/texteditor \
                 ../source/recovery  \
                 ../source/run  \
                 ../source/projectexplorer  \
+                ../source/versioncontrol  \
                 ../source/aliflang/lexer  \
                 ../source/aliflang/parser  \
                 ../source/aliflang/semantic  \
@@ -56,6 +57,8 @@ SOURCES += \
     ../source/texteditor/services/EditorAnalysisBinding.cpp \
     ../source/texteditor/services/EditorInteractionBinding.cpp \
     ../source/texteditor/services/EditorRecoveryBinding.cpp \
+    ../source/versioncontrol/GitPanelWidget.cpp \
+    ../source/versioncontrol/GitRepositoryService.cpp \
     TaifWindowController.cpp \
     main.cpp \
     Taif.cpp \
@@ -114,6 +117,9 @@ HEADERS += \
     ../source/texteditor/services/EditorAnalysisBinding.h \
     ../source/texteditor/services/EditorInteractionBinding.h \
     ../source/texteditor/services/EditorRecoveryBinding.h \
+    ../source/versioncontrol/GitPanelWidget.h \
+    ../source/versioncontrol/GitRepositoryService.h \
+    ../source/versioncontrol/GitTypes.h \
     Taif.h  \
     TaifBootstrap.h \
     ../source/aliflang/presentation/AlifAnalysis.h \

@@ -1,5 +1,7 @@
 #include "TSyntaxHighlighter.h"
 
+#include <QTextDocument>
+
 namespace {
 
 TokenType baseTokenTypeForPresentation(const PresentationClass classification) {

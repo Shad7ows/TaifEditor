@@ -6,6 +6,7 @@
 #include "AlifRunController.h"
 #include "SessionStore.h"
 #include "RecoveryCoordinator.h"
+#include "GitTypes.h"
 
 #include <QMainWindow>
 #include <QStatusBar>
@@ -25,6 +26,8 @@ class TBreadcrumbBar;
 class TStatusBar;
 class ProjectExplorerWidget;
 struct ProjectFileOperationResult;
+class GitPanelWidget;
+class GitRepositoryService;
 
 struct SessionRestoreResult final {
     QStringList openedFilePaths;
@@ -65,6 +68,13 @@ private slots:
     void renameProjectPath(const QString& sourcePath, const QString& newName);
     void deleteProjectPath(const QString& sourcePath);
     void revealProjectPath(const QString& sourcePath);
+
+    //* Git Section deactivated, active when enable this system
+    // void showGitPanel();
+    // void handleGitDestructiveOperation(GitOperation operation, const QStringList& relativePaths);
+    // void handleGitPull();
+    // void handleGitBranchSwitch(const QString& branch);
+    //* Git Section deactivated, active when enable this system
 
     void closeTab(int index);
     void toggleSidebar();
@@ -152,6 +162,12 @@ private:
 
     QSplitter *mainSplitter{};
     ProjectExplorerWidget* projectExplorer{};
+
+    //* Git Section deactivated, active when enable this system
+    // GitPanelWidget* gitPanel{};
+    // QDockWidget* gitDock{};
+    // QAction* showGitPanelAction{};
+    //* Git Section deactivated, active when enable this system
 
     QSplitter *editorSplitter{};
     TBreadcrumbBar* breadcrumbBar{};
