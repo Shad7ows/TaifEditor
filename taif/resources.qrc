@@ -38,5 +38,7 @@
         <file>resources/eye.svg</file>
         <file>resources/folder-sync.svg</file>
         <file>resources/AlifLogo.svg</file>
+        <file>resources/folder-cog.svg</file>
+        <file>resources/settings-2.svg</file>
     </qresource>
 </RCC>

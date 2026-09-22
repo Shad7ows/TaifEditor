@@ -57,10 +57,10 @@ void TSettings::setupLayout() {
                    QStringLiteral(":/icons/resources/pencil-ruler.svg"));
     addSettingPage(QStringLiteral("متقدم"),
                    QStringLiteral("الإكمال والمعلومات والتنبيهات"),
-                   QStringLiteral(":/icons/resources/settings.svg"));
+                   QStringLiteral(":/icons/resources/settings-2.svg"));
     addSettingPage(QStringLiteral("الملفات"),
                    QStringLiteral("سجل الملفات الأخيرة وسلوك مساحة العمل"),
-                   QStringLiteral(":/icons/resources/settings.svg"));
+                   QStringLiteral(":/icons/resources/folder-cog.svg"));
 
     auto* const contentLayout = new QVBoxLayout();
     contentLayout->setContentsMargins(0, 0, 0, 0);
@@ -398,7 +398,7 @@ void TSettings::createEditorBehaviorPage(QVBoxLayout* const layout) {
 }
 
 void TSettings::createIntelligencePage(QVBoxLayout* const layout) {
-    auto* const intelligenceGroup = new QGroupBox(QStringLiteral("ذكاء الشيفرة"));
+    auto* const intelligenceGroup = new QGroupBox(QStringLiteral("إعدادات الشيفرة"));
     auto* const intelligenceLayout = new QVBoxLayout(intelligenceGroup);
     auto* const formLayout = new QFormLayout();
 
