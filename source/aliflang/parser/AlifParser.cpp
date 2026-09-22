@@ -505,7 +505,7 @@ private:
 
         if (consumeIf(TokenKind::LParen)) {
             while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile)) {
-                const ParsedNode base = parseExpression();
+                const ParsedNode base = parseExpression(0, false);
                 children.append(base.ast);
                 syntaxChildren.append(base.syntax);
                 if (!consumeIf(TokenKind::Comma)) {

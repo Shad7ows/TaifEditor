@@ -3,6 +3,7 @@
 #include "AlifParser.h"
 
 #include <QtCore/QHash>
+#include <QtCore/QSet>
 #include <QtCore/QString>
 #include <QtCore/QVector>
 
@@ -136,6 +137,7 @@ public:
     [[nodiscard]] QVector<SymbolId> referencesOf(SymbolId symbol) const;
     [[nodiscard]] QVector<SymbolId> documentSymbols() const;
     [[nodiscard]] QVector<SemanticBreadcrumb> enclosingSymbolPathAt(qsizetype utf16Offset) const;
+    [[nodiscard]] QVector<SymbolId> baseClassesOf(SymbolId classSymbol) const;
     [[nodiscard]] QVector<SymbolId> membersOfClass(SymbolId classSymbol) const;
     [[nodiscard]] QVector<SymbolId> membersOfReceiver(SymbolId receiverSymbol) const;
     [[nodiscard]] SymbolId classOfReceiver(SymbolId receiverSymbol) const;
@@ -144,6 +146,9 @@ private:
     friend class SymbolTableBuilder;
     friend class SymbolTableBuilderImpl;
 
+    [[nodiscard]] void collectMembers(SymbolId classSymbol, QVector<SymbolId>& out,
+                                      QSet<SymbolId>& seen) const;
+
     QVector<Scope> m_scopes;
     QVector<Symbol> m_symbols;
     QVector<NameReference> m_references;
@@ -151,6 +156,7 @@ private:
     QHash<SymbolId, QVector<ReferenceId>> m_referencesBySymbol;
     QHash<SymbolId, ScopeId> m_classScopesBySymbol;
     QHash<ScopeId, SymbolId> m_scopeOwnerSymbols;
+    QHash<SymbolId, QVector<SymbolId>> m_baseClassesBySymbol;
     ScopeId m_preludeScope = InvalidScopeId;
     ScopeId m_moduleScope = InvalidScopeId;
     quint64 m_documentRevision = 0;

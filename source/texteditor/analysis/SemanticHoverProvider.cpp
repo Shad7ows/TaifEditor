@@ -163,9 +163,21 @@ QString precedingCommentDocumentation(const Symbol& symbol, const LexResult& lex
     return lines.join(u'\n').trimmed();
 }
 
-QString signatureForSymbol(const Symbol& symbol, const ParseResult& parse) {
+QString signatureForSymbol(const Symbol& symbol, const SemanticModel& semantic,
+                         const ParseResult& parse) {
     if (symbol.kind == SymbolKind::Class) {
-        return QStringLiteral("%1").arg(symbol.name);
+        const QVector<SymbolId> bases = semantic.baseClassesOf(symbol.id);
+        QStringList baseNames;
+        for (const SymbolId base : bases) {
+            const Symbol* baseSymbol = semantic.symbol(base);
+            if (baseSymbol != nullptr) {
+                baseNames.append(baseSymbol->name);
+            }
+        }
+        if (baseNames.isEmpty()) {
+            return symbol.name;
+        }
+        return QStringLiteral("%1(%2)").arg(symbol.name, baseNames.join(QStringLiteral(", ")));
     }
     if (symbol.kind != SymbolKind::Function || !parse.ast
         || symbol.declarationNode == InvalidAstNodeId) {
@@ -279,7 +291,7 @@ std::optional<HoverInfo> SemanticHoverProvider::infoAt(
     info.symbolKind = symbol->kind;
     info.name = symbol->name;
     info.typeLabel = typeLabelForSymbol(symbol->kind);
-    info.signature = signatureForSymbol(*symbol, snapshot->parse);
+    info.signature = signatureForSymbol(*symbol, *snapshot->semantic, snapshot->parse);
     info.documentation = truncateDocumentation(std::move(documentation));
     info.targetRange = targetRange;
     info.declarationRange = symbol->declarationRange;

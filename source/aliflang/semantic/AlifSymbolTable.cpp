@@ -113,6 +113,20 @@ private:
         return matches.isEmpty() ? InvalidAstNodeId : matches.constFirst();
     }
 
+    void flattenBaseNodes(const AstNodeId baseId, QVector<AstNodeId>& out) const {
+        if (!isValidNode(baseId)) {
+            return;
+        }
+        const AstNode& base = node(baseId);
+        if (base.kind == AstNodeKind::TupleExpression) {
+            for (const AstNodeId child : base.children) {
+                flattenBaseNodes(child, out);
+            }
+        } else {
+            out.append(baseId);
+        }
+    }
+
     void addDiagnostic(const QString& code, const QString& message,
                        const SourceRange& range,
                        const SemanticDiagnosticSeverity severity) {
@@ -665,8 +679,28 @@ private:
     }
 
     void resolveClass(const AstNode& ast, const ScopeId enclosingScope) {
+        QVector<AstNodeId> flattenedBases;
         for (const AstNodeId base : childrenWithRole(ast, AstChildRole::Base)) {
+            flattenBaseNodes(base, flattenedBases);
+        }
+        for (const AstNodeId base : flattenedBases) {
             resolveNode(base, enclosingScope, ReferenceKind::BaseType);
+        }
+        const SymbolId classSymbol = m_model->m_scopeOwnerSymbols.value(scopeForOwner(ast.id),
+                                                                          InvalidSymbolId);
+        if (classSymbol != InvalidSymbolId) {
+            for (const AstNodeId base : flattenedBases) {
+                if (!isValidNode(base)) {
+                    continue;
+                }
+                const AstNode& baseNode = node(base);
+                if (baseNode.kind == AstNodeKind::NameExpression) {
+                    const QVector<SymbolId> candidates = lookup(enclosingScope, baseNode.text);
+                    for (const SymbolId candidate : candidates) {
+                        m_model->m_baseClassesBySymbol[classSymbol].append(candidate);
+                    }
+                }
+            }
         }
         const ScopeId classScope = scopeForOwner(ast.id);
         if (classScope != InvalidScopeId && !m_resolvedScopes.contains(ast.id)) {
@@ -1002,24 +1036,52 @@ SymbolId SemanticModel::classOfReceiver(const SymbolId receiverSymbol) const {
     return receiver->instanceClass;
 }
 
-QVector<SymbolId> SemanticModel::membersOfClass(const SymbolId classSymbol) const {
-    const ScopeId classScope = m_classScopesBySymbol.value(classSymbol, InvalidScopeId);
-    if (classScope == InvalidScopeId || classScope < 0 || classScope >= m_scopes.size()) {
-        return {};
+QVector<SymbolId> SemanticModel::baseClassesOf(const SymbolId classSymbol) const {
+    QVector<SymbolId> result;
+    for (const SymbolId base : m_baseClassesBySymbol.value(classSymbol, {})) {
+        if (symbol(base) != nullptr && symbol(base)->kind == SymbolKind::Class
+            && !result.contains(base)) {
+            result.append(base);
+        }
     }
+    return result;
+}
+
+QVector<SymbolId> SemanticModel::membersOfClass(const SymbolId classSymbol) const {
+    QSet<SymbolId> seen;
     QVector<SymbolId> members;
-    QStringList names = m_scopes.at(classScope).declarations.keys();
-    std::sort(names.begin(), names.end());
-    for (const QString& name : names) {
-        for (const SymbolId id : m_scopes.at(classScope).declarations.value(name)) {
-            const Symbol* candidate = symbol(id);
-            if (candidate != nullptr && (candidate->kind == SymbolKind::Function
-                                         || candidate->kind == SymbolKind::Attribute || candidate->kind == SymbolKind::Class)) {
-                members.append(id);
+    collectMembers(classSymbol, members, seen);
+    std::sort(members.begin(), members.end(), [this](const SymbolId left,
+                                                        const SymbolId right) {
+        return m_symbols.at(left).name < m_symbols.at(right).name;
+    });
+    return members;
+}
+
+void SemanticModel::collectMembers(const SymbolId classSymbol, QVector<SymbolId>& out,
+                                   QSet<SymbolId>& seen) const {
+    if (classSymbol == InvalidSymbolId || seen.contains(classSymbol)) {
+        return;
+    }
+    seen.insert(classSymbol);
+    const ScopeId classScope = m_classScopesBySymbol.value(classSymbol, InvalidScopeId);
+    if (classScope != InvalidScopeId && classScope >= 0 && classScope < m_scopes.size()) {
+        QStringList names = m_scopes.at(classScope).declarations.keys();
+        std::sort(names.begin(), names.end());
+        for (const QString& name : names) {
+            for (const SymbolId id : m_scopes.at(classScope).declarations.value(name)) {
+                const Symbol* candidate = symbol(id);
+                if (candidate != nullptr && (candidate->kind == SymbolKind::Function
+                                             || candidate->kind == SymbolKind::Attribute
+                                             || candidate->kind == SymbolKind::Class)) {
+                    out.append(id);
+                }
             }
         }
     }
-    return members;
+    for (const SymbolId base : m_baseClassesBySymbol.value(classSymbol, {})) {
+        collectMembers(base, out, seen);
+    }
 }
 
 QVector<SymbolId> SemanticModel::membersOfReceiver(const SymbolId receiverSymbol) const {
