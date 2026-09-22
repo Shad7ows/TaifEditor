@@ -108,6 +108,8 @@ TCompletionPopup::TCompletionPopup(QWidget* parent)
         QLabel {
             background-color: #2c313a;
             border-top: 1px solid #4793FF;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
             color: #9da5b4;
             padding: 8px;
             font-family: 'Tajawal', 'Noto Kufi Arabic';
@@ -145,11 +147,11 @@ void TCompletionPopup::currentChanged(const QModelIndex& current,
         <div dir='rtl'>
         <span style='font-weight:bold; color:%1; font-size:14px;'>%2</span>
         <br>
-        <span style='font-family:Tajawal,'Noto Kufi Arabic'; font-size:12px; color:#dcdfe4;'>%3</span>
+        <span style='font-family: Tajawal,'Noto Kufi Arabic'; font-size:12px; color:#dcdfe4;'>%3</span>
         </div>)")
         .arg(visual.color.name(), visual.category,
-             summary.toHtmlEscaped().replace(QChar(u'\n'), QStringLiteral("<br>")));
-    infoLabel->setText(html);
+            summary.toHtmlEscaped().replace(QChar(u'\n'), QStringLiteral("<br>")));
+            infoLabel->setText(html);
 }
 
 // --- Row delegate ---
