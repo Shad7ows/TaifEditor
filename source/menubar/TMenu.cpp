@@ -3,6 +3,7 @@
 
 #include <QAction>
 #include <QMenu>
+#include <QFileInfo>
 #include <QSet>
 #include <QSettings>
 #include <QStringList>
@@ -20,22 +21,6 @@ QAction* createEditAction(QObject* const parent,
     action->setShortcut(shortcut);
     action->setCheckable(isCheckable);
     return action;
-}
-
-void TMenuBar::addRecentFiles() {
-    // Pre-create placeholder actions up to the configured maximum. Visibility
-    // and text are toggled dynamically in refreshRecentFilesMenu().
-    for (int i = 0; i < maxRecentFiles; ++i) {
-        QAction* const action = new QAction(this);
-        action->setVisible(false);
-        recentFilesMenu->addAction(action);
-        connect(action, &QAction::triggered, this, [this, i]() {
-            if (i >= 0 && i < static_cast<int>(recentFileActions.size())) {
-                emit openRecentFileRequested(recentFilePaths[i]);
-            }
-        });
-        recentFileActions.append(action);
-    }
 }
 
 
@@ -123,8 +108,8 @@ TMenuBar::TMenuBar(QWidget* parent) {
 
     fileMenu->addAction(newAction);
     fileMenu->addAction(openFileAction);
-    fileMenu->addMenu(recentFilesMenu);
     fileMenu->addAction(openFolderAction);
+    fileMenu->addMenu(recentFilesMenu);
     fileMenu->addSeparator();
     fileMenu->addAction(saveAction);
     fileMenu->addAction(saveAsAction);
@@ -211,8 +196,23 @@ void TMenuBar::setOpenViewToolActions(const bool alifOutputOpen,
     }
 }
 
-void TMenuBar::setRecentFilesLimit(const int limit)
-{
+void TMenuBar::addRecentFiles(const int rfaSize) {
+    // Pre-create placeholder actions up to the configured maximum. Visibility
+    // and text are toggled dynamically in refreshRecentFilesMenu().
+    for (int i = rfaSize; i < maxRecentFiles; ++i) {
+        QAction* const action = new QAction(this);
+        action->setVisible(false);
+        recentFilesMenu->addAction(action);
+        connect(action, &QAction::triggered, this, [this, i]() {
+            if (i >= 0 && i < static_cast<int>(recentFileActions.size())) {
+                emit openRecentFileRequested(recentFilePaths[i]);
+            }
+        });
+        recentFileActions.append(action);
+    }
+}
+
+void TMenuBar::setRecentFilesLimit(const int limit) {
     maxRecentFiles = qBound(0, limit, 30);
 
     // If the limit shrank below the number of pre-created actions,
@@ -220,18 +220,7 @@ void TMenuBar::setRecentFilesLimit(const int limit)
     while (recentFileActions.size() > maxRecentFiles) {
         delete recentFileActions.takeLast();
     }
-    while (recentFileActions.size() < maxRecentFiles) {
-        const int index = recentFileActions.size();
-        auto* const action = new QAction(this);
-        action->setVisible(false);
-        recentFilesMenu->addAction(action);
-        connect(action, &QAction::triggered, this, [this, index]() {
-            if (index >= 0 && index < static_cast<int>(recentFileActions.size())) {
-                emit openRecentFileRequested(recentFilePaths[index]);
-            }
-        });
-        recentFileActions.append(action);
-    }
+    addRecentFiles(recentFileActions.size());
 
     refreshRecentFilesMenu();
 }

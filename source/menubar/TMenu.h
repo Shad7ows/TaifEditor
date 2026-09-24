@@ -24,7 +24,7 @@ public:
 
     /** Sets how many recent-file entries the submenu may hold (0 disables). */
     void setRecentFilesLimit(int limit);
-    void addRecentFiles();
+    void addRecentFiles(const int rfaSize = 0);
 
     QAction* newAction;
     QAction* openFileAction;
