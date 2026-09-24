@@ -1,7 +1,11 @@
 #include "TMenu.h"
+#include "EditorPreferences.h"
 
 #include <QAction>
 #include <QMenu>
+#include <QSet>
+#include <QSettings>
+#include <QStringList>
 #include <QSignalBlocker>
 
 
@@ -18,13 +22,29 @@ QAction* createEditAction(QObject* const parent,
     return action;
 }
 
+void TMenuBar::addRecentFiles() {
+    // Pre-create placeholder actions up to the configured maximum. Visibility
+    // and text are toggled dynamically in refreshRecentFilesMenu().
+    for (int i = 0; i < maxRecentFiles; ++i) {
+        QAction* const action = new QAction(this);
+        action->setVisible(false);
+        recentFilesMenu->addAction(action);
+        connect(action, &QAction::triggered, this, [this, i]() {
+            if (i >= 0 && i < static_cast<int>(recentFileActions.size())) {
+                emit openRecentFileRequested(recentFilePaths[i]);
+            }
+        });
+        recentFileActions.append(action);
+    }
+}
+
 
 TMenuBar::TMenuBar(QWidget* parent) {
-    QMenu* const fileMenu = addMenu(QStringLiteral("ملف"));
-    QMenu* const editMenu = addMenu(QStringLiteral("تحرير"));
-    QMenu* const viewMenu = addMenu(QStringLiteral("عرض"));
-    QMenu* const runMenu = addMenu(QStringLiteral("تشغيل"));
-    QMenu* const helpMenu = addMenu(QStringLiteral("مساعدة"));
+    fileMenu = addMenu(QStringLiteral("ملف"));
+    editMenu = addMenu(QStringLiteral("تحرير"));
+    viewMenu = addMenu(QStringLiteral("عرض"));
+    runMenu = addMenu(QStringLiteral("تشغيل"));
+    helpMenu = addMenu(QStringLiteral("مساعدة"));
 
     fileMenu->setMinimumWidth(200);
     editMenu->setMinimumWidth(200);
@@ -94,9 +114,18 @@ TMenuBar::TMenuBar(QWidget* parent) {
 
 
 
+    // --- Recent Files submenu (الملفات الأخيرة) ---
+    recentFilesMenu = new QMenu(QStringLiteral("الملفات الأخيرة"), this);
+    recentFilesMenu->setMinimumWidth(200);
+    connect(recentFilesMenu, &QMenu::aboutToShow, this, &TMenuBar::refreshRecentFilesMenu);
+    addRecentFiles();
+
+
     fileMenu->addAction(newAction);
     fileMenu->addAction(openFileAction);
+    fileMenu->addMenu(recentFilesMenu);
     fileMenu->addAction(openFolderAction);
+    fileMenu->addSeparator();
     fileMenu->addAction(saveAction);
     fileMenu->addAction(saveAsAction);
     fileMenu->addSeparator();
@@ -179,5 +208,90 @@ void TMenuBar::setOpenViewToolActions(const bool alifOutputOpen,
     }
     if (problemsAction != nullptr) {
         problemsAction->setChecked(problemsOpen);
+    }
+}
+
+void TMenuBar::setRecentFilesLimit(const int limit)
+{
+    maxRecentFiles = qBound(0, limit, 30);
+
+    // If the limit shrank below the number of pre-created actions,
+    // trim the excess; if it grew, create additional placeholder actions.
+    while (recentFileActions.size() > maxRecentFiles) {
+        delete recentFileActions.takeLast();
+    }
+    while (recentFileActions.size() < maxRecentFiles) {
+        const int index = recentFileActions.size();
+        auto* const action = new QAction(this);
+        action->setVisible(false);
+        recentFilesMenu->addAction(action);
+        connect(action, &QAction::triggered, this, [this, index]() {
+            if (index >= 0 && index < static_cast<int>(recentFileActions.size())) {
+                emit openRecentFileRequested(recentFilePaths[index]);
+            }
+        });
+        recentFileActions.append(action);
+    }
+
+    refreshRecentFilesMenu();
+}
+
+void TMenuBar::refreshRecentFilesMenu() {
+    // Read the persisted list directly from QSettings (same source used by Taif::openDocumentFile).
+    QSettings settings(QStringLiteral("Alif"), QStringLiteral("Taif"));
+    const int limit = PreferencesStore::load().recentFilesLimit;
+
+    if (limit <= 0 || recentFileActions.isEmpty()) {
+        for (QAction* action : std::as_const(recentFileActions)) {
+            action->setVisible(false);
+            action->setText(QString());
+            action->setData(QString());
+        }
+        // Hide the submenu entry entirely when there are no recent files.
+        QList<QAction*> menuActions = fileMenu->actions();
+        for (QAction* const menuAction : menuActions) {
+            if (menuAction->menu() == recentFilesMenu) {
+                menuAction->setVisible(false);
+                break;
+            }
+        }
+        return;
+    }
+
+    QStringList files = settings.value(QStringLiteral("RecentFiles")).toStringList();
+    // Keep only existing files and deduplicate while preserving order.
+    QStringList validFiles;
+    QSet<QString> seen;
+    for (const QString& path : files) {
+        if (!path.isEmpty() && !seen.contains(path)) {
+            const QFileInfo info(path);
+            if (info.exists()) {
+                validFiles.append(path);
+                seen.insert(path);
+            }
+        }
+    }
+
+    recentFilePaths = validFiles; // Keep the full list so indices stay correct.
+
+    for (int i = 0; i < static_cast<int>(recentFileActions.size()); ++i) {
+        QAction* const action = recentFileActions[i];
+        if (i < validFiles.size()) {
+            const QString& path = validFiles[i];
+            action->setVisible(true);
+            // Use the base name as display text; show full path on hover.
+            action->setText(QFileInfo(path).fileName());
+            action->setToolTip(path);
+            action->setData(path);
+        }
+    }
+
+    // Show or hide the submenu entry in the File menu based on whether we have entries.
+    QList<QAction*> menuActions = fileMenu->actions();
+    for (QAction* const menuAction : menuActions) {
+        if (menuAction->menu() == recentFilesMenu) {
+            menuAction->setVisible(!validFiles.isEmpty());
+            break;
+        }
     }
 }

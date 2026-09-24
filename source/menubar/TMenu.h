@@ -1,8 +1,13 @@
 #pragma once
 
+#include <QAction>
+#include <QList>
+#include <QString>
 #include <QMenuBar>
 #include <QFileSystemModel>
 #include <QTreeView>
+
+class QMenu;
 
 
 
@@ -16,6 +21,10 @@ public:
     void setOpenViewToolActions(bool alifOutputOpen,
                                 bool terminalOpen,
                                 bool problemsOpen);
+
+    /** Sets how many recent-file entries the submenu may hold (0 disables). */
+    void setRecentFilesLimit(int limit);
+    void addRecentFiles();
 
     QAction* newAction;
     QAction* openFileAction;
@@ -60,6 +69,9 @@ signals:
     void aboutRequested();
     void updateRequested();
 
+    /** Emitted when the user selects a recent file from the menu. */
+    void openRecentFileRequested(const QString& filePath);
+
     void showAlifOutputRequested();
     void showTerminalRequested();
     void showProblemsRequested();
@@ -76,4 +88,19 @@ signals:
     void duplicateLineRequested();
     void moveLineUpRequested();
     void moveLineDownRequested();
+
+private slots:
+    void refreshRecentFilesMenu();
+
+private:
+    QMenu* fileMenu{};
+    QMenu* editMenu{};
+    QMenu* viewMenu{};
+    QMenu* runMenu{};
+    QMenu* helpMenu{};
+
+    QMenu* recentFilesMenu = nullptr;
+    QList<QAction*> recentFileActions;
+    QStringList recentFilePaths;
+    int maxRecentFiles = 10;
 };

@@ -174,6 +174,8 @@ void Taif::setupUI() {
 
     menuBar = new TMenuBar(this);
     setMenuBar(menuBar);
+    // Initialize the recent-files submenu with the configured limit.
+    menuBar->setRecentFilesLimit(PreferencesStore::load().recentFilesLimit);
 
     mainSplitter = new QSplitter(Qt::Horizontal, this);
     projectExplorer = new ProjectExplorerWidget(this);
@@ -314,7 +316,12 @@ void Taif::connectSettingsSignals()
         applyEditorPreferences(preferences);
     };
     connect(setting, &TSettings::preferencesPreviewed, this, applyPreferences);
-    connect(setting, &TSettings::preferencesApplied, this, applyPreferences);
+    connect(setting, &TSettings::preferencesApplied, this, [this, applyPreferences](const EditorPreferences& preferences) {
+        if (menuBar != nullptr) {
+            menuBar->setRecentFilesLimit(preferences.recentFilesLimit);
+        }
+        applyPreferences(preferences);
+    });
 }
 
 void Taif::applyEditorPreferences(const EditorPreferences& requestedPreferences)
@@ -368,6 +375,8 @@ void Taif::setupConnections() {
 
     connect(menuBar, &TMenuBar::newRequested, this, &Taif::newFile);
     connect(menuBar, &TMenuBar::openFileRequested, this, [this](){this->openFile("");});
+    connect(menuBar, &TMenuBar::openRecentFileRequested, this,
+            [this](const QString& filePath) { openFile(filePath); });
     connect(menuBar, &TMenuBar::saveRequested, this, &Taif::saveFile);
     connect(menuBar, &TMenuBar::saveAsRequested, this, &Taif::saveFileAs);
     connect(menuBar, &TMenuBar::settingsRequest, this, &Taif::openSettings);
