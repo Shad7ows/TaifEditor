@@ -96,11 +96,15 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
                         inlineConsole->endInput();
                     }
                 }
+                const QIcon icon(active ? QStringLiteral(":/icons/resources/stop.svg")
+                                     : QStringLiteral(":/icons/resources/run.svg"));
                 if (menuBar != nullptr && menuBar->runAction != nullptr) {
                     menuBar->runAction->setText(label);
+                    menuBar->runAction->setIcon(icon);
                 }
                 if (runToolbarAction != nullptr) {
                     runToolbarAction->setToolTip(label);
+                    runToolbarAction->setIcon(icon);
                 }
             });
     connect(alifOutputConsole, &TConsole::commandEntered,
@@ -206,7 +210,8 @@ void Taif::setupUI() {
     toggleSidebarAction->setChecked(false);
     mainToolBar->addAction(toggleSidebarAction);
 
-    runToolbarAction = new QAction(QIcon(":/icons/resources/run.svg"), "تشغيل الملف الحالي", this);
+    runToolbarAction = new QAction(QIcon(":/icons/resources/run.svg"),
+                                 QStringLiteral("تشغيل الملف الحالي"), this);
 
     mainToolBar->addAction(runToolbarAction);
     connect(runToolbarAction, &QAction::triggered, this, &Taif::runAlif);

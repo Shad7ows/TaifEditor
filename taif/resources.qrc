@@ -19,7 +19,6 @@
         <file>resources/down-arrow.png</file>
         <file>resources/up-arrow.png</file>
         <file>resources/close.svg</file>
-        <file>resources/run.svg</file>
         <file>resources/left-arrow.png</file>
         <file>resources/right-arrow.png</file>
         <file>resources/chevron-down.svg</file>
@@ -40,5 +39,7 @@
         <file>resources/AlifLogo.svg</file>
         <file>resources/folder-cog.svg</file>
         <file>resources/settings-2.svg</file>
+        <file>resources/stop.svg</file>
+        <file>resources/run.svg</file>
     </qresource>
 </RCC>
