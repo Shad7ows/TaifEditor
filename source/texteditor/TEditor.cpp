@@ -1128,7 +1128,7 @@ void TEditor::paintEvent(QPaintEvent *event)
     // highlights and Ctrl-hover links are never affected by cursor movement.
     {
         const QTextCursor cursor = textCursor();
-        if (!cursor.isNull() && !isReadOnly()) {
+        if (preferences.highlightCurrentLine && !cursor.isNull() && !isReadOnly()) {
             QPainter painter(viewport());
             painter.setClipRect(event->rect(), Qt::IntersectClip);
             const QRectF lineRect = blockBoundingGeometry(cursor.block()).translated(contentOffset());
