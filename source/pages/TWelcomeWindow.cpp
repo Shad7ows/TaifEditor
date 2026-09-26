@@ -170,7 +170,7 @@ WelcomeWindow::WelcomeWindow(QWidget* const parent,
     QScreen* screen = QGuiApplication::primaryScreen();
     QRect screenGeo = screen->availableGeometry();
     int margin = 90;
-    int widthFixedNum = 6;
+    int widthFixedNum = 5;
     int x = screenGeo.right() - screenGeo.size().width() + margin * widthFixedNum / 2;
     int y = screenGeo.top() + 30 + margin / 2; // 30 is top system bar height
     int width = screenGeo.size().width() - margin * widthFixedNum;
