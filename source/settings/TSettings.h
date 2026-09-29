@@ -63,7 +63,7 @@ private:
     QComboBox* fontCombo{};
     QComboBox* themeCombo{};
     QSpinBox* tabWidthSpin{};
-    QCheckBox* wordWrapCheck{};
+    // QCheckBox* wordWrapCheck{}; // معلق حتى تصحيح مشكلة إلتفاف النص في المحررات من اليمين إلى اليسار
     QCheckBox* lineNumbersCheck{};
     QCheckBox* minimapCheck{};
     QCheckBox* highlightCurrentLineCheck{};

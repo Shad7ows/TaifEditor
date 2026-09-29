@@ -373,14 +373,14 @@ void TSettings::createEditorBehaviorPage(QVBoxLayout* const layout) {
     autoSaveSecondsSpin->setMinimumHeight(36);
     formLayout->addRow(QStringLiteral("فترة الحفظ التلقائي:"), autoSaveSecondsSpin);
 
-    wordWrapCheck = new QCheckBox(QStringLiteral("التفاف الأسطر الطويلة"), behaviorGroup);
+    // wordWrapCheck = new QCheckBox(QStringLiteral("التفاف الأسطر الطويلة"), behaviorGroup); // معلق حتى تصحيح مشكلة إلتفاف النص في المحررات من اليمين إلى اليسار
     lineNumbersCheck = new QCheckBox(QStringLiteral("إظهار أرقام الأسطر"), behaviorGroup);
     minimapCheck = new QCheckBox(QStringLiteral("إظهار الخريطة المصغرة"), behaviorGroup);
     highlightCurrentLineCheck = new QCheckBox(QStringLiteral("تمييز السطر الحالي"), behaviorGroup);
     autoSaveCheck = new QCheckBox(QStringLiteral("تفعيل الحفظ التلقائي والنسخة الاحتياطية"), behaviorGroup);
 
     behaviorLayout->addLayout(formLayout);
-    behaviorLayout->addWidget(wordWrapCheck);
+    // behaviorLayout->addWidget(wordWrapCheck);
     behaviorLayout->addWidget(lineNumbersCheck);
     behaviorLayout->addWidget(minimapCheck);
     behaviorLayout->addWidget(highlightCurrentLineCheck);
@@ -391,7 +391,7 @@ void TSettings::createEditorBehaviorPage(QVBoxLayout* const layout) {
             this, &TSettings::synchronizeDraftFromControls);
     connect(autoSaveSecondsSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &TSettings::synchronizeDraftFromControls);
-    for (QCheckBox* const checkBox : {wordWrapCheck, lineNumbersCheck, minimapCheck,
+    for (QCheckBox* const checkBox : {/*wordWrapCheck,*/ lineNumbersCheck, minimapCheck,
                                       highlightCurrentLineCheck, autoSaveCheck}) {
         connect(checkBox, &QCheckBox::toggled, this, &TSettings::synchronizeDraftFromControls);
     }
@@ -496,7 +496,7 @@ void TSettings::setControlsFromPreferences(const EditorPreferences& requestedPre
     themeCombo->setCurrentIndex(qBound(0, preferences.syntaxThemeIndex,
                                        qMax(0, themeCombo->count() - 1)));
     tabWidthSpin->setValue(preferences.tabWidth);
-    wordWrapCheck->setChecked(preferences.wordWrapEnabled);
+    // wordWrapCheck->setChecked(preferences.wordWrapEnabled);
     lineNumbersCheck->setChecked(preferences.lineNumbersVisible);
     minimapCheck->setChecked(preferences.minimapVisible);
     highlightCurrentLineCheck->setChecked(preferences.highlightCurrentLine);
@@ -520,7 +520,7 @@ void TSettings::synchronizeDraftFromControls()
     draftPreferences.fontFamily = fontCombo->currentText();
     draftPreferences.syntaxThemeIndex = themeCombo->currentIndex();
     draftPreferences.tabWidth = tabWidthSpin->value();
-    draftPreferences.wordWrapEnabled = wordWrapCheck->isChecked();
+    // draftPreferences.wordWrapEnabled = wordWrapCheck->isChecked();
     draftPreferences.lineNumbersVisible = lineNumbersCheck->isChecked();
     draftPreferences.minimapVisible = minimapCheck->isChecked();
     draftPreferences.highlightCurrentLine = highlightCurrentLineCheck->isChecked();
