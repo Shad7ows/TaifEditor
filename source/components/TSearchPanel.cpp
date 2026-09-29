@@ -14,7 +14,7 @@ constexpr auto kBackground = "#1e202e";
 constexpr auto kHoverBackground = "#2d2f3a";
 constexpr auto kBorder = "#3e3e42";
 constexpr auto kInputBackground = "#16171c";
-constexpr auto kText = "#cccccc";
+constexpr auto kText = "#e2e8f0";
 constexpr auto kDimText = "#8a8d97";
 constexpr auto kAccent = "#3b82f6";
 constexpr auto kAccentHover = "#2563eb";
@@ -117,7 +117,8 @@ void SearchPanel::buildUi()
 
     btnClose = new QToolButton(this);
     btnClose->setText(QStringLiteral("×"));
-    btnClose->setToolTip(QString::fromUtf8("إغلاق (Esc)"));
+    btnClose->setObjectName("closeBotton");
+    btnClose->setToolTip(QString::fromUtf8("إغلاق"));
     btnClose->setFixedSize(25, 25);
 
     searchRowLayout->addWidget(searchIcon);
@@ -191,6 +192,7 @@ void SearchPanel::applyStyles()
                       "QToolButton:hover { background: %7; border-color: %2; }"
                       "QToolButton:checked { background: %6; color: white; }"
                       "QToolButton:disabled { color: %3; }"
+                      "QToolButton#closeBotton::hover {background: %8;}"
                       ).arg(kBackground, kBorder, kDimText, kInputBackground, kText, kAccent, kHoverBackground, kDanger));
 
     const QString actionStyle = QStringLiteral(
