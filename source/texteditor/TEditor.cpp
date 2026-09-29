@@ -1513,10 +1513,10 @@ void TEditor::setupAutoComplete()
     model = new CompletionModel(this);
     strategies.push_back(std::make_unique<SnippetStrategy>());
     strategies.push_back(std::make_unique<KeywordStrategy>());
-    strategies.push_back(std::make_unique<BuiltinStrategy>());
+    // هذه الأنظمة لا زالت متاحة ولكن تم تعليقها تجهيزا لحذفها
+    // او إعادة إستخدامها بحسب ما يقرر لاحقا
+    // strategies.push_back(std::make_unique<BuiltinStrategy>());
     // strategies.push_back(std::make_unique<DynamicWordStrategy>());
-    // DynamicWordStrategy remains available for legacy experiments but is not
-    // registered in the live popup: semantic analysis owns document symbols.
 
     QCompleter *completer = new QCompleter(this);
     setCompleter(completer);

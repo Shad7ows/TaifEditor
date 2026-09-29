@@ -20,13 +20,13 @@ CompletionSemanticKind completionKindForSymbol(const SymbolKind kind) {
 
 QString descriptionForSymbol(const SymbolKind kind) {
     switch (kind) {
-    case SymbolKind::Function: return QStringLiteral("دالة");
-    case SymbolKind::Class: return QStringLiteral("صنف");
-    case SymbolKind::Attribute: return QStringLiteral("صفة");
+    case SymbolKind::Function: return QStringLiteral("دالة معرفة");
+    case SymbolKind::Class: return QStringLiteral("صنف معرف");
+    case SymbolKind::Attribute: return QStringLiteral("صفة معرفة");
     case SymbolKind::Parameter: return QStringLiteral("معامل");
     case SymbolKind::ImportModule: return QStringLiteral("وحدة مستوردة");
-    case SymbolKind::ImportMember: return QStringLiteral("اسم مستورد");
-    case SymbolKind::Builtin: return QStringLiteral("مدمج");
+    case SymbolKind::ImportMember: return QStringLiteral("اسم مستورد من وحدة");
+    case SymbolKind::Builtin: return QStringLiteral("دالة ضمن لغة ألف");
     case SymbolKind::LoopVariable: return QStringLiteral("متغير حلقة");
     case SymbolKind::ComprehensionVariable: return QStringLiteral("متغير ضمني");
     default: return QStringLiteral("متغير محلي");

@@ -22,7 +22,7 @@ CompletionVisual semanticVisual(const CompletionSemanticKind kind) {
     case CompletionSemanticKind::Import:
         return {QColor(209, 154, 102), QStringLiteral("->"), QStringLiteral("اسم مستورد")};
     case CompletionSemanticKind::Builtin:
-        return {QColor(130, 212, 72), QStringLiteral("()"), QStringLiteral("مدمج")};
+        return {QColor(130, 212, 72), QStringLiteral("()"), QStringLiteral("ضمنية")};
     case CompletionSemanticKind::None:
     case CompletionSemanticKind::Unknown:
         return {QColor(171, 178, 191), QStringLiteral("أب"), QStringLiteral("رمز")};
@@ -144,11 +144,8 @@ void TCompletionPopup::currentChanged(const QModelIndex& current,
     const CompletionVisual visual = completionVisual(type, semanticKind);
     const QString summary = description.isEmpty() ? visual.category : description;
     const QString html = QStringLiteral(R"(
-        <div dir='rtl'>
-        <span style='font-weight:bold; color:%1; font-size:14px;'>%2</span>
-        <br>
-        <span style='font-family: Tajawal,'Noto Kufi Arabic'; font-size:12px; color:#dcdfe4;'>%3</span>
-        </div>)")
+        <div dir='rtl'><span style='font-weight:bold; color:%1; font-size:14px;'>%2</span><br>
+        <span style='font-family: Tajawal,'Noto Kufi Arabic'; font-size:12px; color:#dcdfe4;'>%3</span></div>)") // لا تقم بفصل الأسطر عن بعضها لأن ذلك يسبب مشكلة في عرض %2
         .arg(visual.color.name(), visual.category,
             summary.toHtmlEscaped().replace(QChar(u'\n'), QStringLiteral("<br>")));
             infoLabel->setText(html);
