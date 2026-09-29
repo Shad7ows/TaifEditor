@@ -1597,9 +1597,9 @@ void TEditor::keyPressEvent(QKeyEvent *e)
         return;
     }
 
-    // Handle Navigation for Live Update (Arrow Keys) ---
-    if (preferences.automaticCompletionEnabled
-        && (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right)) {
+    // Live-update an already-visible autocomplete popup as the cursor moves.
+    if (preferences.automaticCompletionEnabled && c && c->popup()->isVisible()
+        && isNavigationKey(e)) {
         // Let the editor move the cursor first
         QPlainTextEdit::keyPressEvent(e);
         // Then immediately trigger completion to update the list based on the new cursor position
@@ -1646,9 +1646,16 @@ void TEditor::keyPressEvent(QKeyEvent *e)
         }
     }
 
-    bool isShortcut = ((e->modifiers() & Qt::ControlModifier) && e->key() == Qt::Key_Space);
+    const bool isShortcut = ((e->modifiers() & Qt::ControlModifier) && e->key() == Qt::Key_Space);
 
     QPlainTextEdit::keyPressEvent(e);
+
+    // Pure cursor-navigation keys never surface or refresh the popup; only text
+    // input (or an explicit shortcut) should trigger automatic completion.
+    if (isNavigationKey(e)) {
+        dismissCompletionPopup();
+        return;
+    }
 
     if (!preferences.automaticCompletionEnabled && !isShortcut) {
         dismissCompletionPopup();
@@ -1663,6 +1670,25 @@ void TEditor::keyReleaseEvent(QKeyEvent *e) {
         clearCtrlHoverDefinitionLink();
     }
     QPlainTextEdit::keyReleaseEvent(e);
+}
+
+/// Returns true for keys that only move the cursor without modifying text.
+/// Such keys must never trigger or refresh the automatic completion popup;
+/// they are handled by the base QPlainTextEdit and dismissed instead.
+const bool TEditor::isNavigationKey(const QKeyEvent *e) {
+    switch (e->key()) {
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+    case Qt::Key_Home:
+    case Qt::Key_End:
+    case Qt::Key_PageUp:
+    case Qt::Key_PageDown:
+        return true;
+    default:
+        return false;
+    }
 }
 
 void TEditor::performCompletion() {

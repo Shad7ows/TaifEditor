@@ -115,6 +115,9 @@ protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
+    /// Returns true for keys that only move the cursor without modifying text.
+    static const bool isNavigationKey(const QKeyEvent *e);
+
     TSyntaxHighlighter* highlighter{};
     EditorAnalysisBinding* analysisBinding{};
     // Non-owning convenience reference; EditorAnalysisBinding owns the controller.
