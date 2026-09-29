@@ -1577,6 +1577,8 @@ void TEditor::keyPressEvent(QKeyEvent *e)
     dismissHover();
     if (e->key() == Qt::Key_Control) {
         updateCtrlHoverDefinitionLink(viewport()->mapFromGlobal(QCursor::pos()));
+        e->accept();
+        return;
     }
     if (e->key() == Qt::Key_F12 && e->modifiers() == Qt::NoModifier) {
         navigateToDefinition(textCursor().position());
@@ -1590,8 +1592,7 @@ void TEditor::keyPressEvent(QKeyEvent *e)
     }
 
     // handleing Brackets and Quotes
-    if (handleAutoPairing(e))
-    {
+    if (handleAutoPairing(e)) {
         e->accept();
         return;
     }
