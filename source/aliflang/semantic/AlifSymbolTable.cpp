@@ -391,16 +391,31 @@ private:
     }
 
     void indexImport(const AstNode& ast, const ScopeId scope) {
-        const AstNodeId pathId = firstChildWithRole(ast, AstChildRole::ImportPath);
-        if (!isValidNode(pathId)) {
-            addDiagnostic(QStringLiteral("يدل004"),
-                          QStringLiteral("يفتقر الاستيراد إلى مسار الاستيراد"),
-                          ast.range, SemanticDiagnosticSeverity::Warning);
-            return;
+        // Children are stored in (path, alias?) pairs. When an alias is present
+        // it overrides the bound name; otherwise we derive it from the module
+        // path's first segment.
+        for (qsizetype index = 0; index < ast.children.size(); index += 2) {
+            const AstNodeId pathId = ast.children.at(index);
+            if (!isValidNode(pathId)) {
+                addDiagnostic(QStringLiteral("يدل004"),
+                              QStringLiteral("يفتقر الاستيراد إلى مسار الاستيراد"),
+                              ast.range, SemanticDiagnosticSeverity::Warning);
+                continue;
+            }
+            const AstNode& path = node(pathId);
+            QString declaredName = firstNameSegment(path.text);
+            SourceRange nameRange = path.range;
+            if (index + 1 < ast.children.size()) {
+                const AstNodeId aliasId = ast.children.at(index + 1);
+                if (isValidNode(aliasId)) {
+                    const AstNode& alias = node(aliasId);
+                    declaredName = alias.text;
+                    nameRange = alias.range;
+                }
+            }
+            declare(scope, SymbolKind::ImportModule, declaredName, nameRange,
+                    ast.range, ast.id, true);
         }
-        const AstNode& path = node(pathId);
-        declare(scope, SymbolKind::ImportModule, firstNameSegment(path.text), path.range,
-                ast.range, ast.id, true);
     }
 
     void indexFromImport(const AstNode& ast, const ScopeId scope) {

@@ -179,6 +179,7 @@ enum class AstChildRole : quint8 {
     MemberBase,
     MemberName,
     ImportPath,
+    ImportAlias,
     ImportName,
     ReturnValue,
     DeletedValue,

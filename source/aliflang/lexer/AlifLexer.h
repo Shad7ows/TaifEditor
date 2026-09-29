@@ -54,6 +54,7 @@ enum class TokenKind : quint16 {
     KwFinally,
     KwReturn,
     KwImport,
+    KwAs,
     KwFrom,
     KwDelete,
     KwBreak,

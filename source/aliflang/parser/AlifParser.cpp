@@ -414,11 +414,36 @@ private:
 
     [[nodiscard]] ParsedNode parseImportStatement() {
         const qsizetype start = m_mainPosition;
-        consume();
-        const ParsedNode path = parseDottedName();
+        consume(); // استورد
+        QVector<AstNodeId> children;
+        QVector<SyntaxNodeId> syntaxChildren;
+        do {
+            const ParsedNode path = parseDottedName();
+            children.append(path.ast);
+            syntaxChildren.append(path.syntax);
+            if (consumeIf(TokenKind::KwAs)) {
+                const ParsedNode alias = parseNameExpression();
+                children.append(alias.ast);
+                syntaxChildren.append(alias.syntax);
+            } else {
+                // No explicit alias: the bound name is derived from the module
+                // path's first segment by the symbol table. We still record a
+                // placeholder so that child roles stay aligned.
+                children.append(InvalidAstNodeId);
+                syntaxChildren.append(makeMissing(TokenKind::Identifier));
+            }
+        } while (consumeIf(TokenKind::Comma));
+
+        QVector<AstChildRole> roles;
+        for (qsizetype index = 0; index < children.size(); ++index) {
+            if (index % 2 == 0) {
+                roles.append(AstChildRole::ImportPath);
+            } else {
+                roles.append(AstChildRole::ImportAlias);
+            }
+        }
         return makeParsed(AstNodeKind::ImportStatement, SyntaxKind::ImportStatement,
-                          start, m_mainPosition, {}, {path.ast}, {path.syntax},
-                          {AstChildRole::ImportPath});
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseFromImportStatement() {
