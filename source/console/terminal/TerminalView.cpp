@@ -8,6 +8,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
+#include <QTextLayout>
+#include <QTextOption>
 
 namespace {
 
@@ -129,23 +131,48 @@ void TerminalView::paintEvent(QPaintEvent* const event)
     const int visibleRows = visibleRowCount();
     const int firstRow = qBound(0, m_scrollOffset, qMax(0, totalRows - visibleRows));
     const int lastRow = qMin(totalRows, firstRow + visibleRows);
-    const int selectionStart = (m_selectionAnchor.row < 0 || m_selectionExtent.row < 0)
-        ? -1 : qMin(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
-                    m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column);
-    const int selectionEnd = (m_selectionAnchor.row < 0 || m_selectionExtent.row < 0)
-        ? -1 : qMax(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
-                    m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column);
+
+    const bool hasSelection = m_selectionAnchor.row >= 0 && m_selectionExtent.row >= 0;
+    const int selectionStart = hasSelection
+                                   ? qMin(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
+                                          m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column)
+                                   : -1;
+    const int selectionEnd = hasSelection
+                                 ? qMax(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
+                                        m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column)
+                                 : -1;
+
+    const bool cursorVisible = m_hasFocus && m_screen.cursor().visible
+                               && (m_cursorClock.elapsed() / 500) % 2 == 0
+                               && m_scrollOffset == verticalScrollBar()->maximum();
+    const int cursorVisualRow = cursorVisible
+                                    ? m_screen.scrollback().size() + m_screen.cursor().row
+                                    : -1;
+    const int cursorColumn = cursorVisible ? m_screen.cursor().column : -1;
+
+    QTextOption rowOption;
+    rowOption.setWrapMode(QTextOption::NoWrap);
+    rowOption.setTextDirection(Qt::RightToLeft);
+    rowOption.setAlignment(Qt::AlignRight);
+    rowOption.setUseDesignMetrics(true);
 
     for (int row = firstRow; row < lastRow; ++row) {
+        const auto& cells = visualRowAt(row);
+
+        // Per-cell backgrounds + selection highlight (unchanged look).
         for (int column = 0; column < m_screen.columns(); ++column) {
-            const TerminalScreenModel::Cell& cell = visualRowAt(row).at(column);
-            QRect cellRect((column * m_cellSize.width()),
-                           ((row - firstRow) * m_cellSize.height()),
-                           m_cellSize.width(), m_cellSize.height());
+            const auto& cell = cells.at(column);
+            const QRect cellRect(column * m_cellSize.width(),
+                                 (row - firstRow) * m_cellSize.height(),
+                                 m_cellSize.width(), m_cellSize.height());
             const int linearIndex = row * m_screen.columns() + column;
-            const bool selected = selectionStart >= 0 && linearIndex >= selectionStart && linearIndex <= selectionEnd;
-            QColor background = cell.attributes.background.isValid() ? cell.attributes.background : defaultBackground();
-            QColor foreground = cell.attributes.foreground.isValid() ? cell.attributes.foreground : defaultForeground();
+            const bool selected = hasSelection
+                                  && linearIndex >= selectionStart && linearIndex <= selectionEnd;
+
+            QColor background = cell.attributes.background.isValid()
+                                    ? cell.attributes.background : defaultBackground();
+            QColor foreground = cell.attributes.foreground.isValid()
+                                    ? cell.attributes.foreground : defaultForeground();
             if (cell.attributes.inverse) {
                 std::swap(background, foreground);
             }
@@ -153,25 +180,68 @@ void TerminalView::paintEvent(QPaintEvent* const event)
                 background = QColor(QStringLiteral("#294b78"));
             }
             painter.fillRect(cellRect, background);
-            QFont cellFont = m_terminalFont;
-            cellFont.setBold(cell.attributes.bold);
-            cellFont.setUnderline(cell.attributes.underline);
-            painter.setFont(cellFont);
-            painter.setPen(foreground);
-            painter.drawText(cellRect.adjusted(0, 0, 0, -1), Qt::AlignLeft | Qt::AlignVCenter,
-                             cell.text);
         }
-    }
 
-    if (m_hasFocus && m_screen.cursor().visible && (m_cursorClock.elapsed() / 500) % 2 == 0
-        && m_scrollOffset == verticalScrollBar()->maximum()) {
-        const TerminalScreenModel::Cursor cursor = m_screen.cursor();
-        const int cursorVisualRow = m_screen.scrollback().size() + cursor.row;
-        const int visibleCursorRow = cursorVisualRow - firstRow;
-        if (visibleCursorRow >= 0 && visibleCursorRow < visibleRows) {
-            painter.fillRect(QRect(cursor.column * m_cellSize.width(),
-                                   visibleCursorRow * m_cellSize.height(),
-                                   qMax(2, m_cellSize.width() / 7), m_cellSize.height()),
+        // Build the shaped/bidi-aware row string plus per-cell format ranges.
+        QString rowText;
+        rowText.reserve(m_screen.columns());
+        QVector<QTextLayout::FormatRange> formats;
+        formats.reserve(m_screen.columns());
+
+        for (int column = 0; column < m_screen.columns(); ++column) {
+            const auto& cell = cells.at(column);
+            const int start = rowText.size();
+            rowText += cell.text.isEmpty() ? QStringLiteral(" ") : cell.text;
+            const int length = rowText.size() - start;
+            if (length <= 0) {
+                continue;
+            }
+
+            QColor foreground = cell.attributes.foreground.isValid()
+                                    ? cell.attributes.foreground : defaultForeground();
+            QColor background = cell.attributes.background.isValid()
+                                    ? cell.attributes.background : defaultBackground();
+            if (cell.attributes.inverse) {
+                std::swap(background, foreground);
+            }
+
+            QTextCharFormat format;
+            format.setForeground(foreground);
+            if (cell.attributes.bold) {
+                format.setFontWeight(QFont::Bold);
+            }
+            if (cell.attributes.underline) {
+                format.setFontUnderline(true);
+            }
+            formats.append(QTextLayout::FormatRange{start, length, format});
+        }
+
+        if (rowText.isEmpty()) {
+            continue;
+        }
+
+        // Lay the whole row out once so Qt shapes Arabic and applies bidi.
+        QTextLayout layout(rowText, m_terminalFont);
+        layout.setTextOption(rowOption);
+        layout.beginLayout();
+        QTextLine line = layout.createLine();
+        if (line.isValid()) {
+            line.setLineWidth(m_screen.columns() * m_cellSize.width());
+            const qreal rowY = (row - firstRow) * m_cellSize.height();
+            const qreal padY = qMax<qreal>(0.0, (m_cellSize.height() - line.height()) / 2.0);
+            line.setPosition(QPointF(0, rowY + padY));
+        }
+        layout.endLayout();
+        layout.draw(&painter, QPointF(0, 0), formats);
+
+        // Cursor — resolve visual x via the shaped layout, not the raw column.
+        if (row == cursorVisualRow && cursorColumn >= 0 && line.isValid()) {
+            const qreal cursorX = line.cursorToX(cursorColumn, QTextLine::Leading);
+            const qreal rowY = (row - firstRow) * m_cellSize.height();
+            const qreal padY = qMax<qreal>(0.0, (m_cellSize.height() - line.height()) / 2.0);
+            painter.fillRect(QRectF(cursorX, rowY + padY,
+                                    qMax(2, m_cellSize.width() / 7),
+                                    m_cellSize.height()),
                              QColor(QStringLiteral("#DEE8FF")));
         }
     }
