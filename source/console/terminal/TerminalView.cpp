@@ -5,26 +5,22 @@
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
+#include <QTextCharFormat>
 #include <QTextLayout>
 #include <QTextOption>
 
-namespace {
-
-bool isSpecialKey(const int key)
-{
-    return key >= Qt::Key_Escape && key <= Qt::Key_F35;
-}
-
-} // namespace
+#include <utility>
 
 TerminalView::TerminalView(QWidget* const parent)
     : QAbstractScrollArea(parent)
     , m_screen(80, 24)
     , m_parser(m_screen)
     , m_resizeDebounce(this)
+    , m_updateTimer(this)
 {
     setObjectName(QStringLiteral("NativeTerminalView"));
     setAccessibleName(QStringLiteral("عرض الطرفية الأصلية"));
@@ -46,10 +42,19 @@ TerminalView::TerminalView(QWidget* const parent)
     connect(&m_resizeDebounce, &QTimer::timeout, this, [this]() {
         emit gridSizeChanged(gridSize());
     });
-    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](const int value) {
-        m_scrollOffset = value;
+
+    m_updateTimer.setSingleShot(true);
+    m_updateTimer.setInterval(16);
+    connect(&m_updateTimer, &QTimer::timeout, this, [this]() {
+        m_updatePending = false;
         viewport()->update();
     });
+
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](const int value) {
+        m_scrollOffset = value;
+        scheduleViewportUpdate();
+    });
+
     m_cursorClock.start();
     recalculateGrid();
 }
@@ -63,7 +68,7 @@ void TerminalView::appendOutput(const QByteArray& bytes)
     if (previousTitle != m_screen.title()) {
         emit terminalTitleChanged(m_screen.title());
     }
-    viewport()->update();
+    scheduleViewportUpdate();
 }
 
 void TerminalView::clearTerminal()
@@ -72,7 +77,7 @@ void TerminalView::clearTerminal()
     m_selectionAnchor = {};
     m_selectionExtent = {};
     updateScrollBar(true);
-    viewport()->update();
+    scheduleViewportUpdate();
 }
 
 TerminalScreenModel& TerminalView::screen() { return m_screen; }
@@ -81,20 +86,28 @@ QSize TerminalView::gridSize() const { return QSize(m_screen.columns(), m_screen
 
 QString TerminalView::selectedText() const
 {
-    if (m_selectionAnchor.row < 0 || m_selectionExtent.row < 0) {
+    if (!hasSelection()) {
         return {};
     }
-    const int begin = qMin(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
-                           m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column);
-    const int end = qMax(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
-                         m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column);
+
+    const int columns = m_screen.columns();
+    const int begin = qMin(m_selectionAnchor.row * columns + m_selectionAnchor.column,
+                           m_selectionExtent.row * columns + m_selectionExtent.column);
+    const int end = qMax(m_selectionAnchor.row * columns + m_selectionAnchor.column,
+                         m_selectionExtent.row * columns + m_selectionExtent.column);
+    const int totalRows = visualRowCount();
+    const int lastRow = end / columns;
+
     QString result;
+    result.reserve((end - begin + 1) * 2);
+
     for (int index = begin; index <= end; ++index) {
-        const int row = index / m_screen.columns();
-        const int column = index % m_screen.columns();
-        if (row >= 0 && row < visualRowCount()) {
-            result += visualRowAt(row).at(column).text;
-            if (column == m_screen.columns() - 1 && row != end / m_screen.columns()) {
+        const int row = index / columns;
+        const int column = index % columns;
+        if (row >= 0 && row < totalRows) {
+            const auto& cell = visualRowAt(row).at(column);
+            result += cell.text.isEmpty() ? QLatin1Char(' ') : cell.text;
+            if (column == columns - 1 && row != lastRow) {
                 result += QLatin1Char('\n');
             }
         }
@@ -122,31 +135,39 @@ bool TerminalView::viewportEvent(QEvent* const event)
 void TerminalView::paintEvent(QPaintEvent* const event)
 {
     Q_UNUSED(event);
+
     QPainter painter(viewport());
-    painter.fillRect(viewport()->rect(), defaultBackground());
+    const QColor bgDefault = defaultBackground();
+    const QColor fgDefault = defaultForeground();
+
+    painter.fillRect(viewport()->rect(), bgDefault);
     painter.setFont(m_terminalFont);
     painter.setRenderHint(QPainter::TextAntialiasing, true);
 
+    const int columns = m_screen.columns();
+    const int cellWidth = m_cellSize.width();
+    const int cellHeight = m_cellSize.height();
     const int totalRows = visualRowCount();
     const int visibleRows = visibleRowCount();
     const int firstRow = qBound(0, m_scrollOffset, qMax(0, totalRows - visibleRows));
     const int lastRow = qMin(totalRows, firstRow + visibleRows);
 
-    const bool hasSelection = m_selectionAnchor.row >= 0 && m_selectionExtent.row >= 0;
-    const int selectionStart = hasSelection
-                                   ? qMin(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
-                                          m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column)
+    const bool hasSel = hasSelection();
+    const int selectionStart = hasSel
+                                   ? qMin(m_selectionAnchor.row * columns + m_selectionAnchor.column,
+                                          m_selectionExtent.row * columns + m_selectionExtent.column)
                                    : -1;
-    const int selectionEnd = hasSelection
-                                 ? qMax(m_selectionAnchor.row * m_screen.columns() + m_selectionAnchor.column,
-                                        m_selectionExtent.row * m_screen.columns() + m_selectionExtent.column)
+    const int selectionEnd = hasSel
+                                 ? qMax(m_selectionAnchor.row * columns + m_selectionAnchor.column,
+                                        m_selectionExtent.row * columns + m_selectionExtent.column)
                                  : -1;
 
     const bool cursorVisible = m_hasFocus && m_screen.cursor().visible
                                && (m_cursorClock.elapsed() / 500) % 2 == 0
                                && m_scrollOffset == verticalScrollBar()->maximum();
+
     const int cursorVisualRow = cursorVisible
-                                    ? m_screen.scrollback().size() + m_screen.cursor().row
+                                    ? static_cast<int>(m_screen.scrollback().size()) + m_screen.cursor().row
                                     : -1;
     const int cursorColumn = cursorVisible ? m_screen.cursor().column : -1;
 
@@ -156,92 +177,145 @@ void TerminalView::paintEvent(QPaintEvent* const event)
     rowOption.setAlignment(Qt::AlignRight);
     rowOption.setUseDesignMetrics(true);
 
+    const QColor selectionColor(QStringLiteral("#294b78"));
+
     for (int row = firstRow; row < lastRow; ++row) {
         const auto& cells = visualRowAt(row);
+        const qreal rowY = (row - firstRow) * cellHeight;
 
-        // Per-cell backgrounds + selection highlight (unchanged look).
-        for (int column = 0; column < m_screen.columns(); ++column) {
-            const auto& cell = cells.at(column);
-            const QRect cellRect(column * m_cellSize.width(),
-                                 (row - firstRow) * m_cellSize.height(),
-                                 m_cellSize.width(), m_cellSize.height());
-            const int linearIndex = row * m_screen.columns() + column;
-            const bool selected = hasSelection
-                                  && linearIndex >= selectionStart && linearIndex <= selectionEnd;
-
-            QColor background = cell.attributes.background.isValid()
-                                    ? cell.attributes.background : defaultBackground();
-            QColor foreground = cell.attributes.foreground.isValid()
-                                    ? cell.attributes.foreground : defaultForeground();
+        // Backgrounds with run-length merging.
+        auto backgroundColor = [&](const int column) -> QColor {
+            const auto& cell = cells[column];
+            QColor bg = cell.attributes.background.isValid()
+                            ? cell.attributes.background
+                            : bgDefault;
             if (cell.attributes.inverse) {
-                std::swap(background, foreground);
+                const QColor fg = cell.attributes.foreground.isValid()
+                ? cell.attributes.foreground
+                : fgDefault;
+                bg = fg;
             }
-            if (selected) {
-                background = QColor(QStringLiteral("#294b78"));
+            if (hasSel) {
+                const int linearIndex = row * columns + column;
+                if (linearIndex >= selectionStart && linearIndex <= selectionEnd) {
+                    bg = selectionColor;
+                }
             }
-            painter.fillRect(cellRect, background);
+            return bg;
+        };
+
+        int runStart = 0;
+        QColor runColor = backgroundColor(0);
+
+        for (int column = 1; column < columns; ++column) {
+            const QColor bg = backgroundColor(column);
+            if (bg != runColor) {
+                if (runColor != bgDefault) {
+                    painter.fillRect(QRectF(runStart * cellWidth, rowY,
+                                            (column - runStart) * cellWidth, cellHeight),
+                                     runColor);
+                }
+                runStart = column;
+                runColor = bg;
+            }
         }
 
-        // Build the shaped/bidi-aware row string plus per-cell format ranges.
-        QString rowText;
-        rowText.reserve(m_screen.columns());
-        QVector<QTextLayout::FormatRange> formats;
-        formats.reserve(m_screen.columns());
+        if (runColor != bgDefault) {
+            painter.fillRect(QRectF(runStart * cellWidth, rowY,
+                                    (columns - runStart) * cellWidth, cellHeight),
+                             runColor);
+        }
 
-        for (int column = 0; column < m_screen.columns(); ++column) {
-            const auto& cell = cells.at(column);
+        // Build row text and merged formats.
+        QString rowText;
+        rowText.reserve(columns);
+
+        QVector<QTextLayout::FormatRange> formats;
+        formats.reserve(columns);
+
+        QTextCharFormat currentFormat;
+        int currentFormatStart = 0;
+        int currentFormatLength = 0;
+        bool hasFormat = false;
+
+        for (int column = 0; column < columns; ++column) {
+            const auto& cell = cells[column];
             const int start = rowText.size();
-            rowText += cell.text.isEmpty() ? QStringLiteral(" ") : cell.text;
+            rowText += cell.text.isEmpty() ? QLatin1Char(' ') : cell.text;
             const int length = rowText.size() - start;
             if (length <= 0) {
                 continue;
             }
 
-            QColor foreground = cell.attributes.foreground.isValid()
-                                    ? cell.attributes.foreground : defaultForeground();
-            QColor background = cell.attributes.background.isValid()
-                                    ? cell.attributes.background : defaultBackground();
+            QColor fg = cell.attributes.foreground.isValid()
+                            ? cell.attributes.foreground
+                            : fgDefault;
+            QColor bg = cell.attributes.background.isValid()
+                            ? cell.attributes.background
+                            : bgDefault;
             if (cell.attributes.inverse) {
-                std::swap(background, foreground);
+                std::swap(fg, bg);
             }
 
             QTextCharFormat format;
-            format.setForeground(foreground);
+            format.setForeground(fg);
             if (cell.attributes.bold) {
                 format.setFontWeight(QFont::Bold);
             }
             if (cell.attributes.underline) {
                 format.setFontUnderline(true);
             }
-            formats.append(QTextLayout::FormatRange{start, length, format});
+
+            if (!hasFormat) {
+                currentFormat = format;
+                currentFormatStart = start;
+                currentFormatLength = length;
+                hasFormat = true;
+            } else if (format == currentFormat) {
+                currentFormatLength += length;
+            } else {
+                formats.append(QTextLayout::FormatRange{currentFormatStart, currentFormatLength, currentFormat});
+                currentFormat = format;
+                currentFormatStart = start;
+                currentFormatLength = length;
+            }
+        }
+
+        if (hasFormat) {
+            formats.append(QTextLayout::FormatRange{currentFormatStart, currentFormatLength, currentFormat});
         }
 
         if (rowText.isEmpty()) {
             continue;
         }
 
-        // Lay the whole row out once so Qt shapes Arabic and applies bidi.
         QTextLayout layout(rowText, m_terminalFont);
         layout.setTextOption(rowOption);
         layout.beginLayout();
+
         QTextLine line = layout.createLine();
         if (line.isValid()) {
-            line.setLineWidth(m_screen.columns() * m_cellSize.width());
-            const qreal rowY = (row - firstRow) * m_cellSize.height();
-            const qreal padY = qMax<qreal>(0.0, (m_cellSize.height() - line.height()) / 2.0);
+            line.setLineWidth(columns * cellWidth);
+            const qreal padY = qMax<qreal>(0.0, (cellHeight - line.height()) / 2.0);
             line.setPosition(QPointF(0, rowY + padY));
         }
         layout.endLayout();
         layout.draw(&painter, QPointF(0, 0), formats);
 
-        // Cursor — resolve visual x via the shaped layout, not the raw column.
+        // Cursor
         if (row == cursorVisualRow && cursorColumn >= 0 && line.isValid()) {
-            const qreal cursorX = line.cursorToX(cursorColumn, QTextLine::Leading);
-            const qreal rowY = (row - firstRow) * m_cellSize.height();
-            const qreal padY = qMax<qreal>(0.0, (m_cellSize.height() - line.height()) / 2.0);
+            int cursorTextIndex = 0;
+            for (int column = 0; column < cursorColumn && column < columns; ++column) {
+                const auto& cell = cells[column];
+                cursorTextIndex += cell.text.isEmpty() ? 1 : cell.text.size();
+            }
+
+            const qreal cursorX = line.cursorToX(cursorTextIndex, QTextLine::Leading);
+            const qreal padY = qMax<qreal>(0.0, (cellHeight - line.height()) / 2.0);
+
             painter.fillRect(QRectF(cursorX, rowY + padY,
-                                    qMax(2, m_cellSize.width() / 7),
-                                    m_cellSize.height()),
+                                    qMax(2, cellWidth / 7),
+                                    cellHeight),
                              QColor(QStringLiteral("#DEE8FF")));
         }
     }
@@ -255,21 +329,30 @@ void TerminalView::resizeEvent(QResizeEvent* const event)
 
 void TerminalView::keyPressEvent(QKeyEvent* const event)
 {
-    if (event->matches(QKeySequence::Copy) || (event->key() == Qt::Key_C
-        && (event->modifiers() & Qt::ControlModifier) && !selectedText().isEmpty())) {
+    const auto modifiers = event->modifiers();
+
+    if (event->matches(QKeySequence::Copy)
+        || (event->key() == Qt::Key_C
+            && (modifiers & Qt::ControlModifier)
+            && (modifiers & Qt::ShiftModifier))) {
         copySelectionToClipboard();
         event->accept();
         return;
     }
-    if ((event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier))
-        || (event->key() == Qt::Key_C && (event->modifiers() & Qt::ControlModifier)
-            && (event->modifiers() & Qt::ShiftModifier))) {
-        emit terminalInput(QByteArray(1, '\x03'));
+
+    if (event->key() == Qt::Key_C && (modifiers & Qt::ControlModifier)) {
+        if (hasSelection()) {
+            copySelectionToClipboard();
+        } else {
+            emit terminalInput(QByteArray(1, '\x03'));
+        }
         event->accept();
         return;
     }
-    if ((event->key() == Qt::Key_V && (event->modifiers() & Qt::ControlModifier)
-         && (event->modifiers() & Qt::ShiftModifier))) {
+
+    if (event->key() == Qt::Key_V
+        && (modifiers & Qt::ControlModifier)
+        && (modifiers & Qt::ShiftModifier)) {
         emit terminalInput(QApplication::clipboard()->text().toUtf8());
         event->accept();
         return;
@@ -281,6 +364,7 @@ void TerminalView::keyPressEvent(QKeyEvent* const event)
         event->accept();
         return;
     }
+
     QAbstractScrollArea::keyPressEvent(event);
 }
 
@@ -321,36 +405,49 @@ void TerminalView::focusInEvent(QFocusEvent* const event)
 {
     m_hasFocus = true;
     QAbstractScrollArea::focusInEvent(event);
-    viewport()->update();
+    scheduleViewportUpdate();
 }
 
 void TerminalView::focusOutEvent(QFocusEvent* const event)
 {
     m_hasFocus = false;
     QAbstractScrollArea::focusOutEvent(event);
-    viewport()->update();
+    scheduleViewportUpdate();
 }
 
 void TerminalView::recalculateGrid()
 {
     const int columns = qMax(2, viewport()->width() / m_cellSize.width());
     const int rows = qMax(1, viewport()->height() / m_cellSize.height());
+
     if (columns != m_screen.columns() || rows != m_screen.rows()) {
         const bool followTail = verticalScrollBar()->value() == verticalScrollBar()->maximum();
         m_screen.resize(columns, rows);
         updateScrollBar(followTail);
         m_resizeDebounce.start();
-        viewport()->update();
+        scheduleViewportUpdate();
     }
 }
 
 void TerminalView::updateScrollBar(const bool followTail)
 {
     const int maximum = qMax(0, visualRowCount() - visibleRowCount());
-    verticalScrollBar()->setPageStep(visibleRowCount());
-    verticalScrollBar()->setRange(0, maximum);
+    const int pageStep = visibleRowCount();
+
+    if (verticalScrollBar()->pageStep() != pageStep) {
+        verticalScrollBar()->setPageStep(pageStep);
+    }
+
+    if (verticalScrollBar()->minimum() != 0 || verticalScrollBar()->maximum() != maximum) {
+        verticalScrollBar()->setRange(0, maximum);
+    }
+
     if (followTail) {
+        m_scrollOffset = maximum;
         verticalScrollBar()->setValue(maximum);
+    } else {
+        m_scrollOffset = qBound(0, m_scrollOffset, maximum);
+        verticalScrollBar()->setValue(m_scrollOffset);
     }
 }
 
@@ -361,16 +458,18 @@ int TerminalView::visibleRowCount() const
 
 int TerminalView::visualRowCount() const
 {
-    return m_screen.scrollback().size() + m_screen.grid().size();
+    return static_cast<int>(m_screen.scrollback().size() + m_screen.grid().size());
 }
 
 const QVector<TerminalScreenModel::Cell>& TerminalView::visualRowAt(const int visualRow) const
 {
     const auto& scrollback = m_screen.scrollback();
-    if (visualRow < scrollback.size()) {
+    const int scrollbackSize = static_cast<int>(scrollback.size());
+
+    if (visualRow < scrollbackSize) {
         return scrollback.at(visualRow);
     }
-    return m_screen.grid().at(visualRow - scrollback.size());
+    return m_screen.grid().at(visualRow - scrollbackSize);
 }
 
 void TerminalView::updateSelection(const CellPoint point, const bool extend)
@@ -382,13 +481,14 @@ void TerminalView::updateSelection(const CellPoint point, const bool extend)
         m_selectionAnchor = point;
     }
     m_selectionExtent = point;
-    viewport()->update();
+    scheduleViewportUpdate();
 }
 
 TerminalView::CellPoint TerminalView::cellAt(const QPoint& point) const
 {
     const int row = m_scrollOffset + (point.y() / m_cellSize.height());
     const int column = point.x() / m_cellSize.width();
+
     if (row < 0 || row >= visualRowCount() || column < 0 || column >= m_screen.columns()) {
         return {};
     }
@@ -398,6 +498,7 @@ TerminalView::CellPoint TerminalView::cellAt(const QPoint& point) const
 QByteArray TerminalView::encodeKey(const QKeyEvent* const event) const
 {
     const Qt::KeyboardModifiers modifiers = event->modifiers();
+
     if (!event->text().isEmpty() && !(modifiers & (Qt::AltModifier | Qt::MetaModifier))) {
         if (modifiers & Qt::ControlModifier && event->text().size() == 1) {
             const ushort value = event->text().at(0).toUpper().unicode();
@@ -440,5 +541,28 @@ void TerminalView::copySelectionToClipboard() const
     }
 }
 
-QColor TerminalView::defaultForeground() const { return QColor(QStringLiteral("#DEE8FF")); }
-QColor TerminalView::defaultBackground() const { return QColor(QStringLiteral("#03091A")); }
+bool TerminalView::hasSelection() const
+{
+    return m_selectionAnchor.row >= 0 && m_selectionExtent.row >= 0;
+}
+
+void TerminalView::scheduleViewportUpdate()
+{
+    if (m_updatePending) {
+        return;
+    }
+    m_updatePending = true;
+    m_updateTimer.start();
+}
+
+const QColor& TerminalView::defaultForeground()
+{
+    static const QColor color(QStringLiteral("#DEE8FF"));
+    return color;
+}
+
+const QColor& TerminalView::defaultBackground()
+{
+    static const QColor color(QStringLiteral("#03091A"));
+    return color;
+}

@@ -4,7 +4,9 @@
 #include "VtStreamParser.h"
 
 #include <QAbstractScrollArea>
+#include <QColor>
 #include <QElapsedTimer>
+#include <QFont>
 #include <QTimer>
 
 /** LTR cell-grid terminal viewport, independent from the surrounding RTL UI. */
@@ -48,8 +50,11 @@ private:
     [[nodiscard]] CellPoint cellAt(const QPoint& point) const;
     [[nodiscard]] QByteArray encodeKey(const QKeyEvent* event) const;
     void copySelectionToClipboard() const;
-    [[nodiscard]] QColor defaultForeground() const;
-    [[nodiscard]] QColor defaultBackground() const;
+    [[nodiscard]] bool hasSelection() const;
+    void scheduleViewportUpdate();
+
+    [[nodiscard]] static const QColor& defaultForeground();
+    [[nodiscard]] static const QColor& defaultBackground();
 
     TerminalScreenModel m_screen;
     VtStreamParser m_parser;
@@ -61,5 +66,7 @@ private:
     bool m_selecting = false;
     bool m_hasFocus = false;
     QTimer m_resizeDebounce;
+    QTimer m_updateTimer;
+    bool m_updatePending = false;
     QElapsedTimer m_cursorClock;
 };
