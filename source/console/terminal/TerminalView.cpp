@@ -1036,7 +1036,18 @@ bool TerminalView::focusNextPrevChild(bool next)
 
 bool TerminalView::hasSelection() const
 {
-    return m_selectionAnchor.row >= 0 && m_selectionExtent.row >= 0;
+    if (m_selectionAnchor.row < 0 || m_selectionExtent.row < 0) {
+        return false;
+    }
+    // A plain click leaves anchor == extent on a single cell. That is cursor
+    // placement, not copied content — treat it as "no selection" so that Ctrl+C
+    // can reach the running program instead of copying an empty range.
+    const int columns = m_screen.columns();
+    if (m_selectionAnchor.row * columns + m_selectionAnchor.column
+        == m_selectionExtent.row * columns + m_selectionExtent.column) {
+        return false;
+    }
+    return true;
 }
 
 void TerminalView::clearSelection()
