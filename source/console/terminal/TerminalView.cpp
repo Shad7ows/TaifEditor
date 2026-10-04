@@ -499,12 +499,25 @@ void TerminalView::recalculateGrid()
     const int columns = qMax(2, viewport()->width()  / m_cellSize.width());
     const int rows    = qMax(1, viewport()->height() / m_cellSize.height());
 
-    if (columns != m_screen.columns() || rows != m_screen.rows()) {
+    if (columns != m_screen.columns()) {
         const bool followTail =
             verticalScrollBar()->value() == verticalScrollBar()->maximum();
-        m_screen.resize(columns, rows);
+        // Resize columns only.  A vertical widget resize must not resize the
+        // terminal model: TerminalScreenModel::resize() moves rows into
+        // scrollback or appends blank rows, which makes the viewport churn.
+        // Changing the width is still required so subsequent terminal output
+        // wraps at the new right edge.
+        m_screen.resize(columns, m_screen.rows());
         updateScrollBar(followTail);
         m_resizeDebounce.start();
+        scheduleViewportUpdate();
+    } else if (rows != m_screen.rows()) {
+        // The viewport height changed, but the terminal rows remain stable.
+        // Only update the view's scrollbar/page geometry; do not notify the
+        // PTY or regenerate screen rows.
+        const bool followTail =
+            verticalScrollBar()->value() == verticalScrollBar()->maximum();
+        updateScrollBar(followTail);
         scheduleViewportUpdate();
     }
 }
