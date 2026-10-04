@@ -154,7 +154,7 @@ bool WindowsConPtyBackend::start(const StartRequest& request, QString* const err
     const std::wstring workingDirectory = request.workingDirectory.isEmpty()
         ? QDir::currentPath().toStdWString()
         : request.workingDirectory.toStdWString();
-    const DWORD flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_PROCESS_GROUP;
+    const DWORD flags = EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT;
     if (!CreateProcessW(nullptr, mutableCommand.data(), nullptr, nullptr, FALSE, flags,
                         nullptr, workingDirectory.c_str(), &startup.StartupInfo, &process)) {
         if (errorMessage) {
