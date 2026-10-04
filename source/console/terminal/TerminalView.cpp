@@ -380,11 +380,12 @@ void TerminalView::paintEvent(QPaintEvent* const event)
     for (int visualRow = firstVisual; visualRow < lastVisual; ++visualRow) {
         const int actualRow = visualRow + skip;
         const auto& cells = rowAt(actualRow);
+        const TerminalScreenModel::Cell blankCell;
         const qreal rowY = (visualRow - firstVisual) * cellHeight;
 
         // Resolve every cell's effective style up front.
         for (int column = 0; column < columns; ++column) {
-            const auto& cell = cells[column];
+            const auto& cell = column < cells.size() ? cells[column] : blankCell;
             QColor fg = cell.attributes.foreground.isValid()
                             ? cell.attributes.foreground : fgDefault;
             QColor bg = cell.attributes.background.isValid()
@@ -393,13 +394,8 @@ void TerminalView::paintEvent(QPaintEvent* const event)
 
             const int linear = actualRow * columns + column;
             const bool selected = hasSel && linear >= selStart && linear <= selEnd;
-            const bool cursorHere = (visualRow == cursorVisualRow && column == cursorColumn);
 
             if (selected) bg = selectionColor;
-            if (cursorHere) {
-                std::swap(fg, bg);
-                bg = cursorBackground;
-            }
             styles[column] = { fg, bg,
                               cell.attributes.bold,
                               cell.attributes.underline };
@@ -475,6 +471,13 @@ void TerminalView::paintEvent(QPaintEvent* const event)
             line.setLineWidth(columns * cellWidth);
             const qreal padY = qMax<qreal>(0.0, (cellHeight - line.height()) / 2.0);
             line.setPosition(QPointF(0, rowY + padY));
+
+            if (visualRow == cursorVisualRow && cursorColumn >= 0) {
+                const int cursorPosition = qBound(0, cursorColumn, rowText.size());
+                const qreal cursorX = line.cursorToX(cursorPosition);
+                painter.fillRect(QRectF(cursorX, rowY,
+                                        cellWidth, cellHeight), cursorBackground);
+            }
         }
         layout.endLayout();
         layout.draw(&painter, QPointF(0, 0), formats);
