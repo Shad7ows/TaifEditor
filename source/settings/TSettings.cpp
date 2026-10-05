@@ -412,7 +412,7 @@ void TSettings::createIntelligencePage(QVBoxLayout* const layout) {
 
     automaticCompletionCheck = new QCheckBox(QStringLiteral("إظهار الإكمال التلقائي"), intelligenceGroup);
     hoverInformationCheck = new QCheckBox(QStringLiteral("إظهار معلومات الاسم عند المرور"), intelligenceGroup);
-    inlineDiagnosticsCheck = new QCheckBox(QStringLiteral("إظهار التشخيصات داخل المحرر"), intelligenceGroup);
+    inlineDiagnosticsCheck = new QCheckBox(QStringLiteral("إظهار تشخيص المشكلات داخل المحرر"), intelligenceGroup);
 
     intelligenceLayout->addLayout(formLayout);
     intelligenceLayout->addWidget(automaticCompletionCheck);

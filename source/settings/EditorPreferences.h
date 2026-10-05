@@ -21,7 +21,7 @@ struct EditorPreferences final {
     bool automaticCompletionEnabled = true;
     bool hoverInformationEnabled = true;
     int hoverDelayMilliseconds = 350;
-    bool inlineDiagnosticsVisible = true;
+    bool inlineDiagnosticsVisible = false;
     int recentFilesLimit = 10;
 
     [[nodiscard]] bool operator==(const EditorPreferences& other) const;
