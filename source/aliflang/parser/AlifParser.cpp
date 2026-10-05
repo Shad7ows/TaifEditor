@@ -833,6 +833,29 @@ private:
                           start, m_mainPosition, {}, {left.ast}, {left.syntax});
     }
 
+    /// Parses a single `لكل <target> في <iterable>` comprehension clause and
+    /// folds it into the given element expression, producing a
+    /// ComprehensionExpression node.  Multiple clauses are supported by
+    /// calling this method repeatedly from the caller loop.
+    [[nodiscard]] ParsedNode parseComprehensionClause(const ParsedNode& element) {
+        const qsizetype clauseStart = startFor(element);
+        consume(); //لكل
+        QVector<AstNodeId> children {element.ast};
+        QVector<SyntaxNodeId> syntaxChildren {element.syntax};
+        const ParsedNode target = parseBindingTarget();
+        expect(TokenKind::KwIn, QStringLiteral("في حاوية ضمنية"), &syntaxChildren);
+        // The iterable in a comprehension clause is itself an expression that
+        // may contain further nested comprehensions.
+        const ParsedNode iterable = parseExpression(0, true);
+        children.append(target.ast);
+        children.append(iterable.ast);
+        syntaxChildren.append({target.syntax, iterable.syntax});
+        return makeParsed(AstNodeKind::ComprehensionExpression,
+                          SyntaxKind::ComprehensionExpression,
+                          clauseStart, m_mainPosition, {}, children, syntaxChildren,
+                          {AstChildRole::Element, AstChildRole::Target, AstChildRole::Iterable});
+    }
+
     [[nodiscard]] ParsedNode parseExpression(const int minimumBindingPower = 0,
                                              const bool allowBraceLessTuple = true) {
 
@@ -866,6 +889,10 @@ private:
             left = makeParsed(AstNodeKind::BinaryExpression, SyntaxKind::BinaryExpression,
                               startFor(left), m_mainPosition, operatorText,
                               {left.ast, right.ast}, {left.syntax, right.syntax});
+        }
+
+        while (at(TokenKind::KwFor)) {
+            left = parseComprehensionClause(left);
         }
 
         if (at(TokenKind::KwIf)) {
