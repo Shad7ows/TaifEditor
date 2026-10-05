@@ -301,8 +301,13 @@ void Taif::setupUI() {
     if (terminalDock && alifOutputDock) {
         DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, alifOutputDock);
         DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, terminalDock);
-        terminalDock->hide();
+        DockableConsoleToolFactory::ensureTabifiedWith(this, diagnosticsDock, diagnosticsDock);
+
+        diagnosticsDock->hide();
         alifOutputDock->hide();
+        // Use showAndRaiseDock (not .show()) so the native shell is
+        // actually started via DockableConsoleToolFactory::startCmd().
+        showAndRaiseDock(terminalDock);
     }
 
     editorStatusBar = new TStatusBar(statusBar());
@@ -395,8 +400,18 @@ void Taif::setupConnections() {
             [this]() { showAndRaiseDock(alifOutputDock); });
     connect(menuBar, &TMenuBar::showTerminalRequested, this,
             [this]() { showAndRaiseDock(terminalDock); });
-    connect(menuBar, &TMenuBar::showProblemsRequested, this,
-            [this]() { showAndRaiseDock(diagnosticsDock); });
+    connect(menuBar, &TMenuBar::showProblemsRequested, this, [this]() {
+        QMessageBox msgBox = QMessageBox(this);
+        msgBox.setWindowTitle(QStringLiteral("تحذير"));
+        msgBox.setText(QStringLiteral(" هذا النظام تحت التطوير وهو غير مكتمل بعد \n"
+                                      "وقد يظهر رسائل خطأ غير صحيحة او مضللة لذلك "
+                                      "يرجى إستخدامه بحذر"));
+        msgBox.addButton(QStringLiteral("موافق"), QMessageBox::AcceptRole);
+        msgBox.setStyleSheet("background: #0f172a; color: #f1f5f9");
+        msgBox.exec();
+
+        showAndRaiseDock(diagnosticsDock);
+    });
 
     const auto scheduleBottomToolActionStateSync = [this](const bool) {
         QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);

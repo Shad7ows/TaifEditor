@@ -26,7 +26,7 @@
 
 TerminalView::TerminalView(QWidget* const parent)
     : QAbstractScrollArea(parent)
-    , m_screen(80, 6)
+    , m_screen(80, 9)
     , m_parser(m_screen)
     , m_resizeDebounce(this)
     , m_updateTimer(this)
