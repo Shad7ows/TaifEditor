@@ -407,7 +407,7 @@ void Taif::setupConnections() {
                                       "وقد يظهر رسائل خطأ غير صحيحة او مضللة لذلك "
                                       "يرجى إستخدامه بحذر"));
         msgBox.addButton(QStringLiteral("موافق"), QMessageBox::AcceptRole);
-        msgBox.setStyleSheet("QMessageBox {background: #0f172a; color: #f1f5f9;} QLabel {min-height: 100px;}");
+        msgBox.setStyleSheet("QMessageBox {background: #0f172a; color: #f1f5f9;} QLabel {min-height: 90px; color: #f1f5f9;}");
         msgBox.exec();
 
         showAndRaiseDock(diagnosticsDock);
