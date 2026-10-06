@@ -139,6 +139,7 @@ private:
 
     void connectEditorDiagnostics(TEditor* editor);
     void refreshDiagnosticsPanel();
+    void showProblemsWithWarning();
     void showAndRaiseDock(QDockWidget* dock);
     void syncBottomToolActionState();
     void addWatch(const QString &filePath);

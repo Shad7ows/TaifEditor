@@ -313,7 +313,7 @@ void Taif::setupUI() {
     editorStatusBar = new TStatusBar(statusBar());
     statusBar()->addPermanentWidget(editorStatusBar, 1);
     connect(editorStatusBar, &TStatusBar::diagnosticsActivated, this,
-            [this]() { showAndRaiseDock(diagnosticsDock); });
+            &Taif::showProblemsWithWarning);
 }
 
 void Taif::connectSettingsSignals()
@@ -400,18 +400,8 @@ void Taif::setupConnections() {
             [this]() { showAndRaiseDock(alifOutputDock); });
     connect(menuBar, &TMenuBar::showTerminalRequested, this,
             [this]() { showAndRaiseDock(terminalDock); });
-    connect(menuBar, &TMenuBar::showProblemsRequested, this, [this]() {
-        QMessageBox msgBox = QMessageBox(this);
-        msgBox.setWindowTitle(QStringLiteral("تحذير"));
-        msgBox.setText(QStringLiteral(" هذا النظام تحت التطوير وهو غير مكتمل بعد \n"
-                                      "وقد يظهر رسائل خطأ غير صحيحة او مضللة لذلك "
-                                      "يرجى إستخدامه بحذر"));
-        msgBox.addButton(QStringLiteral("موافق"), QMessageBox::AcceptRole);
-        msgBox.setStyleSheet("QMessageBox {background: #0f172a; color: #f1f5f9;} QLabel {min-height: 90px; color: #f1f5f9;}");
-        msgBox.exec();
-
-        showAndRaiseDock(diagnosticsDock);
-    });
+    connect(menuBar, &TMenuBar::showProblemsRequested, this,
+            &Taif::showProblemsWithWarning);
 
     const auto scheduleBottomToolActionStateSync = [this](const bool) {
         QTimer::singleShot(0, this, &Taif::syncBottomToolActionState);
@@ -1176,6 +1166,23 @@ void Taif::syncBottomToolActionState()
         alifOutputDock != nullptr && alifOutputDock->isVisible(),
         terminalDock != nullptr && terminalDock->isVisible(),
         diagnosticsDock != nullptr && diagnosticsDock->isVisible());
+}
+
+void Taif::showProblemsWithWarning() { //* review
+    // The problems window is still under development and may report incorrect
+    // or misleading errors. Warn the user before opening it.
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(QStringLiteral("تحذير"));
+    msgBox.setText(QStringLiteral(" هذا النظام تحت التطوير وهو غير مكتمل بعد \n"
+                                  "وقد يظهر رسائل خطأ غير صحيحة او مضللة لذلك "
+                                  "يرجى إستخدامه بحذر"));
+    msgBox.addButton(QStringLiteral("موافق"), QMessageBox::AcceptRole);
+    msgBox.setStyleSheet(
+        QStringLiteral("QMessageBox {background: #0f172a; color: #f1f5f9;} "
+                       "QLabel {min-height: 90px; color: #f1f5f9;}"));
+    msgBox.exec();
+
+    showAndRaiseDock(diagnosticsDock);
 }
 
 void Taif::showAndRaiseDock(QDockWidget* const dock) {
