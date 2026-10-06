@@ -355,6 +355,7 @@ private:
         case TokenKind::KwFrom: return parseFromImportStatement();
         case TokenKind::KwDelete: return parseDeleteStatement();
         case TokenKind::KwReturn: return parseReturnStatement();
+        case TokenKind::KwYield: return parseYieldStatement();
         case TokenKind::KwBreak: return parseControlStatement(AstNodeKind::BreakStatement,
                                                                SyntaxKind::BreakStatement);
         case TokenKind::KwContinue: return parseControlStatement(AstNodeKind::ContinueStatement,
@@ -400,6 +401,24 @@ private:
             roles.append(AstChildRole::ReturnValue);
         }
         return makeParsed(AstNodeKind::ReturnStatement, SyntaxKind::ReturnStatement,
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
+    }
+
+    [[nodiscard]] ParsedNode parseYieldStatement() {
+        const qsizetype start = m_mainPosition;
+        consume(); // انتج
+        QVector<AstNodeId> children;
+        QVector<SyntaxNodeId> syntaxChildren;
+        if (!isStatementBoundary(current().kind)) {
+            const ParsedNode expression = parseExpression();
+            children.append(expression.ast);
+            syntaxChildren.append(expression.syntax);
+        }
+        QVector<AstChildRole> roles;
+        if (!children.isEmpty()) {
+            roles.append(AstChildRole::YieldedValue);
+        }
+        return makeParsed(AstNodeKind::YieldStatement, SyntaxKind::YieldStatement,
                           start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 

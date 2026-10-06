@@ -236,6 +236,7 @@ private:
             {QStringLiteral("نهاية"), TokenKind::KwFinally},
             {QStringLiteral("ارجع"), TokenKind::KwReturn},
             {QStringLiteral("استورد"), TokenKind::KwImport},
+            {QStringLiteral("انتج"), TokenKind::KwYield},
             {QStringLiteral("ك"), TokenKind::KwAs},
             {QStringLiteral("من"), TokenKind::KwFrom},
             {QStringLiteral("احذف"), TokenKind::KwDelete},
