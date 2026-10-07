@@ -13,11 +13,7 @@
         <!-- Add Taif to PATH in the user's shell config files.
              macOS has shipped with both bash (default until Catalina) and zsh
              (default since Catalina), so we target both ~/.bash_profile and
-             ~/.zshrc. The grep guard prevents duplicate entries on reinstall.
-             IMPORTANT: $PATH is intentionally NOT expanded here — it must be
-             evaluated by the user's own shell at terminal startup, otherwise
-             the installer's subshell would replace their full PATH with a
-             minimal one. -->
+             ~/.zshrc. The grep guard prevents duplicate entries on reinstall. -->
         <Operation name="Execute">
             <Argument>bash</Argument>
             <Argument>-c</Argument>
