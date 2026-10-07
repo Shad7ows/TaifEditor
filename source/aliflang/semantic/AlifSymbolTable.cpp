@@ -984,7 +984,13 @@ QVector<SymbolId> SemanticModel::visibleSymbolsAt(const qsizetype utf16Offset) c
     ScopeId innermost = m_moduleScope;
     qsizetype narrowestWidth = std::numeric_limits<qsizetype>::max();
     for (const Scope& candidate : m_scopes) {
-        if (candidate.kind == ScopeKind::Prelude || !containsOffset(candidate.range, utf16Offset)) {
+        // Completion is requested at the caret, which is commonly positioned
+        // exactly at the end of the current line/document. Treat that end as
+        // part of the owning scope so parameters remain visible while typing
+        // the first characters of a body expression.
+        const bool inScope = candidate.range.begin.offset <= utf16Offset
+                             && utf16Offset <= candidate.range.end.offset;
+        if (candidate.kind == ScopeKind::Prelude || !inScope) {
             continue;
         }
         const qsizetype width = rangeWidth(candidate.range);

@@ -58,6 +58,7 @@ private slots:
     void forTargetBindsAndResolvesInTheLoopBody();
     void classesExposeMethodsAndFieldsThroughConstructorInstances();
     void memberReferencesRemainExternalUntilTypeAnalysis();
+    void parametersRemainVisibleAtIncompleteBodyEnd();
     void editorQueriesReturnScopedDefinitionsAndReferences();
     void malformedParserInputStillBuildsAFiniteSemanticModel();
     void enclosingSymbolPathTracksNestedClassAndFunctionScopes();
@@ -178,6 +179,18 @@ void SymbolTableTest::memberReferencesRemainExternalUntilTypeAnalysis() {
         }
     }
     QVERIFY(foundMember);
+}
+
+void SymbolTableTest::parametersRemainVisibleAtIncompleteBodyEnd() {
+    const QString source = QStringLiteral("دالة تعبير(معاملات):\n\tمعا");
+    const SemanticFixture fixture = analyze(source);
+
+    const Symbol* parameter = findSymbol(*fixture.model, QStringLiteral("معاملات"),
+                                          SymbolKind::Parameter);
+    QVERIFY(parameter != nullptr);
+
+    const QVector<SymbolId> visible = fixture.model->visibleSymbolsAt(source.size());
+    QVERIFY(visible.contains(parameter->id));
 }
 
 void SymbolTableTest::editorQueriesReturnScopedDefinitionsAndReferences() {

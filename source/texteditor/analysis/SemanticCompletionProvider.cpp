@@ -46,10 +46,18 @@ QVector<CompletionItem> SemanticCompletionProvider::suggestions(
     }
 
     const QVector<SymbolId> visible = semantic->visibleSymbolsAt(cursorOffset);
+    const qsizetype currentTokenBegin = cursorOffset - prefix.size();
     items.reserve(visible.size());
     for (const SymbolId id : visible) {
         const Symbol* symbol = semantic->symbol(id);
         if (symbol == nullptr || !symbol->name.startsWith(prefix, Qt::CaseInsensitive)) {
+            continue;
+        }
+        // A declaration currently being typed is already visible in the
+        // incremental semantic snapshot. Do not offer that same incomplete
+        // token as a completion until the cursor has crossed its delimiter.
+        if (symbol->declarationRange.begin.offset == currentTokenBegin
+            && symbol->declarationRange.end.offset == cursorOffset) {
             continue;
         }
         if (moduleAndPreludeOnly && symbol->declaringScope != semantic->moduleScope()
