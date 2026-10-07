@@ -31,6 +31,7 @@ class TaifLexerTest final : public QObject {
 private slots:
     void emptyFileProducesEndOfFile();
     void statementSeparatorsAndKeywordAliases();
+    void decoratorsAreLexedWithoutDiagnostics();
     void layoutTriviaAndSourceRanges();
     void literalsAndLongestMatchOperators();
     void formattedStringsHaveStructuredTokens();
@@ -65,6 +66,16 @@ void TaifLexerTest::statementSeparatorsAndKeywordAliases() {
         TokenKind::KwNot, TokenKind::KwNull, TokenKind::Newline,
         TokenKind::EndOfFile
     });
+}
+
+void TaifLexerTest::decoratorsAreLexedWithoutDiagnostics() {
+    const LexResult result = TaifLexer().lex(QStringLiteral("@مميز\n"));
+
+    QCOMPARE(result.diagnostics.size(), 0);
+    compareKinds(result, {
+        TokenKind::Decorator, TokenKind::Newline, TokenKind::EndOfFile
+    });
+    QCOMPARE(result.tokens.constFirst().lexeme, QStringLiteral("@مميز"));
 }
 
 void TaifLexerTest::layoutTriviaAndSourceRanges() {

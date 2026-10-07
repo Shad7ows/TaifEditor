@@ -343,8 +343,28 @@ private:
         }
     }
 
+    [[nodiscard]] ParsedNode parseDecoratedStatement() {
+        const qsizetype start = m_mainPosition;
+
+        // Decorators are lexical prefixes. They are intentionally kept out of
+        // the AST for now; the declaration/expression that follows remains the
+        // semantic node while the lossless syntax tree still retains the
+        // decorator token emitted by the lexer.
+        while (at(TokenKind::Decorator)) {
+            consume();
+            skipStatementSeparators();
+        }
+
+        if (at(TokenKind::EndOfFile)) {
+            return makeParsed(AstNodeKind::ErrorStatement, SyntaxKind::ErrorNode,
+                              start, m_mainPosition);
+        }
+        return parseStatement();
+    }
+
     [[nodiscard]] ParsedNode parseStatement() {
         switch (current().kind) {
+        case TokenKind::Decorator: return parseDecoratedStatement();
         case TokenKind::KwFunction: return parseFunctionDeclaration();
         case TokenKind::KwClass: return parseClassDeclaration();
         case TokenKind::KwIf: return parseIfStatement();

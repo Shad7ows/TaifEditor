@@ -36,6 +36,7 @@ enum class TokenKind : quint16 {
     IntegerLiteral,
     FloatLiteral,
     StringLiteral,
+    Decorator,
     Whitespace,
     Comment,
 

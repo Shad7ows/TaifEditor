@@ -7,6 +7,7 @@ namespace {
 TokenType baseTokenTypeForPresentation(const PresentationClass classification) {
     switch (classification) {
     case PresentationClass::Keyword: return TokenType::Keyword;
+    case PresentationClass::Decorator: return TokenType::Decorator;
     case PresentationClass::Comment: return TokenType::Comment;
     case PresentationClass::String: return TokenType::String;
     case PresentationClass::Number: return TokenType::Number;

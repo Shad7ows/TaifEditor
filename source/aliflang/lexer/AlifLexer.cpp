@@ -368,6 +368,19 @@ private:
         appendToken(TokenKind::Invalid, TokenChannel::Main, start, startLocation);
     }
 
+    void scanDecorator() {
+        const qsizetype start = m_pos;
+        const SourceLocation startLocation = location();
+        advance(); // '@'
+
+        // Keep the decorator marker and its qualified name as one lexical
+        // token, matching the legacy highlighter and allowing Arabic names.
+        while (isIdentifierContinue(peek()) || peek() == QChar(u'.')) {
+            advance();
+        }
+        appendToken(TokenKind::Decorator, TokenChannel::Main, start, startLocation);
+    }
+
     void scanFStringText(const qsizetype start, const SourceLocation& startLocation) {
         if (m_pos > start) {
             appendToken(TokenKind::FStringText, TokenChannel::Main, start, startLocation);
@@ -653,6 +666,10 @@ private:
         }
         if (peek() == QChar(u'#')) {
             scanComment();
+            return;
+        }
+        if (peek() == QChar(u'@')) {
+            scanDecorator();
             return;
         }
         if (peek() == QChar(u'م') && (peek(1) == QChar(u'\'') || peek(1) == QChar(u'"'))) {

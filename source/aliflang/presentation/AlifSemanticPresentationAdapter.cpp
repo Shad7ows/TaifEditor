@@ -71,6 +71,8 @@ QVector<PresentationSpan> SemanticPresentationAdapter::classify(
         bool shouldEmit = true;
         if (token.kind == TokenKind::Comment) {
             classification = PresentationClass::Comment;
+        } else if (token.kind == TokenKind::Decorator) {
+            classification = PresentationClass::Decorator;
         } else if (isKeyword(token.kind)) {
             classification = PresentationClass::Keyword;
         } else if (isString(token.kind)) {

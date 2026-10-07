@@ -26,6 +26,7 @@ struct AnalysisRequest final {
 
 enum class PresentationClass : quint8 {
     Keyword,
+    Decorator,
     Comment,
     String,
     Number,
