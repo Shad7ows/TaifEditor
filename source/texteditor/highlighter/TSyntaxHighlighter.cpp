@@ -141,6 +141,26 @@ void TSyntaxHighlighter::applySemanticSpans(const QString& text) {
         if (begin >= end) {
             continue;
         }
+
+        // Diagnostics are overlays, not syntax classifications. Replacing the
+        // format of an entire diagnostic range makes an invalid assignment such
+        // as `state["key"] = value` paint every token with one color. Preserve
+        // lexical/semantic colors and add only the diagnostic decoration.
+        if (span.classification == PresentationClass::Error
+            && span.severity != SemanticDiagnosticSeverity::Information) {
+            if (!m_diagnosticsVisible) {
+                continue;
+            }
+            QTextCharFormat diagnosticOverlay;
+            diagnosticOverlay.setUnderlineStyle(QTextCharFormat::WaveUnderline);
+            diagnosticOverlay.setUnderlineColor(
+                span.severity == SemanticDiagnosticSeverity::Error
+                    ? QColor(250, 50, 50)
+                    : QColor(210, 180, 90));
+            setFormat(begin - blockBegin, end - begin, diagnosticOverlay);
+            continue;
+        }
+
         setFormat(begin - blockBegin, end - begin, formatForPresentation(span));
     }
 }

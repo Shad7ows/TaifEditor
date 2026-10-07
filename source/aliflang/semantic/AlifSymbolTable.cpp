@@ -185,6 +185,7 @@ private:
             QStringLiteral("ادنى"), QStringLiteral("تعداد"), QStringLiteral("قرب"),
             QStringLiteral("اطلق"), QStringLiteral("مرتب"), QStringLiteral("حرف"),
             QStringLiteral("رمز"), QStringLiteral("اسماء_عامة"), QStringLiteral("اسماء_محلية"),
+            QStringLiteral("تحقق_الكل"),
             // Built-in Alif runtime-error types. They are valid names in
             // exception clauses and must not be reported as unresolved.
             QStringLiteral("خطأ_اسم"), QStringLiteral("خطأ_مفتاح"),
@@ -592,6 +593,14 @@ private:
                                 memberName.range, target.range, target.id)};
             }
         }
+
+        // Index and slice expressions assign through an existing object; they
+        // do not declare a new symbol and are valid assignment targets.
+        if (target.kind == AstNodeKind::IndexExpression
+            || target.kind == AstNodeKind::SliceExpression) {
+            return {};
+        }
+
         addDiagnostic(QStringLiteral("يدل003"),
                       QStringLiteral("هدف إسناد غير صحيح"),
                       target.range, SemanticDiagnosticSeverity::Warning);
@@ -817,6 +826,23 @@ private:
             resolveMember(target, scope);
             return;
         }
+
+        // A subscript assignment is a valid target. Resolve its base and index
+        // expressions independently so semantic colors remain attached to
+        // their actual identifiers/literals instead of the whole target.
+        if (target.kind == AstNodeKind::IndexExpression
+            || target.kind == AstNodeKind::SliceExpression) {
+            for (const AstNodeId child : target.children) {
+                resolveNode(child, scope, ReferenceKind::Read);
+            }
+            return;
+        }
+
+        // Even when the complete target is invalid (for example a call or a
+        // collection on the left-hand side), resolve its contained expressions
+        // so the receiver/name and literals retain their own classifications.
+        resolveNode(id, scope, ReferenceKind::Read);
+
         addDiagnostic(QStringLiteral("يدل003"),
                       QStringLiteral("هدف إسناد غير صحيح"),
                       target.range, SemanticDiagnosticSeverity::Warning);
