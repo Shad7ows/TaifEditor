@@ -35,6 +35,9 @@ public:
     // Reparents the panel as a child of host and places it at host's top-left.
     // The panel remains non-modal and is clipped to the editor viewport.
     void showIn(QWidget *host);
+    // Restores ownership to the original parent before the current editor is
+    // destroyed or replaced.
+    void detachFromHost();
 
 signals:
     void findText();
@@ -76,6 +79,7 @@ private:
     QTimer *debounceTimer = nullptr;
 
     QPointer<QWidget> floatingHost;
+    QPointer<QWidget> ownerWidget;
     bool replaceRowVisible = false;
     bool lastNoMatches = false;
 };

@@ -23,6 +23,7 @@ constexpr auto kDanger = "#ef4444";
 
 SearchPanel::SearchPanel(QWidget *parent)
     : QWidget(parent)
+    , ownerWidget(parent)
 {
     setObjectName(QStringLiteral("searchPanel"));
     setAttribute(Qt::WA_StyledBackground, true);
@@ -286,6 +287,19 @@ void SearchPanel::showIn(QWidget *host)
     updateFloatingGeometry();
     show();
     raise();
+}
+
+void SearchPanel::detachFromHost()
+{
+    if (floatingHost) {
+        floatingHost->removeEventFilter(this);
+        floatingHost.clear();
+    }
+
+    if (parentWidget() != ownerWidget) {
+        hide();
+        setParent(ownerWidget, Qt::Widget);
+    }
 }
 
 void SearchPanel::updateFloatingGeometry()

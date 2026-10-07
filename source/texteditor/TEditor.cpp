@@ -1580,6 +1580,15 @@ void TEditor::keyPressEvent(QKeyEvent *e)
         e->accept();
         return;
     }
+    if (e->key() == Qt::Key_Shift || e->key() == Qt::Key_Alt
+        || e->key() == Qt::Key_Meta) {
+        // Modifier-only key presses do not change the document and must never
+        // trigger automatic completion, especially while search has selected a
+        // match in this editor but the search field is being used.
+        dismissCompletionPopup();
+        e->accept();
+        return;
+    }
     if (e->key() == Qt::Key_F12 && e->modifiers() == Qt::NoModifier) {
         navigateToDefinition(textCursor().position());
         e->accept();

@@ -155,6 +155,9 @@ Taif::Taif(const QString& filePath, QWidget* const parent,
 }
 
 Taif::~Taif() {
+    if (searchBar != nullptr) {
+        searchBar->detachFromHost();
+    }
     if (runController != nullptr) {
         runController->shutdown();
     }
@@ -832,6 +835,10 @@ void Taif::showFindBar()
         searchBar->showIn(editor);
         searchBar->showReplaceRow(false);
         searchBar->setFocusToInput();
+        // Keep the query when changing files, but always recompute its matches
+        // against the newly active document as soon as the panel is reopened.
+        performSearch(true, false);
+        searchBar->setFocusToInput();
     }
 }
 
@@ -841,11 +848,18 @@ void Taif::showReplaceBar()
         searchBar->showIn(editor);
         searchBar->showReplaceRow(true);
         searchBar->setFocusToInput();
+        // The replace panel shares the same query and must refresh its search
+        // results for the newly active document as well.
+        performSearch(true, false);
+        searchBar->setFocusToInput();
     }
 }
 
 void Taif::hideFindBar()
 {
+    if (searchBar != nullptr) {
+        searchBar->detachFromHost();
+    }
     searchBar->hide();
     clearSearchHighlights();
     if (TEditor *editor = currentEditor())
@@ -2170,7 +2184,10 @@ void Taif::exitApp() {
 }
 
 void Taif::onCurrentTabChanged() {
-    if (searchBar != nullptr && searchBar->isVisible()) {
+    if (searchBar != nullptr) {
+        // SearchPanel is temporarily parented to the editor for clipping. It
+        // must be returned to Taif before the old editor can be deleted.
+        searchBar->detachFromHost();
         searchBar->hide();
     }
     updateWindowTitle();
