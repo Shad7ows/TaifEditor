@@ -185,7 +185,7 @@ private:
             QStringLiteral("ادنى"), QStringLiteral("تعداد"), QStringLiteral("قرب"),
             QStringLiteral("اطلق"), QStringLiteral("مرتب"), QStringLiteral("حرف"),
             QStringLiteral("رمز"), QStringLiteral("اسماء_عامة"), QStringLiteral("اسماء_محلية"),
-            QStringLiteral("تحقق_الكل"),
+            QStringLiteral("تحقق_الكل"), QStringLiteral("ثمانيات"),
             // Built-in Alif runtime-error types. They are valid names in
             // exception clauses and must not be reported as unresolved.
             QStringLiteral("خطأ_اسم"), QStringLiteral("خطأ_مفتاح"),
@@ -349,9 +349,11 @@ private:
                                                                     AstChildRole::ParameterName);
                 if (isValidNode(parameterName)) {
                     const AstNode& nameNode = node(parameterName);
+                    // Parameter text retains '*'/'**' for syntax/display, but
+                    // the lexical binding is the ParameterName identifier.
                     const SymbolId parameterSymbol = declare(
-                        functionScope, SymbolKind::Parameter, parameter.text.isEmpty()
-                            ? nameNode.text : parameter.text, nameNode.range, parameter.range,
+                        functionScope, SymbolKind::Parameter, nameNode.text,
+                        nameNode.range, parameter.range,
                         parameter.id);
                     const ScopeId classScope = nearestClassScope(enclosingScope);
                     if (parameterSymbol != InvalidSymbolId && nameNode.text == QStringLiteral("هذا")

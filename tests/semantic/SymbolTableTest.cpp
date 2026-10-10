@@ -54,6 +54,9 @@ class SymbolTableTest final : public QObject {
 private slots:
     void emptyModuleCreatesPreludeAndModuleScopes();
     void nestedScopesResolveShadowingClosuresAndRecursion();
+    void starredParametersBindIdentifierNames_data();
+    void starredParametersBindIdentifierNames();
+    void undeclaredUnpackedArgumentsStillWarn();
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
@@ -114,6 +117,63 @@ void SymbolTableTest::nestedScopesResolveShadowingClosuresAndRecursion() {
         }
     }
     QCOMPARE(functionScopes, qsizetype(2));
+}
+
+void SymbolTableTest::starredParametersBindIdentifierNames_data() {
+    QTest::addColumn<QString>("source");
+    QTest::newRow("reported-wrapper") << QStringLiteral(
+        "حالة_المستخدم = {}\n"
+        "دالة طلب_دخول(عنصر):\n"
+        "\tدالة تغليف(*معاملات, **معاملات_مفتاحية):\n"
+        "\t\tاذا ليس حالة_المستخدم[\"هل_متصل\"]:\n"
+        "\t\t\tاطبع(\"لا يسمح بالدخول: يجب تسجيل الدخول أولاً\")\n"
+        "\t\t\tارجع عدم\n"
+        "\t\tارجع عنصر(*معاملات, **معاملات_مفتاحية)\n"
+        "\tارجع تغليف\n");
+    QTest::newRow("ordinary-reads") << QStringLiteral(
+        "دالة تغليف(*معاملات, **معاملات_مفتاحية):\n"
+        "\tارجع طول(معاملات) + طول(معاملات_مفتاحية)\n");
+    QTest::newRow("whitespace") << QStringLiteral(
+        "دالة تغليف(* معاملات, ** معاملات_مفتاحية):\n"
+        "\tاطبع(* معاملات, ** معاملات_مفتاحية)\n");
+    QTest::newRow("closure") << QStringLiteral(
+        "دالة تغليف(*معاملات, **معاملات_مفتاحية):\n"
+        "\tدالة داخلي():\n"
+        "\t\tاطبع(*معاملات, **معاملات_مفتاحية)\n"
+        "\tارجع داخلي\n");
+}
+
+void SymbolTableTest::starredParametersBindIdentifierNames() {
+    QFETCH(QString, source);
+    source.prepend(QStringLiteral("اطبع(1)\n"));
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    for (const QString& name : {QStringLiteral("معاملات"), QStringLiteral("معاملات_مفتاحية")}) {
+        const Symbol* parameter = findSymbol(*fixture.model, name, SymbolKind::Parameter);
+        QVERIFY(parameter != nullptr);
+        QVERIFY(hasResolvedReference(*fixture.model, name, parameter->id));
+        QCOMPARE(source.mid(parameter->declarationRange.begin.offset,
+                            parameter->declarationRange.end.offset - parameter->declarationRange.begin.offset), name);
+        const AstNode& ast = fixture.parse.ast->node(parameter->declarationNode);
+        QCOMPARE(ast.kind, AstNodeKind::Parameter);
+        const QString prefix = name == QStringLiteral("معاملات") ? QStringLiteral("*") : QStringLiteral("**");
+        QCOMPARE(ast.text, prefix + name);
+        QVERIFY(findSymbol(*fixture.model, prefix + name) == nullptr);
+        const qsizetype use = source.lastIndexOf(name);
+        QVERIFY(fixture.model->visibleSymbolsAt(use).contains(parameter->id));
+        QVERIFY(!fixture.model->visibleSymbolsAt(0).contains(parameter->id));
+    }
+}
+
+void SymbolTableTest::undeclaredUnpackedArgumentsStillWarn() {
+    const SemanticFixture fixture = analyze(QStringLiteral("اطبع(*معاملات, **معاملات_مفتاحية)\n"));
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QCOMPARE(fixture.model->diagnostics().size(), qsizetype(2));
+    for (const SemanticDiagnostic& diagnostic : fixture.model->diagnostics()) {
+        QCOMPARE(diagnostic.code, QStringLiteral("يدل001"));
+    }
 }
 
 void SymbolTableTest::assignmentsImportsAndBuiltinsBecomeVisibleSymbols() {
