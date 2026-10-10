@@ -46,6 +46,8 @@ private slots:
     void chainedComprehensionsPreserveClauseOrder();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
     void formattedStringCreatesStructuredAst();
+    void prefixedStringsAreSingleExpressions_data();
+    void prefixedStringsAreSingleExpressions();
     void recoveryPreservesLaterDeclarations();
     void lexerDiagnosticsAreRetained();
     void reparseFallsBackToAnEquivalentFreshSnapshot();
@@ -340,6 +342,39 @@ void TaifParserTest::formattedStringCreatesStructuredAst() {
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::FormattedStringText));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::FormattedStringInterpolation));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::FormattedStringFormat));
+}
+
+void TaifParserTest::prefixedStringsAreSingleExpressions_data() {
+    QTest::addColumn<QString>("literal");
+    for (const QString& prefix : {QStringLiteral("م"), QStringLiteral("خ"), QStringLiteral("ث")}) {
+        for (const QString& delimiter : {QStringLiteral("\""), QStringLiteral("'"), QStringLiteral("\"\"\""), QStringLiteral("'''")}) {
+            for (const QString& text : {QString(), QStringLiteral("abc\\n{س}")}) {
+                const QString literal = prefix + delimiter + text + delimiter;
+                QTest::newRow(qPrintable(literal)) << literal;
+            }
+        }
+    }
+}
+
+void TaifParserTest::prefixedStringsAreSingleExpressions() {
+    QFETCH(QString, literal);
+    const ParseResult result = TaifParser().parse(QStringLiteral("س = ") + literal + QChar(u'\n'));
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QCOMPARE(result.ast->root().children.size(), qsizetype(1));
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    QCOMPARE(statement.kind, AstNodeKind::AssignmentStatement);
+    const AstNode& value = result.ast->node(statement.children.constLast());
+    QCOMPARE(value.range.begin.offset, qsizetype(4));
+    QCOMPARE(value.range.end.offset, qsizetype(4) + literal.size());
+    const AstNodeKind expected = literal.startsWith(QChar(u'م'))
+        ? AstNodeKind::FormattedStringExpression
+        : literal.startsWith(QChar(u'خ')) ? AstNodeKind::RawStringLiteral
+                                         : AstNodeKind::BinaryStringLiteral;
+    QCOMPARE(value.kind, expected);
+    if (expected != AstNodeKind::FormattedStringExpression) {
+        QCOMPARE(value.text, literal);
+    }
 }
 
 void TaifParserTest::recoveryPreservesLaterDeclarations() {

@@ -36,6 +36,10 @@ private slots:
     void literalsAndLongestMatchOperators();
     void formattedStringsHaveStructuredTokens();
     void formattedStringFormatsAreStructured();
+    void rawAndBinaryStringsHaveLosslessTokens_data();
+    void rawAndBinaryStringsHaveLosslessTokens();
+    void prefixLettersRemainIdentifiersWithoutAdjacentQuotes();
+    void malformedPrefixedStringsRetainDiagnostics();
     void malformedLiteralReportsDiagnostic();
     void statusCorpusLexesToEndOfFile();
 };
@@ -152,6 +156,52 @@ void TaifLexerTest::formattedStringFormatsAreStructured() {
         TokenKind::InterpolationEnd, TokenKind::FStringText, TokenKind::FStringEnd,
         TokenKind::EndOfFile
     });
+}
+
+void TaifLexerTest::rawAndBinaryStringsHaveLosslessTokens_data() {
+    QTest::addColumn<QString>("literal");
+    for (const QString& prefix : {QStringLiteral("خ"), QStringLiteral("ث")}) {
+        for (const QString& delimiter : {QStringLiteral("\""), QStringLiteral("'"), QStringLiteral("\"\"\""), QStringLiteral("'''")}) {
+            for (const QString& text : {QString(), QStringLiteral("abc\\n{اسم}")}) {
+                const QString literal = prefix + delimiter + text + delimiter;
+                QTest::newRow(qPrintable(literal)) << literal;
+            }
+        }
+    }
+    QTest::newRow("raw-escaped-quote") << QStringLiteral("خ\"a\\\"b\"");
+    QTest::newRow("raw-multiline") << QStringLiteral("خ\"\"\"a\nb\"\"\"");
+    QTest::newRow("binary-multiline") << QStringLiteral("ث'''a\nb'''");
+}
+
+void TaifLexerTest::rawAndBinaryStringsHaveLosslessTokens() {
+    QFETCH(QString, literal);
+    const LexResult result = TaifLexer().lex(literal);
+    QVERIFY(result.diagnostics.isEmpty());
+    const TokenKind expected = literal.startsWith(QChar(u'خ'))
+        ? TokenKind::RawStringLiteral : TokenKind::BinaryStringLiteral;
+    compareKinds(result, {expected, TokenKind::EndOfFile});
+    const Token& token = result.tokens.constFirst();
+    QCOMPARE(token.lexeme, literal);
+    QCOMPARE(token.range.begin.offset, qsizetype(0));
+    QCOMPARE(token.range.end.offset, literal.size());
+}
+
+void TaifLexerTest::prefixLettersRemainIdentifiersWithoutAdjacentQuotes() {
+    const LexResult result = TaifLexer().lex(QStringLiteral("م خ ث خام ثنائي م \"x\""));
+    QVERIFY(result.diagnostics.isEmpty());
+    compareKinds(result, {TokenKind::Identifier, TokenKind::Identifier, TokenKind::Identifier,
+                          TokenKind::Identifier, TokenKind::Identifier, TokenKind::Identifier,
+                          TokenKind::StringLiteral, TokenKind::EndOfFile});
+}
+
+void TaifLexerTest::malformedPrefixedStringsRetainDiagnostics() {
+    for (const QString& prefix : {QStringLiteral("م"), QStringLiteral("خ"), QStringLiteral("ث")}) {
+        const LexResult result = TaifLexer().lex(prefix + QStringLiteral("\"abc\n"));
+        QVERIFY(!result.diagnostics.isEmpty());
+        QCOMPARE(result.diagnostics.constFirst().code, QStringLiteral("نسق002"));
+        QCOMPARE(result.diagnostics.constFirst().range.begin.offset, qsizetype(0));
+        QCOMPARE(result.tokens.constLast().kind, TokenKind::EndOfFile);
+    }
 }
 
 void TaifLexerTest::malformedLiteralReportsDiagnostic() {

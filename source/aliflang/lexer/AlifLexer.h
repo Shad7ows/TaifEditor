@@ -110,7 +110,9 @@ enum class TokenKind : quint16 {
     FStringFormat,
     InterpolationStart,
     InterpolationEnd,
-    FStringEnd
+    FStringEnd,
+    RawStringLiteral,
+    BinaryStringLiteral
 };
 
 struct Token final {

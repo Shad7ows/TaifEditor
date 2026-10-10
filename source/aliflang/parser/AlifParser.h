@@ -162,7 +162,9 @@ enum class AstNodeKind : quint16 {
     FormattedStringFormat,
     ErrorExpression,
     ErrorStatement,
-    ImportWildcard // '*' in a from-import; not an identifier or binding.
+    ImportWildcard, // '*' in a from-import; not an identifier or binding.
+    RawStringLiteral,
+    BinaryStringLiteral
 };
 
 enum class AstChildRole : quint8 {

@@ -9,6 +9,8 @@ bool isKeyword(const TokenKind kind) {
 bool isString(const TokenKind kind) {
     switch (kind) {
     case TokenKind::StringLiteral:
+    case TokenKind::RawStringLiteral:
+    case TokenKind::BinaryStringLiteral:
     case TokenKind::FStringStart:
     case TokenKind::FStringText:
     case TokenKind::FStringFormat:

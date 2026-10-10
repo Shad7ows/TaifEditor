@@ -1144,6 +1144,13 @@ private:
             consume();
             return makeParsed(AstNodeKind::StringLiteral, SyntaxKind::LiteralExpression,
                               start, m_mainPosition, token.lexeme);
+        case TokenKind::RawStringLiteral:
+        case TokenKind::BinaryStringLiteral:
+            consume();
+            return makeParsed(token.kind == TokenKind::RawStringLiteral
+                                  ? AstNodeKind::RawStringLiteral : AstNodeKind::BinaryStringLiteral,
+                              SyntaxKind::LiteralExpression,
+                              start, m_mainPosition, token.lexeme);
         case TokenKind::KwTrue:
         case TokenKind::KwFalse:
             consume();

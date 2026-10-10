@@ -328,9 +328,13 @@ private:
         return peek() == quote && peek(1) == quote && peek(2) == quote;
     }
 
-    void scanString() {
+    void scanString(const TokenKind kind = TokenKind::StringLiteral,
+                    const bool hasPrefix = false) {
         const qsizetype start = m_pos;
         const SourceLocation startLocation = location();
+        if (hasPrefix) {
+            advance();
+        }
         const QChar quote = peek();
         const bool triple = isTripleDelimiter(quote);
         const QString delimiter = triple ? QString(3, quote) : QString(1, quote);
@@ -344,7 +348,7 @@ private:
                 for (int index = 0; index < delimiter.size(); ++index) {
                     advance();
                 }
-                appendToken(TokenKind::StringLiteral, TokenChannel::Main, start, startLocation);
+                appendToken(kind, TokenChannel::Main, start, startLocation);
                 return;
             }
             if (!triple && isNewline(peek())) {
@@ -674,6 +678,14 @@ private:
         }
         if (peek() == QChar(u'م') && (peek(1) == QChar(u'\'') || peek(1) == QChar(u'"'))) {
             scanFString();
+            return;
+        }
+        if ((peek() == QChar(u'خ') || peek() == QChar(u'ث'))
+            && (peek(1) == QChar(u'\'') || peek(1) == QChar(u'"'))) {
+            // Keep raw/byte spellings lossless; escape decoding belongs to the
+            // runtime. Escaped delimiters still participate in token scanning.
+            scanString(peek() == QChar(u'خ') ? TokenKind::RawStringLiteral
+                                             : TokenKind::BinaryStringLiteral, true);
             return;
         }
         if (peek() == QChar(u'\'') || peek() == QChar(u'"')) {

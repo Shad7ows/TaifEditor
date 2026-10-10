@@ -57,6 +57,7 @@ private slots:
     void starredParametersBindIdentifierNames_data();
     void starredParametersBindIdentifierNames();
     void undeclaredUnpackedArgumentsStillWarn();
+    void stringPrefixesDoNotBecomeNameReferences();
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
@@ -173,6 +174,25 @@ void SymbolTableTest::undeclaredUnpackedArgumentsStillWarn() {
     QCOMPARE(fixture.model->diagnostics().size(), qsizetype(2));
     for (const SemanticDiagnostic& diagnostic : fixture.model->diagnostics()) {
         QCOMPARE(diagnostic.code, QStringLiteral("يدل001"));
+    }
+}
+
+void SymbolTableTest::stringPrefixesDoNotBecomeNameReferences() {
+    const SemanticFixture fixture = analyze(QStringLiteral(
+        "س = 1\n"
+        "اطبع(م\"{س}\", خ\"\\n{مجهول}\", ث\"abc\\x41\")\n"
+        "فارغ = م\"\"\nخام = خ\"\"\nثنائي = ث\"\"\n"));
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* value = findSymbol(*fixture.model, QStringLiteral("س"));
+    QVERIFY(value != nullptr);
+    QVERIFY(hasResolvedReference(*fixture.model, value->name, value->id));
+    for (const NameReference& reference : fixture.model->references()) {
+        QVERIFY(reference.name != QStringLiteral("م"));
+        QVERIFY(reference.name != QStringLiteral("خ"));
+        QVERIFY(reference.name != QStringLiteral("ث"));
+        QVERIFY(reference.name != QStringLiteral("مجهول"));
     }
 }
 
