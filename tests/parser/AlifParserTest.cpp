@@ -43,6 +43,7 @@ private slots:
     void comprehensionFiltersParseWithoutElse_data();
     void comprehensionFiltersParseWithoutElse();
     void inlineConditionalsStillRequireElse();
+    void chainedComprehensionsPreserveClauseOrder();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
     void formattedStringCreatesStructuredAst();
     void recoveryPreservesLaterDeclarations();
@@ -286,6 +287,31 @@ void TaifParserTest::inlineConditionalsStillRequireElse() {
     QCOMPARE(valid.ast->node(conditional.children.constFirst()).text, QStringLiteral("+"));
     const ParseResult invalid = TaifParser().parse(QStringLiteral("س = 1 اذا صح\n"));
     QVERIFY(hasDiagnostic(invalid, QStringLiteral("عقد001")));
+}
+
+void TaifParserTest::chainedComprehensionsPreserveClauseOrder() {
+    const ParseResult result = TaifParser().parse(QStringLiteral(
+        "[قيمة لكل خلية في هذا.اللوح اذا خلية != 0 لكل قيمة في ([1, 0, 0] اذا خلية == 0 والا [0, 1, 0] اذا خلية == منظور_اللاعب والا [0, 0, 1]) اذا قيمة > 0]\n"));
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    const AstNode& list = result.ast->node(statement.children.constFirst());
+    const AstNode& outer = result.ast->node(list.children.constFirst());
+    QCOMPARE(outer.kind, AstNodeKind::ComprehensionExpression);
+    QCOMPARE(result.ast->node(outer.children.at(1)).text, QStringLiteral("خلية"));
+    QCOMPARE(result.ast->node(outer.children.at(2)).kind, AstNodeKind::MemberExpression);
+    QCOMPARE(outer.childRoles.at(3), AstChildRole::Condition);
+    QCOMPARE(result.ast->node(outer.children.at(3)).text, QStringLiteral("!="));
+    const AstNode& inner = result.ast->node(outer.children.at(0));
+    QCOMPARE(inner.kind, AstNodeKind::ComprehensionExpression);
+    QCOMPARE(result.ast->node(inner.children.at(1)).text, QStringLiteral("قيمة"));
+    QCOMPARE(result.ast->node(inner.children.at(0)).kind, AstNodeKind::NameExpression);
+    QCOMPARE(result.ast->node(inner.children.at(0)).text, QStringLiteral("قيمة"));
+    const AstNode& iterable = result.ast->node(inner.children.at(2));
+    QCOMPARE(iterable.text, QStringLiteral("اذا/والا"));
+    QCOMPARE(result.ast->node(iterable.children.at(2)).text, QStringLiteral("اذا/والا"));
+    QCOMPARE(inner.childRoles.at(3), AstChildRole::Condition);
+    QCOMPARE(result.ast->node(inner.children.at(3)).text, QStringLiteral(">"));
 }
 
 void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {

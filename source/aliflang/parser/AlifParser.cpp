@@ -881,10 +881,9 @@ private:
                           start, m_mainPosition, {}, {left.ast}, {left.syntax});
     }
 
-    /// Parses a single `لكل <target> في <iterable>` comprehension clause and
-    /// folds it into the given element expression, producing a
-    /// ComprehensionExpression node.  Multiple clauses are supported by
-    /// calling this method repeatedly from the caller loop.
+    /// Parses ordered comprehension clauses. Each later clause becomes the
+    /// preceding clause's element so its iterable sees earlier bindings and
+    /// the final result expression sees every enclosing clause's bindings.
     [[nodiscard]] ParsedNode parseComprehensionClause(const ParsedNode& element) {
         const qsizetype clauseStart = startFor(element);
         consume(); //لكل
@@ -893,9 +892,9 @@ private:
         const ParsedNode target = parseBindingTarget();
         expect(TokenKind::KwIn, QStringLiteral("في حاوية ضمنية"), &syntaxChildren);
         // The iterable in a comprehension clause is itself an expression that
-        // may contain further nested comprehensions. A top-level 'اذا' starts
-        // a filter; parenthesized inline conditionals remain ordinary expressions.
-        const ParsedNode iterable = parseExpression(0, true, true, false);
+        // may contain enclosed nested comprehensions. Top-level 'لكل' and
+        // 'اذا' start the next clause or filter, not part of this iterable.
+        const ParsedNode iterable = parseExpression(0, true, false, false);
         children.append(target.ast);
         children.append(iterable.ast);
         syntaxChildren.append({target.syntax, iterable.syntax});
@@ -906,6 +905,11 @@ private:
             children.append(condition.ast);
             syntaxChildren.append(condition.syntax);
             roles.append(AstChildRole::Condition);
+        }
+        if (at(TokenKind::KwFor)) {
+            const ParsedNode nextClause = parseComprehensionClause(element);
+            children[0] = nextClause.ast;
+            syntaxChildren[0] = nextClause.syntax;
         }
         return makeParsed(AstNodeKind::ComprehensionExpression,
                           SyntaxKind::ComprehensionExpression,

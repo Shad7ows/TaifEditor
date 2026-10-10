@@ -62,6 +62,9 @@ private slots:
     void comprehensionFiltersResolveBoundNames_data();
     void comprehensionFiltersResolveBoundNames();
     void comprehensionFiltersStillDiagnoseUnknownNames();
+    void chainedComprehensionsResolveInClauseOrder_data();
+    void chainedComprehensionsResolveInClauseOrder();
+    void laterComprehensionBindingsDoNotLeakIntoEarlierIterables();
     void classesExposeMethodsAndFieldsThroughConstructorInstances();
     void memberReferencesRemainExternalUntilTypeAnalysis();
     void memberAssignmentsAreValidTargets_data();
@@ -255,6 +258,55 @@ void SymbolTableTest::comprehensionFiltersStillDiagnoseUnknownNames() {
     }
     QVERIFY(foundUnknown);
     QCOMPARE(fixture.model->diagnostics().size(), qsizetype(1));
+}
+
+void SymbolTableTest::chainedComprehensionsResolveInClauseOrder_data() {
+    QTest::addColumn<QString>("expression");
+    QTest::newRow("exact-report") << QStringLiteral(
+        "[قيمة لكل خلية في هذا.اللوح لكل قيمة في ([1, 0, 0] اذا خلية == 0 والا [0, 1, 0] اذا خلية == منظور_اللاعب والا [0, 0, 1])]");
+    QTest::newRow("dependent-iterable") << QStringLiteral("[قيمة لكل خلية في هذا.اللوح لكل قيمة في خلية]");
+    QTest::newRow("filters-between-clauses") << QStringLiteral("[قيمة لكل خلية في هذا.اللوح اذا خلية != 0 لكل قيمة في خلية اذا قيمة > 0]");
+    QTest::newRow("three-clauses") << QStringLiteral("[قيمة لكل صف في هذا.اللوح لكل خلية في صف لكل قيمة في خلية]");
+    QTest::newRow("tuple-result") << QStringLiteral("[(خلية, قيمة) لكل خلية في هذا.اللوح لكل قيمة في خلية]");
+    QTest::newRow("nested-iterable") << QStringLiteral("[قيمة لكل خلية في [ع لكل ع في هذا.اللوح] لكل قيمة في خلية]");
+}
+
+void SymbolTableTest::chainedComprehensionsResolveInClauseOrder() {
+    QFETCH(QString, expression);
+    const QString source = QStringLiteral("منظور_اللاعب = 1\n") + expression + QChar(u'\n');
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* cell = findSymbol(*fixture.model, QStringLiteral("خلية"), SymbolKind::ComprehensionVariable);
+    const Symbol* value = findSymbol(*fixture.model, QStringLiteral("قيمة"), SymbolKind::ComprehensionVariable);
+    QVERIFY(cell != nullptr);
+    QVERIFY(value != nullptr);
+    QVERIFY(cell->declaringScope != value->declaringScope);
+    QCOMPARE(fixture.model->scopes().at(value->declaringScope).parent, cell->declaringScope);
+    const NameReference* result = fixture.model->referenceAt(source.indexOf(QStringLiteral("قيمة")));
+    QVERIFY(result != nullptr);
+    QCOMPARE(result->kind, ReferenceKind::Read);
+    QCOMPARE(result->state, ResolutionState::Resolved);
+    QCOMPARE(result->resolvedSymbol, value->id);
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("خلية"), cell->id));
+    QVERIFY(!fixture.model->visibleSymbolsAt(source.size()).contains(value->id));
+    QVERIFY(!fixture.model->visibleSymbolsAt(source.size()).contains(cell->id));
+}
+
+void SymbolTableTest::laterComprehensionBindingsDoNotLeakIntoEarlierIterables() {
+    const QString source = QStringLiteral("[قيمة لكل خلية في قيمة لكل قيمة في [خلية]]\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QCOMPARE(fixture.model->diagnostics().size(), qsizetype(1));
+    const SemanticDiagnostic& diagnostic = fixture.model->diagnostics().constFirst();
+    QCOMPARE(diagnostic.code, QStringLiteral("يدل001"));
+    QCOMPARE(diagnostic.range.begin.offset, source.indexOf(QStringLiteral("في قيمة")) + 3);
+    const Symbol* value = findSymbol(*fixture.model, QStringLiteral("قيمة"), SymbolKind::ComprehensionVariable);
+    QVERIFY(value != nullptr);
+    const NameReference* result = fixture.model->referenceAt(source.indexOf(QStringLiteral("قيمة")));
+    QVERIFY(result != nullptr);
+    QCOMPARE(result->resolvedSymbol, value->id);
 }
 
 void SymbolTableTest::classesExposeMethodsAndFieldsThroughConstructorInstances() {
