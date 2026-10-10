@@ -34,6 +34,9 @@ private slots:
     void declarationsAndSuitesCreateSemanticNodes();
     void decoratorsPrefixDeclarationsWithoutDiagnostics();
     void forHeaderTreatsInAsAStructuralDelimiter();
+    void fromImportAcceptsWildcard_data();
+    void fromImportAcceptsWildcard();
+    void fromImportPreservesNamedImports();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
     void formattedStringCreatesStructuredAst();
     void recoveryPreservesLaterDeclarations();
@@ -106,6 +109,68 @@ void TaifParserTest::forHeaderTreatsInAsAStructuralDelimiter() {
     QVERIFY(result.parserDiagnostics.isEmpty());
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::ForStatement));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::CallExpression));
+}
+
+void TaifParserTest::fromImportAcceptsWildcard_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<QString>("path");
+    QTest::newRow("exact-report") << QStringLiteral("من مكتبة استورد *")
+                                  << QStringLiteral("مكتبة");
+    QTest::newRow("newline") << QStringLiteral("من مكتبة استورد *\n")
+                             << QStringLiteral("مكتبة");
+    QTest::newRow("dotted-path") << QStringLiteral("من مكتبة.فرع استورد *\n")
+                                 << QStringLiteral("مكتبة.فرع");
+    QTest::newRow("relative-path") << QStringLiteral("من .مكتبة استورد *\n")
+                                   << QStringLiteral(".مكتبة");
+    QTest::newRow("following-statement") << QStringLiteral("من مكتبة استورد *\nس = 1\n")
+                                         << QStringLiteral("مكتبة");
+}
+
+void TaifParserTest::fromImportAcceptsWildcard() {
+    QFETCH(QString, source);
+    QFETCH(QString, path);
+    const ParseResult result = TaifParser().parse(source);
+
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QVERIFY(!hasAstKind(*result.ast, AstNodeKind::ErrorExpression));
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    QCOMPARE(statement.kind, AstNodeKind::FromImportStatement);
+    QCOMPARE(statement.children.size(), qsizetype(2));
+    QCOMPARE(statement.childRoles.size(), statement.children.size());
+    QCOMPARE(statement.childRoles.at(0), AstChildRole::ImportPath);
+    QCOMPARE(statement.childRoles.at(1), AstChildRole::ImportName);
+    QCOMPARE(result.ast->node(statement.children.at(0)).text, path);
+    const AstNode& wildcard = result.ast->node(statement.children.at(1));
+    QCOMPARE(wildcard.kind, AstNodeKind::ImportWildcard);
+    QCOMPARE(wildcard.text, QStringLiteral("*"));
+    QCOMPARE(wildcard.range.begin.offset, source.indexOf(QChar(u'*')));
+    QCOMPARE(wildcard.range.end.offset, wildcard.range.begin.offset + 1);
+    const SyntaxNode& syntax = result.syntaxTree->nodes().at(wildcard.syntaxNode);
+    QCOMPARE(syntax.kind, SyntaxKind::ImportWildcard);
+    QCOMPARE(result.syntaxTree->tokens().at(syntax.firstToken).kind, TokenKind::Star);
+    QCOMPARE(syntax.endToken, syntax.firstToken + 1);
+    if (source.contains(QStringLiteral("س = 1"))) {
+        QCOMPARE(result.ast->root().children.size(), qsizetype(2));
+        QVERIFY(hasAstKind(*result.ast, AstNodeKind::AssignmentStatement));
+    }
+}
+
+void TaifParserTest::fromImportPreservesNamedImports() {
+    const ParseResult result = TaifParser().parse(QStringLiteral("من مكتبة استورد س, ص\n"));
+
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    QCOMPARE(statement.kind, AstNodeKind::FromImportStatement);
+    QCOMPARE(statement.children.size(), qsizetype(3));
+    QCOMPARE(statement.childRoles.size(), statement.children.size());
+    QCOMPARE(statement.childRoles.at(0), AstChildRole::ImportPath);
+    for (qsizetype index = 1; index < statement.children.size(); ++index) {
+        QCOMPARE(statement.childRoles.at(index), AstChildRole::ImportName);
+        QCOMPARE(result.ast->node(statement.children.at(index)).kind, AstNodeKind::NameExpression);
+    }
+    QCOMPARE(result.ast->node(statement.children.at(1)).text, QStringLiteral("س"));
+    QCOMPARE(result.ast->node(statement.children.at(2)).text, QStringLiteral("ص"));
 }
 
 void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {

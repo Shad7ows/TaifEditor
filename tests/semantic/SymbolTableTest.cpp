@@ -55,6 +55,7 @@ private slots:
     void emptyModuleCreatesPreludeAndModuleScopes();
     void nestedScopesResolveShadowingClosuresAndRecursion();
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
+    void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
     void classesExposeMethodsAndFieldsThroughConstructorInstances();
     void memberReferencesRemainExternalUntilTypeAnalysis();
@@ -119,6 +120,22 @@ void SymbolTableTest::assignmentsImportsAndBuiltinsBecomeVisibleSymbols() {
     QVERIFY(builtin != nullptr);
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("شيء"), imported->id));
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("اطبع"), builtin->id));
+}
+
+void SymbolTableTest::wildcardImportsDoNotDeclareAnAsteriskSymbol() {
+    const SemanticFixture fixture = analyze(QStringLiteral(
+        "من مكتبة استورد *\n"
+        "س = 1\n"
+        "اطبع(س)\n"));
+
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    QVERIFY(findSymbol(*fixture.model, QStringLiteral("*")) == nullptr);
+    QVERIFY(findSymbol(*fixture.model, QStringLiteral("مكتبة")) == nullptr);
+    const Symbol* local = findSymbol(*fixture.model, QStringLiteral("س"), SymbolKind::Local);
+    QVERIFY(local != nullptr);
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("س"), local->id));
 }
 
 void SymbolTableTest::forTargetBindsAndResolvesInTheLoopBody() {

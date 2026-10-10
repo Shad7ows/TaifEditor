@@ -425,6 +425,10 @@ private:
         const QVector<AstNodeId> names = childrenWithRole(ast, AstChildRole::ImportName);
         for (const AstNodeId nameId : names) {
             const AstNode& name = node(nameId);
+            if (name.kind == AstNodeKind::ImportWildcard) {
+                // Exported names require module analysis; '*' itself is not a binding.
+                continue;
+            }
             declare(scope, SymbolKind::ImportMember, name.text, name.range,
                     ast.range, ast.id, true);
         }

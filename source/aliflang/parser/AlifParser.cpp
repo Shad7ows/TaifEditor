@@ -496,14 +496,23 @@ private:
         expect(TokenKind::KwImport, QStringLiteral("في حالة من-استورد"),
                &syntaxChildren);
 
-        do {
-            const ParsedNode imported = parseNameExpression();
-            children.append(imported.ast);
-            syntaxChildren.append(imported.syntax);
-        } while (consumeIf(TokenKind::Comma));
+        if (at(TokenKind::Star)) {
+            const qsizetype wildcardStart = m_mainPosition;
+            consume();
+            const ParsedNode wildcard = makeParsed(
+                AstNodeKind::ImportWildcard, SyntaxKind::ImportWildcard,
+                wildcardStart, m_mainPosition, QStringLiteral("*"));
+            children.append(wildcard.ast);
+            syntaxChildren.append(wildcard.syntax);
+        } else {
+            do {
+                const ParsedNode imported = parseNameExpression();
+                children.append(imported.ast);
+                syntaxChildren.append(imported.syntax);
+            } while (consumeIf(TokenKind::Comma));
+        }
 
         QVector<AstChildRole> roles;
-        roles.append(AstChildRole::ImportPath);
         roles.fill(AstChildRole::ImportName, children.size() - 1);
         roles.prepend(AstChildRole::ImportPath);
         return makeParsed(AstNodeKind::FromImportStatement, SyntaxKind::FromImportStatement,
