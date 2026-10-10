@@ -57,8 +57,17 @@ private slots:
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
+    void tupleComprehensionVariablesResolveInTheirScope_data();
+    void tupleComprehensionVariablesResolveInTheirScope();
+    void comprehensionFiltersResolveBoundNames_data();
+    void comprehensionFiltersResolveBoundNames();
+    void comprehensionFiltersStillDiagnoseUnknownNames();
     void classesExposeMethodsAndFieldsThroughConstructorInstances();
     void memberReferencesRemainExternalUntilTypeAnalysis();
+    void memberAssignmentsAreValidTargets_data();
+    void memberAssignmentsAreValidTargets();
+    void memberAssignmentPreservesKnownClassAttribute();
+    void invalidAssignmentTargetsStillWarn();
     void parametersRemainVisibleAtIncompleteBodyEnd();
     void editorQueriesReturnScopedDefinitionsAndReferences();
     void malformedParserInputStillBuildsAFiniteSemanticModel();
@@ -150,6 +159,104 @@ void SymbolTableTest::forTargetBindsAndResolvesInTheLoopBody() {
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("ب"), loopVariable->id));
 }
 
+void SymbolTableTest::tupleComprehensionVariablesResolveInTheirScope_data() {
+    QTest::addColumn<QString>("expression");
+    QTest::newRow("bare") << QStringLiteral("متغير,متغير2 لكل متغير, متغير2 في تعبير");
+    QTest::newRow("list") << QStringLiteral("[متغير,متغير2 لكل متغير, متغير2 في تعبير]");
+    QTest::newRow("parenthesized") << QStringLiteral("(متغير,متغير2 لكل متغير, متغير2 في تعبير)");
+    QTest::newRow("binary-elements") << QStringLiteral("متغير + 1,متغير2 * 2 لكل متغير, متغير2 في تعبير");
+    QTest::newRow("unary-elements") << QStringLiteral("-متغير,+متغير2 لكل متغير, متغير2 في تعبير");
+}
+
+void SymbolTableTest::tupleComprehensionVariablesResolveInTheirScope() {
+    QFETCH(QString, expression);
+    const QString source = QStringLiteral("تعبير = [(1, 2)]\n") + expression + QChar(u'\n');
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* first = findSymbol(*fixture.model, QStringLiteral("متغير"),
+                                     SymbolKind::ComprehensionVariable);
+    const Symbol* second = findSymbol(*fixture.model, QStringLiteral("متغير2"),
+                                      SymbolKind::ComprehensionVariable);
+    QVERIFY(first != nullptr);
+    QVERIFY(second != nullptr);
+    QCOMPARE(first->declaringScope, second->declaringScope);
+    QCOMPARE(fixture.model->scopes().at(first->declaringScope).kind, ScopeKind::Comprehension);
+    for (const Symbol* variable : {first, second}) {
+        bool read = false;
+        bool write = false;
+        for (const NameReference& reference : fixture.model->references()) {
+            if (reference.name != variable->name) {
+                continue;
+            }
+            QCOMPARE(reference.state, ResolutionState::Resolved);
+            QCOMPARE(reference.resolvedSymbol, variable->id);
+            read |= reference.kind == ReferenceKind::Read;
+            write |= reference.kind == ReferenceKind::Write;
+        }
+        QVERIFY(read);
+        QVERIFY(write);
+        const qsizetype elementOffset = source.indexOf(variable->name);
+        QVERIFY(fixture.model->visibleSymbolsAt(elementOffset).contains(variable->id));
+        QVERIFY(!fixture.model->visibleSymbolsAt(0).contains(variable->id));
+    }
+}
+
+void SymbolTableTest::comprehensionFiltersResolveBoundNames_data() {
+    QTest::addColumn<QString>("filter");
+    QTest::newRow("reported-filter") << QStringLiteral("خلية == 0");
+    QTest::newRow("multiple-filters") << QStringLiteral("خلية == 0 اذا س > 1");
+    QTest::newRow("boolean-filter") << QStringLiteral("خلية == 0 و س > 1");
+    QTest::newRow("nested-comprehension") << QStringLiteral("طول([ع لكل ع في [خلية]]) > 0");
+}
+
+void SymbolTableTest::comprehensionFiltersResolveBoundNames() {
+    QFETCH(QString, filter);
+    const QString source = QStringLiteral("[س لكل س, خلية في تعداد(هذا.اللوح) اذا ")
+        + filter + QStringLiteral("]\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* cell = findSymbol(*fixture.model, QStringLiteral("خلية"),
+                                    SymbolKind::ComprehensionVariable);
+    const Symbol* index = findSymbol(*fixture.model, QStringLiteral("س"),
+                                     SymbolKind::ComprehensionVariable);
+    QVERIFY(cell != nullptr);
+    QVERIFY(index != nullptr);
+    const NameReference* reference = fixture.model->referenceAt(source.lastIndexOf(QStringLiteral("خلية")));
+    QVERIFY(reference != nullptr);
+    QCOMPARE(reference->kind, ReferenceKind::Read);
+    QCOMPARE(reference->state, ResolutionState::Resolved);
+    QCOMPARE(reference->resolvedSymbol, cell->id);
+    QVERIFY(fixture.model->visibleSymbolsAt(reference->range.begin.offset).contains(cell->id));
+    QVERIFY(!fixture.model->visibleSymbolsAt(source.size()).contains(cell->id));
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("س"), index->id));
+    if (filter.contains(QStringLiteral("لكل ع"))) {
+        const Symbol* nested = findSymbol(*fixture.model, QStringLiteral("ع"),
+                                          SymbolKind::ComprehensionVariable);
+        QVERIFY(nested != nullptr);
+        QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("ع"), nested->id));
+    }
+}
+
+void SymbolTableTest::comprehensionFiltersStillDiagnoseUnknownNames() {
+    const QString source = QStringLiteral(
+        "[س لكل س, خلية في تعداد(هذا.اللوح) اذا مجهول == 0]\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    bool foundUnknown = false;
+    for (const SemanticDiagnostic& diagnostic : fixture.model->diagnostics()) {
+        if (diagnostic.code == QStringLiteral("يدل001")
+            && diagnostic.message.contains(QStringLiteral("مجهول"))) {
+            QCOMPARE(diagnostic.range.begin.offset, source.indexOf(QStringLiteral("مجهول")));
+            foundUnknown = true;
+        }
+    }
+    QVERIFY(foundUnknown);
+    QCOMPARE(fixture.model->diagnostics().size(), qsizetype(1));
+}
+
 void SymbolTableTest::classesExposeMethodsAndFieldsThroughConstructorInstances() {
     const SemanticFixture fixture = analyze(QStringLiteral(
         "صنف سيارة:\n"
@@ -196,6 +303,76 @@ void SymbolTableTest::memberReferencesRemainExternalUntilTypeAnalysis() {
         }
     }
     QVERIFY(foundMember);
+}
+
+void SymbolTableTest::memberAssignmentsAreValidTargets_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<bool>("unresolvedReceiver");
+    QTest::newRow("exact-report") << QStringLiteral("شبكة_عصبية.معدل_التعلم = 0.005\n") << true;
+    QTest::newRow("declared-receiver") << QStringLiteral("شبكة_عصبية = عدم\nشبكة_عصبية.معدل_التعلم = 0.005\n") << false;
+    QTest::newRow("augmented-assignment") << QStringLiteral("شبكة_عصبية = عدم\nشبكة_عصبية.معدل_التعلم += 0.005\n") << false;
+    QTest::newRow("nested-member") << QStringLiteral("شبكة_عصبية = عدم\nشبكة_عصبية.طبقة.معدل_التعلم = 0.005\n") << false;
+    QTest::newRow("call-receiver") << QStringLiteral("دالة شبكة_عصبية():\n\tارجع عدم\nشبكة_عصبية().معدل_التعلم = 0.005\n") << false;
+    QTest::newRow("indexed-receiver") << QStringLiteral("شبكة_عصبية = []\nشبكة_عصبية[0].معدل_التعلم = 0.005\n") << false;
+}
+
+void SymbolTableTest::memberAssignmentsAreValidTargets() {
+    QFETCH(QString, source);
+    QFETCH(bool, unresolvedReceiver);
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(!hasDiagnostic(*fixture.model, QStringLiteral("يدل003")));
+    QCOMPARE(hasDiagnostic(*fixture.model, QStringLiteral("يدل001")), unresolvedReceiver);
+    if (!unresolvedReceiver) {
+        QVERIFY(fixture.model->diagnostics().isEmpty());
+    }
+    QVERIFY(findSymbol(*fixture.model, QStringLiteral("معدل_التعلم")) == nullptr);
+    const NameReference* member = fixture.model->referenceAt(source.lastIndexOf(QStringLiteral("معدل_التعلم")));
+    QVERIFY(member != nullptr);
+    QCOMPARE(member->kind, ReferenceKind::Member);
+    QCOMPARE(member->state, ResolutionState::External);
+    if (!unresolvedReceiver) {
+        const Symbol* receiver = findSymbol(*fixture.model, QStringLiteral("شبكة_عصبية"));
+        QVERIFY(receiver != nullptr);
+        QVERIFY(hasResolvedReference(*fixture.model, receiver->name, receiver->id));
+    }
+}
+
+void SymbolTableTest::memberAssignmentPreservesKnownClassAttribute() {
+    const QString source = QStringLiteral(
+        "صنف شبكة:\n"
+        "\tدالة تهيئة(هذا):\n"
+        "\t\tهذا.معدل_التعلم = 0.1\n"
+        "شبكة_عصبية = شبكة()\n"
+        "شبكة_عصبية.معدل_التعلم = 0.005\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* attribute = findSymbol(*fixture.model, QStringLiteral("معدل_التعلم"), SymbolKind::Attribute);
+    QVERIFY(attribute != nullptr);
+    const NameReference* member = fixture.model->referenceAt(source.lastIndexOf(attribute->name));
+    QVERIFY(member != nullptr);
+    QCOMPARE(member->state, ResolutionState::Resolved);
+    QCOMPARE(member->resolvedSymbol, attribute->id);
+    QCOMPARE(fixture.model->scopes().at(attribute->declaringScope).kind, ScopeKind::Class);
+    qsizetype attributeCount = 0;
+    for (const Symbol& symbol : fixture.model->symbols()) {
+        if (symbol.name == attribute->name) {
+            ++attributeCount;
+        }
+    }
+    QCOMPARE(attributeCount, qsizetype(1));
+}
+
+void SymbolTableTest::invalidAssignmentTargetsStillWarn() {
+    for (const QString& source : {QStringLiteral("1 = 0.005\n"),
+                                  QStringLiteral("اطبع() = 0.005\n"),
+                                  QStringLiteral("1 + 2 = 0.005\n")}) {
+        const SemanticFixture fixture = analyze(source);
+        QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+        QVERIFY(hasDiagnostic(*fixture.model, QStringLiteral("يدل003")));
+    }
 }
 
 void SymbolTableTest::parametersRemainVisibleAtIncompleteBodyEnd() {

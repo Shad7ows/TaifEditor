@@ -893,19 +893,30 @@ private:
         const ParsedNode target = parseBindingTarget();
         expect(TokenKind::KwIn, QStringLiteral("في حاوية ضمنية"), &syntaxChildren);
         // The iterable in a comprehension clause is itself an expression that
-        // may contain further nested comprehensions.
-        const ParsedNode iterable = parseExpression(0, true);
+        // may contain further nested comprehensions. A top-level 'اذا' starts
+        // a filter; parenthesized inline conditionals remain ordinary expressions.
+        const ParsedNode iterable = parseExpression(0, true, true, false);
         children.append(target.ast);
         children.append(iterable.ast);
         syntaxChildren.append({target.syntax, iterable.syntax});
+        QVector<AstChildRole> roles {
+            AstChildRole::Element, AstChildRole::Target, AstChildRole::Iterable};
+        while (consumeIf(TokenKind::KwIf)) {
+            const ParsedNode condition = parseExpression(0, false, false, false);
+            children.append(condition.ast);
+            syntaxChildren.append(condition.syntax);
+            roles.append(AstChildRole::Condition);
+        }
         return makeParsed(AstNodeKind::ComprehensionExpression,
                           SyntaxKind::ComprehensionExpression,
                           clauseStart, m_mainPosition, {}, children, syntaxChildren,
-                          {AstChildRole::Element, AstChildRole::Target, AstChildRole::Iterable});
+                          roles);
     }
 
     [[nodiscard]] ParsedNode parseExpression(const int minimumBindingPower = 0,
-                                             const bool allowBraceLessTuple = true) {
+                                             const bool allowBraceLessTuple = true,
+                                             const bool allowComprehension = true,
+                                             const bool allowInlineConditional = true) {
 
         ParsedNode left = parsePrefixExpression();
         while (!isExpressionBoundary(current().kind)) {
@@ -933,23 +944,33 @@ private:
             }
             const int rightBindingPower = operatorKind == TokenKind::Power
                 ? bindingPower : bindingPower + 1;
-            const ParsedNode right = parseExpression(rightBindingPower, allowBraceLessTuple);
+            const ParsedNode right = parseExpression(rightBindingPower, false, false,
+                                                     allowInlineConditional);
             left = makeParsed(AstNodeKind::BinaryExpression, SyntaxKind::BinaryExpression,
                               startFor(left), m_mainPosition, operatorText,
                               {left.ast, right.ast}, {left.syntax, right.syntax});
         }
 
-        while (at(TokenKind::KwFor)) {
-            left = parseComprehensionClause(left);
+        // A comma-separated element belongs to one comprehension. Do not let
+        // the final tuple item (or a binary operand) consume its clause first.
+        if (minimumBindingPower == 0 && allowBraceLessTuple && at(TokenKind::Comma)) {
+            left = parseTupleSequence(left, allowInlineConditional);
+        }
+        if (minimumBindingPower == 0 && allowComprehension) {
+            while (at(TokenKind::KwFor)) {
+                left = parseComprehensionClause(left);
+            }
         }
 
-        if (at(TokenKind::KwIf)) {
+        if (minimumBindingPower == 0 && allowInlineConditional && at(TokenKind::KwIf)) {
             const qsizetype conditionalStart = startFor(left);
             consume();
             const ParsedNode condition = parseExpression(0, false);
             expect(TokenKind::KwElse, QStringLiteral("in an inline conditional expression"));
             const ParsedNode alternative = parseExpression(minimumBindingPower,
-                                                           allowBraceLessTuple);
+                                                           allowBraceLessTuple,
+                                                           allowComprehension,
+                                                           allowInlineConditional);
             left = makeParsed(AstNodeKind::BinaryExpression, SyntaxKind::BinaryExpression,
                               conditionalStart, m_mainPosition,
                               QStringLiteral("اذا/والا"),
@@ -958,12 +979,13 @@ private:
         }
 
         if (allowBraceLessTuple && at(TokenKind::Comma)) {
-            left = parseTupleSequence(left);
+            left = parseTupleSequence(left, allowInlineConditional);
         }
         return left;
     }
 
-    [[nodiscard]] ParsedNode parseTupleSequence(const ParsedNode& first) {
+    [[nodiscard]] ParsedNode parseTupleSequence(const ParsedNode& first,
+                                                const bool allowInlineConditional = true) {
         const qsizetype start = startFor(first);
         QVector<AstNodeId> children {first.ast};
         QVector<SyntaxNodeId> syntaxChildren {first.syntax};
@@ -974,7 +996,7 @@ private:
                 // Trailing comma: the tuple ends here without another element.
                 break;
             }
-            const ParsedNode item = parseExpression();
+            const ParsedNode item = parseExpression(0, false, false, allowInlineConditional);
             children.append(item.ast);
             syntaxChildren.append(item.syntax);
         }
@@ -1172,7 +1194,7 @@ private:
 
     [[nodiscard]] ParsedNode parseUnaryExpression(const qsizetype start,
                                                    const QString& operatorText) {
-        const ParsedNode operand = parseExpression(55);
+        const ParsedNode operand = parseExpression(55, false, false);
         return makeParsed(AstNodeKind::UnaryExpression, SyntaxKind::UnaryExpression,
                           start, m_mainPosition, operatorText,
                           {operand.ast}, {operand.syntax});

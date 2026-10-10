@@ -499,6 +499,9 @@ private:
         if (isValidNode(element)) {
             indexNode(element, scope);
         }
+        for (const AstNodeId condition : childrenWithRole(ast, AstChildRole::Condition)) {
+            indexNode(condition, scope);
+        }
     }
 
     void indexLambda(const AstNode& ast, const ScopeId parentScope) {
@@ -595,6 +598,13 @@ private:
                 }
                 return {declare(classScope, SymbolKind::Attribute, memberName.text,
                                 memberName.range, target.range, target.id)};
+            }
+            // Other member assignments write through a receiver, not a new
+            // lexical binding. Resolve the receiver/member in resolveTarget;
+            // unknown member types do not make the assignment target invalid.
+            if (isValidNode(base) && isValidNode(member)
+                && node(member).kind == AstNodeKind::NameExpression) {
+                return {};
             }
         }
 
@@ -788,6 +798,9 @@ private:
         }
         if (isValidNode(element)) {
             resolveNode(element, scope, ReferenceKind::Read);
+        }
+        for (const AstNodeId condition : childrenWithRole(ast, AstChildRole::Condition)) {
+            resolveNode(condition, scope, ReferenceKind::Read);
         }
     }
 

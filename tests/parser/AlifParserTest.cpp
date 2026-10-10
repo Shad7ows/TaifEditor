@@ -37,6 +37,12 @@ private slots:
     void fromImportAcceptsWildcard_data();
     void fromImportAcceptsWildcard();
     void fromImportPreservesNamedImports();
+    void tupleComprehensionPreservesElementsAndTargets_data();
+    void tupleComprehensionPreservesElementsAndTargets();
+    void ordinaryTupleKeepsFlatElementsAndBinaryPrecedence();
+    void comprehensionFiltersParseWithoutElse_data();
+    void comprehensionFiltersParseWithoutElse();
+    void inlineConditionalsStillRequireElse();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
     void formattedStringCreatesStructuredAst();
     void recoveryPreservesLaterDeclarations();
@@ -171,6 +177,115 @@ void TaifParserTest::fromImportPreservesNamedImports() {
     }
     QCOMPARE(result.ast->node(statement.children.at(1)).text, QStringLiteral("س"));
     QCOMPARE(result.ast->node(statement.children.at(2)).text, QStringLiteral("ص"));
+}
+
+void TaifParserTest::tupleComprehensionPreservesElementsAndTargets_data() {
+    QTest::addColumn<QString>("source");
+    QTest::newRow("bare") << QStringLiteral("متغير,متغير2 لكل متغير, متغير2 في تعبير\n");
+    QTest::newRow("list") << QStringLiteral("[متغير,متغير2 لكل متغير, متغير2 في تعبير]\n");
+    QTest::newRow("parenthesized") << QStringLiteral("(متغير,متغير2 لكل متغير, متغير2 في تعبير)\n");
+    QTest::newRow("binary-elements") << QStringLiteral("متغير + 1,متغير2 * 2 لكل متغير, متغير2 في تعبير\n");
+    QTest::newRow("unary-elements") << QStringLiteral("-متغير,+متغير2 لكل متغير, متغير2 في تعبير\n");
+    QTest::newRow("three-elements") << QStringLiteral("متغير,متغير2,متغير3 لكل متغير, متغير2, متغير3 في تعبير\n");
+}
+
+void TaifParserTest::tupleComprehensionPreservesElementsAndTargets() {
+    QFETCH(QString, source);
+    const ParseResult result = TaifParser().parse(source);
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    const AstNode* comprehension = &result.ast->node(statement.children.constFirst());
+    if (comprehension->kind == AstNodeKind::ListExpression) {
+        QCOMPARE(comprehension->children.size(), qsizetype(1));
+        comprehension = &result.ast->node(comprehension->children.constFirst());
+    }
+    QCOMPARE(comprehension->kind, AstNodeKind::ComprehensionExpression);
+    QCOMPARE(comprehension->children.size(), qsizetype(3));
+    QCOMPARE(comprehension->childRoles.at(0), AstChildRole::Element);
+    QCOMPARE(comprehension->childRoles.at(1), AstChildRole::Target);
+    QCOMPARE(comprehension->childRoles.at(2), AstChildRole::Iterable);
+    const AstNode& element = result.ast->node(comprehension->children.at(0));
+    const AstNode& target = result.ast->node(comprehension->children.at(1));
+    const qsizetype count = source.contains(QStringLiteral("متغير3")) ? 3 : 2;
+    QCOMPARE(element.kind, AstNodeKind::TupleExpression);
+    QCOMPARE(element.children.size(), count);
+    QCOMPARE(target.kind, AstNodeKind::TupleExpression);
+    QCOMPARE(target.children.size(), count);
+    for (qsizetype index = 0; index < count; ++index) {
+        const QString name = index == 0 ? QStringLiteral("متغير")
+                                       : QStringLiteral("متغير") + QString::number(index + 1);
+        QCOMPARE(result.ast->node(target.children.at(index)).kind, AstNodeKind::NameExpression);
+        QCOMPARE(result.ast->node(target.children.at(index)).text, name);
+    }
+    QCOMPARE(result.ast->node(comprehension->children.at(2)).text, QStringLiteral("تعبير"));
+}
+
+void TaifParserTest::ordinaryTupleKeepsFlatElementsAndBinaryPrecedence() {
+    const ParseResult result = TaifParser().parse(QStringLiteral("س + 1, ص * 2, ع\n"));
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    const AstNode& tuple = result.ast->node(statement.children.constFirst());
+    QCOMPARE(tuple.kind, AstNodeKind::TupleExpression);
+    QCOMPARE(tuple.children.size(), qsizetype(3));
+    QCOMPARE(result.ast->node(tuple.children.at(0)).kind, AstNodeKind::BinaryExpression);
+    QCOMPARE(result.ast->node(tuple.children.at(0)).text, QStringLiteral("+"));
+    QCOMPARE(result.ast->node(tuple.children.at(1)).kind, AstNodeKind::BinaryExpression);
+    QCOMPARE(result.ast->node(tuple.children.at(1)).text, QStringLiteral("*"));
+    QCOMPARE(result.ast->node(tuple.children.at(2)).text, QStringLiteral("ع"));
+}
+
+void TaifParserTest::comprehensionFiltersParseWithoutElse_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<int>("filterCount");
+    QTest::newRow("exact-report") << QStringLiteral("[س لكل س, خلية في تعداد(هذا.اللوح) اذا خلية == 0]") << 1;
+    QTest::newRow("multiple-filters") << QStringLiteral("[س لكل س, خلية في تعداد(هذا.اللوح) اذا خلية == 0 اذا س > 1]\n") << 2;
+    QTest::newRow("boolean-filter") << QStringLiteral("[س لكل س, خلية في تعداد(هذا.اللوح) اذا خلية == 0 و س > 1]\n") << 1;
+    QTest::newRow("tuple-element") << QStringLiteral("س,خلية لكل س, خلية في تعداد(هذا.اللوح) اذا خلية == 0\n") << 1;
+    QTest::newRow("conditional-iterable") << QStringLiteral("[س لكل س, خلية في (تعداد(هذا.اللوح) اذا صح والا []) اذا خلية == 0]\n") << 1;
+    QTest::newRow("conditional-filter") << QStringLiteral("[س لكل س, خلية في تعداد(هذا.اللوح) اذا (خلية == 0 اذا صح والا خطأ)]\n") << 1;
+    QTest::newRow("following-statement") << QStringLiteral("[س لكل س, خلية في تعداد(هذا.اللوح) اذا خلية == 0]\nبعد = 1\n") << 1;
+}
+
+void TaifParserTest::comprehensionFiltersParseWithoutElse() {
+    QFETCH(QString, source);
+    QFETCH(int, filterCount);
+    const ParseResult result = TaifParser().parse(source);
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QVERIFY(!hasAstKind(*result.ast, AstNodeKind::ErrorExpression));
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    const AstNode* comprehension = &result.ast->node(statement.children.constFirst());
+    if (comprehension->kind == AstNodeKind::ListExpression) {
+        comprehension = &result.ast->node(comprehension->children.constFirst());
+    }
+    QCOMPARE(comprehension->kind, AstNodeKind::ComprehensionExpression);
+    QCOMPARE(comprehension->children.size(), qsizetype(3 + filterCount));
+    QCOMPARE(comprehension->childRoles.size(), comprehension->children.size());
+    QCOMPARE(comprehension->childRoles.at(0), AstChildRole::Element);
+    QCOMPARE(comprehension->childRoles.at(1), AstChildRole::Target);
+    QCOMPARE(comprehension->childRoles.at(2), AstChildRole::Iterable);
+    for (qsizetype index = 3; index < comprehension->children.size(); ++index) {
+        QCOMPARE(comprehension->childRoles.at(index), AstChildRole::Condition);
+        const AstNode& condition = result.ast->node(comprehension->children.at(index));
+        QCOMPARE(condition.kind, AstNodeKind::BinaryExpression);
+        QVERIFY(condition.range.begin.offset >= source.indexOf(QStringLiteral("اذا")));
+    }
+    if (source.contains(QStringLiteral("بعد = 1"))) {
+        QCOMPARE(result.ast->root().children.size(), qsizetype(2));
+        QVERIFY(hasAstKind(*result.ast, AstNodeKind::AssignmentStatement));
+    }
+}
+
+void TaifParserTest::inlineConditionalsStillRequireElse() {
+    const ParseResult valid = TaifParser().parse(QStringLiteral("س = 1 + 2 اذا صح والا 0\n"));
+    QVERIFY(valid.parserDiagnostics.isEmpty());
+    const AstNode& assignment = valid.ast->node(valid.ast->root().children.constFirst());
+    const AstNode& conditional = valid.ast->node(assignment.children.constLast());
+    QCOMPARE(conditional.text, QStringLiteral("اذا/والا"));
+    QCOMPARE(valid.ast->node(conditional.children.constFirst()).text, QStringLiteral("+"));
+    const ParseResult invalid = TaifParser().parse(QStringLiteral("س = 1 اذا صح\n"));
+    QVERIFY(hasDiagnostic(invalid, QStringLiteral("عقد001")));
 }
 
 void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {
