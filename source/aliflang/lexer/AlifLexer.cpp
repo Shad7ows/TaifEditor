@@ -238,6 +238,8 @@ private:
             {QStringLiteral("استورد"), TokenKind::KwImport},
             {QStringLiteral("انتج"), TokenKind::KwYield},
             {QStringLiteral("ك"), TokenKind::KwAs},
+            {QStringLiteral("هو"), TokenKind::KwIs},
+            {QStringLiteral("هي"), TokenKind::KwIs},
             {QStringLiteral("من"), TokenKind::KwFrom},
             {QStringLiteral("احذف"), TokenKind::KwDelete},
             {QStringLiteral("توقف"), TokenKind::KwBreak},
