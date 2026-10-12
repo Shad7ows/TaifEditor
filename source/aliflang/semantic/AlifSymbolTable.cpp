@@ -187,7 +187,7 @@ private:
             QStringLiteral("رمز"), QStringLiteral("اسماء_عامة"), QStringLiteral("اسماء_محلية"),
             QStringLiteral("تحقق_الكل"), QStringLiteral("ثمانيات"), QStringLiteral("اضف_صفة"),
             QStringLiteral("يملك_صفة"), QStringLiteral("احضر_صفة"), QStringLiteral("احذف_صفة"),
-            QStringLiteral("نوع"),
+            QStringLiteral("نوع"), QStringLiteral("ترجم"), QStringLiteral("نفذ"),
             // Built-in Alif runtime-error types. They are valid names in
             // exception clauses and must not be reported as unresolved.
             QStringLiteral("خطأ_اسم"), QStringLiteral("خطأ_مفتاح"),
