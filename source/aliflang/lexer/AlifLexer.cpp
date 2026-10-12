@@ -230,6 +230,7 @@ private:
             {QStringLiteral("وإلا"), TokenKind::KwElse},
             {QStringLiteral("لكل"), TokenKind::KwFor},
             {QStringLiteral("في"), TokenKind::KwIn},
+            {QStringLiteral("اذن"), TokenKind::KwThen},
             {QStringLiteral("بينما"), TokenKind::KwWhile},
             {QStringLiteral("حاول"), TokenKind::KwTry},
             {QStringLiteral("خلل"), TokenKind::KwExcept},

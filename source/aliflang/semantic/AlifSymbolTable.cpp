@@ -187,6 +187,7 @@ private:
             QStringLiteral("رمز"), QStringLiteral("اسماء_عامة"), QStringLiteral("اسماء_محلية"),
             QStringLiteral("تحقق_الكل"), QStringLiteral("ثمانيات"), QStringLiteral("اضف_صفة"),
             QStringLiteral("يملك_صفة"), QStringLiteral("احضر_صفة"), QStringLiteral("احذف_صفة"),
+            QStringLiteral("نوع"),
             // Built-in Alif runtime-error types. They are valid names in
             // exception clauses and must not be reported as unresolved.
             QStringLiteral("خطأ_اسم"), QStringLiteral("خطأ_مفتاح"),
@@ -194,7 +195,15 @@ private:
             QStringLiteral("خطأ_صلاحيات"), QStringLiteral("خطأ_ترميز"),
             QStringLiteral("خطأ_غير_منهي"), QStringLiteral("خطأ_نظام_تشغيل"),
             QStringLiteral("خطأ_نوع"), QStringLiteral("خطأ_قيمة"),
-            QStringLiteral("خطأ_استيراد"),
+            QStringLiteral("خطأ_استيراد"), QStringLiteral("خروج_نظام"),
+            QStringLiteral("خطأ_حسابي"), QStringLiteral("خطأ_صفة"),
+            QStringLiteral("خطأ_بحث"), QStringLiteral("خطأ_اثناء_التشغيل"),
+            QStringLiteral("خطأ_توقف_التكرار_المتزامن"), QStringLiteral("خطأ_توقف_التكرار"),
+            QStringLiteral("خطأ_نسق"), QStringLiteral("خطأ_نظام"),
+            QStringLiteral("خطأ_فائض"), QStringLiteral("خطأ_منع_التبادل"),
+            QStringLiteral("خطأ_مسافة_بادئة"), QStringLiteral("خطأ_مؤشر"),
+            QStringLiteral("خطأ_مسافة_طويلة"), QStringLiteral("خطأ_مكتبة_غير_موجودة"),
+            QStringLiteral("خطأ_ترميز_نص"),
         };
         for (const QString& builtin : builtins) {
             declare(scope, SymbolKind::Builtin, builtin, range, range,
