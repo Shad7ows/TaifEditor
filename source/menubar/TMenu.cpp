@@ -70,7 +70,7 @@ TMenuBar::TMenuBar(QWidget* parent) {
     goToLineAction = createEditAction(parent, QStringLiteral("الذهاب إلى سطر"),
                                       QStringLiteral("GoToLineAction"), QKeySequence::fromString("Ctrl+G"));
     toggleCommentAction = createEditAction(parent, QStringLiteral("تعليق سطر"),
-                                           QStringLiteral("ToggleCommentAction"), QKeySequence::fromString("Ctrl+M"));
+                                           QStringLiteral("ToggleCommentAction"), QKeySequence::fromString("Ctrl+J"));
     duplicateLineAction = createEditAction(parent, QStringLiteral("تكرار السطر"),
                                            QStringLiteral("duplicateLineAction"), QKeySequence::fromString("Ctrl+D"));
     moveLineUpAction = createEditAction(parent, QStringLiteral("نقل السطر لأعلى"),
