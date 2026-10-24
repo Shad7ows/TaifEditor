@@ -34,6 +34,10 @@ private slots:
     void decoratorsAreLexedWithoutDiagnostics();
     void layoutTriviaAndSourceRanges();
     void literalsAndLongestMatchOperators();
+    void binaryOctalAndHexadecimalPrefixes_data();
+    void binaryOctalAndHexadecimalPrefixes();
+    void bitwiseOperatorsUseLongestMatch();
+    void invalidRadixDigitsAreDiagnosed();
     void formattedStringsHaveStructuredTokens();
     void formattedStringFormatsAreStructured();
     void rawAndBinaryStringsHaveLosslessTokens_data();
@@ -130,6 +134,64 @@ void TaifLexerTest::literalsAndLongestMatchOperators() {
         TokenKind::IntegerLiteral, TokenKind::Power,
         TokenKind::IntegerLiteral, TokenKind::Newline, TokenKind::EndOfFile
     });
+}
+
+void TaifLexerTest::binaryOctalAndHexadecimalPrefixes_data() {
+    QTest::addColumn<QString>("literal");
+    QTest::addColumn<QString>("expectedLexeme");
+    const QVector<QStringList> pairs {
+        {QStringLiteral("0b00000011"), QStringLiteral("0ث00000011")},
+        {QStringLiteral("0o00000071"), QStringLiteral("0م00000071")},
+        {QStringLiteral("0x0000001c"), QStringLiteral("0س0000001ت")}
+    };
+    for (const QStringList& pair : pairs) {
+        QTest::newRow(qPrintable(pair.at(0))) << pair.at(0) << pair.at(0);
+        QTest::newRow(qPrintable(pair.at(1))) << pair.at(1) << pair.at(1);
+    }
+}
+
+void TaifLexerTest::binaryOctalAndHexadecimalPrefixes() {
+    QFETCH(QString, literal);
+    QFETCH(QString, expectedLexeme);
+    const LexResult result = TaifLexer().lex(literal);
+    QVERIFY(result.diagnostics.isEmpty());
+    compareKinds(result, {TokenKind::IntegerLiteral, TokenKind::EndOfFile});
+    QCOMPARE(result.tokens.constFirst().lexeme, expectedLexeme);
+    QCOMPARE(result.tokens.constFirst().range.end.offset, literal.size());
+}
+
+void TaifLexerTest::bitwiseOperatorsUseLongestMatch() {
+    const QString source = QStringLiteral("& | *| ~ << >> &= |= *|= <<= >>= *| *=");
+    const LexResult result = TaifLexer().lex(source);
+    QVERIFY(result.diagnostics.isEmpty());
+    compareKinds(result, {
+        TokenKind::BitwiseAnd, TokenKind::BitwiseOr, TokenKind::BitwiseXor,
+        TokenKind::BitwiseNot, TokenKind::LeftShift, TokenKind::RightShift,
+        TokenKind::BitwiseAndEqual, TokenKind::BitwiseOrEqual,
+        TokenKind::BitwiseXorEqual, TokenKind::LeftShiftEqual,
+        TokenKind::RightShiftEqual, TokenKind::BitwiseXor, TokenKind::StarEqual,
+        TokenKind::EndOfFile
+    });
+    QVector<Token> mainTokens;
+    for (const Token& token : result.tokens) {
+        if (token.channel == TokenChannel::Main) {
+            mainTokens.append(token);
+        }
+    }
+    QCOMPARE(mainTokens.at(8).lexeme, QStringLiteral("*|="));
+    QCOMPARE(mainTokens.at(9).lexeme, QStringLiteral("<<="));
+    QCOMPARE(mainTokens.at(10).lexeme, QStringLiteral(">>="));
+}
+
+void TaifLexerTest::invalidRadixDigitsAreDiagnosed() {
+    for (const QString& source : {QStringLiteral("0b2"), QStringLiteral("0ث2"),
+                                  QStringLiteral("0o8"), QStringLiteral("0م8"),
+                                  QStringLiteral("0x1g"), QStringLiteral("0س1ز")}) {
+        const LexResult result = TaifLexer().lex(source);
+        QVERIFY(!result.diagnostics.isEmpty());
+        QCOMPARE(result.diagnostics.constFirst().code, QStringLiteral("نسق005"));
+        QCOMPARE(result.tokens.constFirst().kind, TokenKind::Invalid);
+    }
 }
 
 void TaifLexerTest::formattedStringsHaveStructuredTokens() {

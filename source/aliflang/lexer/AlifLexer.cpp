@@ -254,7 +254,8 @@ private:
             {QStringLiteral("خطأ"), TokenKind::KwFalse},
             {QStringLiteral("خطا"), TokenKind::KwFalse},
             {QStringLiteral("عدم"), TokenKind::KwNull},
-            {QStringLiteral("مرر"), TokenKind::KwPass}
+            {QStringLiteral("مرر"), TokenKind::KwPass},
+            {QStringLiteral("عند"), TokenKind::KwWith},
         };
         return table;
     }
@@ -276,22 +277,63 @@ private:
         const qsizetype start = m_pos;
         const SourceLocation startLocation = location();
 
-        if (peek() == QChar(u'0') && (peek(1) == QChar(u'x') || peek(1) == QChar(u'X'))) {
-            advance();
-            advance();
-            const qsizetype digitsStart = m_pos;
-            while (peek().isDigit()
-                   || (peek().toLower() >= QChar(u'a') && peek().toLower() <= QChar(u'f'))) {
+        if (peek() == QChar(u'0')) {
+            const QChar prefix = peek(1);
+            int base = 0;
+            if (prefix == QChar(u'b') || prefix == QChar(u'B') || prefix == QChar(u'ث')) {
+                base = 2;
+            } else if (prefix == QChar(u'o') || prefix == QChar(u'O') || prefix == QChar(u'م')) {
+                base = 8;
+            } else if (prefix == QChar(u'x') || prefix == QChar(u'X') || prefix == QChar(u'س')) {
+                base = 16;
+            }
+            if (base != 0) {
                 advance();
+                advance();
+                const qsizetype digitsStart = m_pos;
+                const auto digitValue = [base](const QChar digit) {
+                    if (digit >= QChar(u'0') && digit <= QChar(u'9')) {
+                        return digit.unicode() - QChar(u'0').unicode();
+                    }
+                    if (base == 16) {
+                        const QChar lower = digit.toLower();
+                        if (lower >= QChar(u'a') && lower <= QChar(u'f')) {
+                            return 10 + lower.unicode() - QChar(u'a').unicode();
+                        }
+                        switch (digit.unicode()) {
+                        case 0x0627: // ا: hexadecimal 10
+                        case 0x0623: // أ
+                            return 10;
+                        case 0x0628: return 11; // ب
+                        case 0x062A: return 12; // ت
+                        case 0x062B: return 13; // ث
+                        case 0x062C: return 14; // ج
+                        case 0x062D: return 15; // ح
+                        default: break;
+                        }
+                    }
+                    return -1;
+                };
+                bool invalidDigit = false;
+                while (digitValue(peek()) >= 0 && digitValue(peek()) < base) {
+                    advance();
+                }
+                if (isIdentifierContinue(peek())) {
+                    invalidDigit = true;
+                    while (isIdentifierContinue(peek())) {
+                        advance();
+                    }
+                }
+                if (m_pos == digitsStart || invalidDigit) {
+                    diagnostic(QStringLiteral("نسق005"),
+                               QStringLiteral("رقم صحيح غير صالح للأساس %1").arg(base),
+                               startLocation);
+                    appendToken(TokenKind::Invalid, TokenChannel::Main, start, startLocation);
+                } else {
+                    appendToken(TokenKind::IntegerLiteral, TokenChannel::Main, start, startLocation);
+                }
+                return;
             }
-            if (m_pos == digitsStart) {
-                diagnostic(QStringLiteral("نسق005"),
-                           QStringLiteral("رقم ست عشري غير صحيح"), startLocation);
-                appendToken(TokenKind::Invalid, TokenChannel::Main, start, startLocation);
-            } else {
-                appendToken(TokenKind::IntegerLiteral, TokenChannel::Main, start, startLocation);
-            }
-            return;
         }
 
         while (peek().isDigit()) {
@@ -559,7 +601,15 @@ private:
         static const Operator operators[] = {
             {"\\\\=", TokenKind::DoubleSlashEqual},
             {"\\*=", TokenKind::StarSlashEqual},
+            {"*|=", TokenKind::BitwiseXorEqual},
+            {"<<=", TokenKind::LeftShiftEqual},
+            {">>=", TokenKind::RightShiftEqual},
+            {"&=", TokenKind::BitwiseAndEqual},
+            {"|=", TokenKind::BitwiseOrEqual},
             {"**", TokenKind::DoubleStar},
+            {"<<", TokenKind::LeftShift},
+            {">>", TokenKind::RightShift},
+            {"*|", TokenKind::BitwiseXor},
             {"+=", TokenKind::PlusEqual},
             {"-=", TokenKind::MinusEqual},
             {"*=", TokenKind::StarEqual},
@@ -571,6 +621,9 @@ private:
             {">=", TokenKind::GreaterEqual},
             {"\\\\", TokenKind::DoubleSlash},
             {"\\*", TokenKind::StarSlash},
+            {"&", TokenKind::BitwiseAnd},
+            {"|", TokenKind::BitwiseOr},
+            {"~", TokenKind::BitwiseNot},
             {"+", TokenKind::Plus},
             {"-", TokenKind::Minus},
             {"*", TokenKind::Star},

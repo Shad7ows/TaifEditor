@@ -40,6 +40,11 @@ bool isAssignmentOperator(const TokenKind kind) {
     case TokenKind::StarSlashEqual:
     case TokenKind::DoubleSlashEqual:
     case TokenKind::PowerEqual:
+    case TokenKind::BitwiseAndEqual:
+    case TokenKind::BitwiseOrEqual:
+    case TokenKind::BitwiseXorEqual:
+    case TokenKind::LeftShiftEqual:
+    case TokenKind::RightShiftEqual:
         return true;
     default:
         return false;
@@ -82,6 +87,12 @@ int binaryBindingPower(const TokenKind kind) {
         return 10;
     case TokenKind::KwAnd:
         return 20;
+    case TokenKind::BitwiseOr:
+        return 24;
+    case TokenKind::BitwiseXor:
+        return 25;
+    case TokenKind::BitwiseAnd:
+        return 26;
     case TokenKind::EqualEqual:
     case TokenKind::NotEqual:
     case TokenKind::Less:
@@ -90,6 +101,9 @@ int binaryBindingPower(const TokenKind kind) {
     case TokenKind::GreaterEqual:
     case TokenKind::KwIn:
         return 30;
+    case TokenKind::LeftShift:
+    case TokenKind::RightShift:
+        return 35;
     case TokenKind::Plus:
     case TokenKind::Minus:
         return 40;
@@ -382,6 +396,7 @@ private:
                                                                   SyntaxKind::ContinueStatement);
         case TokenKind::KwPass: return parseControlStatement(AstNodeKind::PassStatement,
                                                               SyntaxKind::PassStatement);
+        // case TokenKind::KwWith: return parseWithStatement();
         case TokenKind::Invalid:
             return parseInvalidStatement();
         default:
@@ -1163,6 +1178,7 @@ private:
         case TokenKind::Plus:
         case TokenKind::Minus:
         case TokenKind::KwNot:
+        case TokenKind::BitwiseNot:
             consume();
             return parseUnaryExpression(start, token.lexeme);
         case TokenKind::LParen:

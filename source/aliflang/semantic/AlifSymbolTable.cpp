@@ -184,7 +184,8 @@ private:
             QStringLiteral("اصل"), QStringLiteral("اجمع"), QStringLiteral("اقصى"),
             QStringLiteral("ادنى"), QStringLiteral("تعداد"), QStringLiteral("قرب"),
             QStringLiteral("اطلق"), QStringLiteral("مرتب"), QStringLiteral("حرف"),
-            QStringLiteral("رمز"), QStringLiteral("اسماء_عامة"), QStringLiteral("اسماء_محلية"),
+            QStringLiteral("طبق"), QStringLiteral("رمز"),
+            QStringLiteral("اسماء_عامة"), QStringLiteral("اسماء_محلية"),
             QStringLiteral("تحقق_الكل"), QStringLiteral("ثمانيات"), QStringLiteral("اضف_صفة"),
             QStringLiteral("يملك_صفة"), QStringLiteral("احضر_صفة"), QStringLiteral("احذف_صفة"),
             QStringLiteral("نوع"), QStringLiteral("ترجم"), QStringLiteral("نفذ"),
@@ -771,6 +772,9 @@ private:
         }
         for (qsizetype index = 0; index < ast.assignmentTargetCount; ++index) {
             if (isValidNode(ast.children.at(index))) {
+                if (ast.text != QStringLiteral("=")) {
+                    resolveTarget(ast.children.at(index), scope, ReferenceKind::Read);
+                }
                 resolveTarget(ast.children.at(index), scope, ReferenceKind::Write);
             }
         }

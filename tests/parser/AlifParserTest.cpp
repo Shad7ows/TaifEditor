@@ -45,6 +45,9 @@ private slots:
     void inlineConditionalsStillRequireElse();
     void chainedComprehensionsPreserveClauseOrder();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
+    void radixLiteralsAndBitwiseExpressions_data();
+    void radixLiteralsAndBitwiseExpressions();
+    void bitwiseOperatorsRespectPrecedence();
     void formattedStringCreatesStructuredAst();
     void prefixedStringsAreSingleExpressions_data();
     void prefixedStringsAreSingleExpressions();
@@ -331,6 +334,77 @@ void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::KeywordArgument));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::StarArgument));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::DoubleStarArgument));
+}
+
+void TaifParserTest::radixLiteralsAndBitwiseExpressions_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addRow("standard-radices") << QStringLiteral(
+        "ثنائي = 0b00000011\nثماني = 0o00000071\nست_عشري = 0x0000001c\n");
+    QTest::addRow("arabic-radices") << QStringLiteral(
+        "ثنائي = 0ث00000011\nثماني = 0م00000071\nست_عشري = 0س0000001ت\n");
+    QTest::addRow("binary-and-xor") << QStringLiteral(
+        "عدد = 5 & 1\nعدد = 5 | 1\nعدد = 5 *| 1\nعدد = ~5\nعدد = 5 << 1\nعدد = 5 >> 1\n");
+    QTest::addRow("compound-assignment") << QStringLiteral(
+        "عدد &= 2\nعدد |= 4\nعدد *|= 5\nعدد <<= 1\nعدد >>= 1\n");
+}
+
+void TaifParserTest::radixLiteralsAndBitwiseExpressions() {
+    QFETCH(QString, source);
+    const ParseResult result = TaifParser().parse(source);
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QCOMPARE(result.ast->root().children.size(),
+             source.count(QChar(u'\n')));
+    for (const AstNodeId id : result.ast->root().children) {
+        const AstNode& statement = result.ast->node(id);
+        QVERIFY(statement.kind == AstNodeKind::AssignmentStatement);
+    }
+    if (source.contains(QStringLiteral("0ث"))) {
+        const AstNode& binary = result.ast->node(result.ast->root().children.at(0));
+        QCOMPARE(result.ast->node(binary.children.constLast()).text, QStringLiteral("0ث00000011"));
+    }
+    if (source.contains(QStringLiteral("عدد = 5 & 1"))) {
+        const QVector<qsizetype> binaryStatementIndices {0, 1, 2, 4, 5};
+        const QStringList binaryOperators {QStringLiteral("&"), QStringLiteral("|"),
+                                           QStringLiteral("*|"), QStringLiteral("<<"),
+                                           QStringLiteral(">>")};
+        for (qsizetype index = 0; index < binaryOperators.size(); ++index) {
+            const AstNode& assignment = result.ast->node(
+                result.ast->root().children.at(binaryStatementIndices.at(index)));
+            QCOMPARE(result.ast->node(assignment.children.constLast()).text,
+                     binaryOperators.at(index));
+        }
+        const AstNode& complementAssignment = result.ast->node(result.ast->root().children.at(3));
+        const AstNode& complement = result.ast->node(complementAssignment.children.constLast());
+        QCOMPARE(complement.kind, AstNodeKind::UnaryExpression);
+        QCOMPARE(complement.text, QStringLiteral("~"));
+    }
+    if (source.contains(QStringLiteral("عدد &= 2"))) {
+        const QStringList operators {QStringLiteral("&="), QStringLiteral("|="),
+                                     QStringLiteral("*|="), QStringLiteral("<<="),
+                                     QStringLiteral(">>=")};
+        for (qsizetype index = 0; index < operators.size(); ++index) {
+            QCOMPARE(result.ast->node(result.ast->root().children.at(index)).text,
+                     operators.at(index));
+        }
+    }
+}
+
+void TaifParserTest::bitwiseOperatorsRespectPrecedence() {
+    const ParseResult result = TaifParser().parse(
+        QStringLiteral("نتيجة = 1 | 2 *| 3 & 4 << 1 + 2\n"));
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    const AstNode& assignment = result.ast->node(result.ast->root().children.constFirst());
+    const AstNode& bitwiseOr = result.ast->node(assignment.children.constLast());
+    QCOMPARE(bitwiseOr.text, QStringLiteral("|"));
+    const AstNode& bitwiseXor = result.ast->node(bitwiseOr.children.at(1));
+    QCOMPARE(bitwiseXor.text, QStringLiteral("*|"));
+    const AstNode& bitwiseAnd = result.ast->node(bitwiseXor.children.at(1));
+    QCOMPARE(bitwiseAnd.text, QStringLiteral("&"));
+    const AstNode& shift = result.ast->node(bitwiseAnd.children.at(1));
+    QCOMPARE(shift.text, QStringLiteral("<<"));
+    const AstNode& addition = result.ast->node(shift.children.at(1));
+    QCOMPARE(addition.text, QStringLiteral("+"));
 }
 
 void TaifParserTest::formattedStringCreatesStructuredAst() {

@@ -58,6 +58,7 @@ private slots:
     void starredParametersBindIdentifierNames();
     void undeclaredUnpackedArgumentsStillWarn();
     void stringPrefixesDoNotBecomeNameReferences();
+    void radixLiteralsAndBitwiseAssignmentsAreSemanticallyValid();
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
@@ -193,6 +194,58 @@ void SymbolTableTest::stringPrefixesDoNotBecomeNameReferences() {
         QVERIFY(reference.name != QStringLiteral("خ"));
         QVERIFY(reference.name != QStringLiteral("ث"));
         QVERIFY(reference.name != QStringLiteral("مجهول"));
+    }
+}
+
+void SymbolTableTest::radixLiteralsAndBitwiseAssignmentsAreSemanticallyValid() {
+    const QString source = QStringLiteral(
+        "ثنائي = 0b00000011\n"
+        "ثنائي_عربي = 0ث00000011\n"
+        "ثماني = 0o00000071\n"
+        "ثماني_عربي = 0م00000071\n"
+        "ست_عشري = 0x0000001c\n"
+        "ست_عشري_عربي = 0س0000001ت\n"
+        "عدد = 5 & 1\n"
+        "عدد = 5 | 1\n"
+        "عدد = 5 *| 1\n"
+        "عدد = ~5\n"
+        "عدد = 5 << 1\n"
+        "عدد = 5 >> 1\n"
+        "عدد &= 2\n"
+        "عدد |= 4\n"
+        "عدد *|= 5\n"
+        "عدد <<= 1\n"
+        "عدد >>= 1\n"
+        "عدد = 0ث0101 & 0ث0110\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    for (const QString& name : {QStringLiteral("ثنائي"), QStringLiteral("ثنائي_عربي"),
+                                QStringLiteral("ثماني"), QStringLiteral("ثماني_عربي"),
+                                QStringLiteral("ست_عشري"), QStringLiteral("ست_عشري_عربي"),
+                                QStringLiteral("عدد")}) {
+        QVERIFY(findSymbol(*fixture.model, name, SymbolKind::Local) != nullptr);
+    }
+    const QStringList compoundStatements {
+        QStringLiteral("عدد &= 2"), QStringLiteral("عدد |= 4"),
+        QStringLiteral("عدد *|= 5"), QStringLiteral("عدد <<= 1"),
+        QStringLiteral("عدد >>= 1")};
+    for (const QString& statement : compoundStatements) {
+        const qsizetype targetOffset = source.indexOf(statement);
+        QVERIFY(targetOffset >= 0);
+        bool foundRead = false;
+        bool foundWrite = false;
+        for (const NameReference& reference : fixture.model->references()) {
+            if (reference.name != QStringLiteral("عدد")
+                || reference.range.begin.offset != targetOffset) {
+                continue;
+            }
+            foundRead = foundRead || reference.kind == ReferenceKind::Read;
+            foundWrite = foundWrite || reference.kind == ReferenceKind::Write;
+        }
+        QVERIFY(foundRead);
+        QVERIFY(foundWrite);
     }
 }
 

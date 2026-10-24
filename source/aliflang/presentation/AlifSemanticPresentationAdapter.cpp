@@ -22,7 +22,8 @@ bool isString(const TokenKind kind) {
 }
 
 bool isOperator(const TokenKind kind) {
-    return kind >= TokenKind::Plus && kind <= TokenKind::GreaterEqual;
+    return (kind >= TokenKind::Plus && kind <= TokenKind::GreaterEqual)
+        || (kind >= TokenKind::BitwiseAnd && kind <= TokenKind::RightShiftEqual);
 }
 
 bool isPunctuation(const TokenKind kind) {

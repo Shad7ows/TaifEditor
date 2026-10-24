@@ -71,6 +71,7 @@ enum class TokenKind : quint16 {
     KwFalse,
     KwNull,
     KwPass,
+    KwWith,
 
     LParen,
     RParen,
@@ -114,7 +115,18 @@ enum class TokenKind : quint16 {
     InterpolationEnd,
     FStringEnd,
     RawStringLiteral,
-    BinaryStringLiteral
+    BinaryStringLiteral,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    BitwiseNot,
+    LeftShift,
+    RightShift,
+    BitwiseAndEqual,
+    BitwiseOrEqual,
+    BitwiseXorEqual,
+    LeftShiftEqual,
+    RightShiftEqual
 };
 
 struct Token final {
