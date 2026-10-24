@@ -62,6 +62,7 @@ private slots:
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
+    void contextManagerTargetBindsAndResolvesInBody();
     void tupleComprehensionVariablesResolveInTheirScope_data();
     void tupleComprehensionVariablesResolveInTheirScope();
     void comprehensionFiltersResolveBoundNames_data();
@@ -293,6 +294,36 @@ void SymbolTableTest::forTargetBindsAndResolvesInTheLoopBody() {
                                             SymbolKind::LoopVariable);
     QVERIFY(loopVariable != nullptr);
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("ب"), loopVariable->id));
+}
+
+void SymbolTableTest::contextManagerTargetBindsAndResolvesInBody() {
+    const QString source = QStringLiteral(
+        "عند افتح(\"تجربة.الف\", \"ك\") ك ملف:\n"
+        "\tمرر\n"
+        "\tاطبع(ملف)\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* open = findSymbol(*fixture.model, QStringLiteral("افتح"), SymbolKind::Builtin);
+    const Symbol* file = findSymbol(*fixture.model, QStringLiteral("ملف"), SymbolKind::Local);
+    QVERIFY(open != nullptr);
+    QVERIFY(file != nullptr);
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("افتح"), open->id));
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("ملف"), file->id));
+    bool targetWrite = false;
+    bool bodyRead = false;
+    for (const NameReference& reference : fixture.model->references()) {
+        if (reference.name != QStringLiteral("ملف")) {
+            continue;
+        }
+        targetWrite |= reference.kind == ReferenceKind::Write
+            && reference.range.begin.offset == source.indexOf(QStringLiteral("ملف:"));
+        bodyRead |= reference.kind == ReferenceKind::Read
+            && reference.range.begin.offset == source.lastIndexOf(QStringLiteral("ملف"));
+    }
+    QVERIFY(targetWrite);
+    QVERIFY(bodyRead);
 }
 
 void SymbolTableTest::tupleComprehensionVariablesResolveInTheirScope_data() {

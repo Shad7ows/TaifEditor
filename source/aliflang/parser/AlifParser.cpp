@@ -383,6 +383,7 @@ private:
         case TokenKind::KwClass: return parseClassDeclaration();
         case TokenKind::KwIf: return parseIfStatement();
         case TokenKind::KwFor: return parseForStatement();
+        case TokenKind::KwWith: return parseWithStatement();
         case TokenKind::KwWhile: return parseWhileStatement();
         case TokenKind::KwTry: return parseTryStatement();
         case TokenKind::KwImport: return parseImportStatement();
@@ -752,6 +753,27 @@ private:
                           {target.ast, iterable.ast, suite.ast},
                           {target.syntax, iterable.syntax, suite.syntax},
                           {AstChildRole::Target, AstChildRole::Iterable, AstChildRole::Body});
+    }
+
+    [[nodiscard]] ParsedNode parseWithStatement() {
+        const qsizetype start = m_mainPosition;
+        consume(); // عند
+        const ParsedNode context = parseExpression();
+        QVector<AstNodeId> children {context.ast};
+        QVector<SyntaxNodeId> syntaxChildren {context.syntax};
+        QVector<AstChildRole> roles {AstChildRole::ContextExpression};
+        if (consumeIf(TokenKind::KwAs)) {
+            const ParsedNode target = parseBindingTarget();
+            children.append(target.ast);
+            syntaxChildren.append(target.syntax);
+            roles.append(AstChildRole::Target);
+        }
+        const ParsedNode suite = parseSuite();
+        children.append(suite.ast);
+        syntaxChildren.append(suite.syntax);
+        roles.append(AstChildRole::Body);
+        return makeParsed(AstNodeKind::WithStatement, SyntaxKind::WithStatement,
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseWhileStatement() {

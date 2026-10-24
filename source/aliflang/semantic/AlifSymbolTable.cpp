@@ -310,6 +310,9 @@ private:
         case AstNodeKind::ForStatement:
             indexFor(ast, scope);
             break;
+        case AstNodeKind::WithStatement:
+            indexWith(ast, scope);
+            break;
         case AstNodeKind::ComprehensionExpression:
             indexComprehension(ast, scope);
             break;
@@ -495,6 +498,21 @@ private:
         }
     }
 
+    void indexWith(const AstNode& ast, const ScopeId scope) {
+        const AstNodeId context = firstChildWithRole(ast, AstChildRole::ContextExpression);
+        const AstNodeId target = firstChildWithRole(ast, AstChildRole::Target);
+        const AstNodeId body = firstChildWithRole(ast, AstChildRole::Body);
+        if (isValidNode(context)) {
+            indexNode(context, scope);
+        }
+        if (isValidNode(target)) {
+            declareTarget(target, scope, SymbolKind::Local);
+        }
+        if (isValidNode(body)) {
+            indexNode(body, scope);
+        }
+    }
+
     void indexComprehension(const AstNode& ast, const ScopeId parentScope) {
         const ScopeId scope = createOwnedScope(ScopeKind::Comprehension, parentScope, ast);
         if (m_indexedScopes.contains(ast.id)) {
@@ -661,6 +679,9 @@ private:
         case AstNodeKind::ForStatement:
             resolveFor(ast, scope);
             break;
+        case AstNodeKind::WithStatement:
+            resolveWith(ast, scope);
+            break;
         case AstNodeKind::ComprehensionExpression:
             resolveComprehension(ast, scope);
             break;
@@ -790,6 +811,21 @@ private:
         const AstNodeId body = firstChildWithRole(ast, AstChildRole::Body);
         if (isValidNode(iterable)) {
             resolveNode(iterable, scope, ReferenceKind::Read);
+        }
+        if (isValidNode(target)) {
+            resolveTarget(target, scope, ReferenceKind::Write);
+        }
+        if (isValidNode(body)) {
+            resolveNode(body, scope, ReferenceKind::Read);
+        }
+    }
+
+    void resolveWith(const AstNode& ast, const ScopeId scope) {
+        const AstNodeId context = firstChildWithRole(ast, AstChildRole::ContextExpression);
+        const AstNodeId target = firstChildWithRole(ast, AstChildRole::Target);
+        const AstNodeId body = firstChildWithRole(ast, AstChildRole::Body);
+        if (isValidNode(context)) {
+            resolveNode(context, scope, ReferenceKind::Read);
         }
         if (isValidNode(target)) {
             resolveTarget(target, scope, ReferenceKind::Write);

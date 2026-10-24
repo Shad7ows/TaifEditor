@@ -14,6 +14,15 @@ bool hasAstKind(const AstModule& module, const AstNodeKind kind) {
     return false;
 }
 
+AstNodeId childWithRole(const AstNode& node, const AstChildRole role) {
+    for (qsizetype index = 0; index < node.childRoles.size(); ++index) {
+        if (node.childRoles.at(index) == role) {
+            return node.children.at(index);
+        }
+    }
+    return InvalidAstNodeId;
+}
+
 bool hasDiagnostic(const ParseResult& result, const QString& code) {
     for (const ParseDiagnostic& diagnostic : result.parserDiagnostics) {
         if (diagnostic.code == code) {
@@ -34,6 +43,8 @@ private slots:
     void declarationsAndSuitesCreateSemanticNodes();
     void decoratorsPrefixDeclarationsWithoutDiagnostics();
     void forHeaderTreatsInAsAStructuralDelimiter();
+    void contextManagerStatementParses_data();
+    void contextManagerStatementParses();
     void fromImportAcceptsWildcard_data();
     void fromImportAcceptsWildcard();
     void fromImportPreservesNamedImports();
@@ -121,6 +132,53 @@ void TaifParserTest::forHeaderTreatsInAsAStructuralDelimiter() {
     QVERIFY(result.parserDiagnostics.isEmpty());
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::ForStatement));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::CallExpression));
+}
+
+void TaifParserTest::contextManagerStatementParses_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<QString>("targetName");
+    QTest::newRow("file-alias") << QStringLiteral(
+        "عند افتح(\"تجربة.الف\", \"ك\") ك ملف:\n\tمرر\n")
+        << QStringLiteral("ملف");
+    QTest::newRow("without-alias") << QStringLiteral(
+        "عند افتح(\"تجربة.الف\", \"ك\"):\n\tمرر\n")
+        << QString();
+    QTest::newRow("tuple-alias") << QStringLiteral(
+        "عند احصل_على_سياق() ك ملف, حالة:\n\tمرر\n")
+        << QStringLiteral("ملف");
+}
+
+void TaifParserTest::contextManagerStatementParses() {
+    QFETCH(QString, source);
+    QFETCH(QString, targetName);
+    const ParseResult result = TaifParser().parse(source);
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QCOMPARE(result.ast->root().children.size(), qsizetype(1));
+    const AstNode& statement = result.ast->node(result.ast->root().children.constFirst());
+    QCOMPARE(statement.kind, AstNodeKind::WithStatement);
+    QCOMPARE(statement.childRoles.at(0), AstChildRole::ContextExpression);
+    QCOMPARE(result.ast->node(statement.children.at(0)).kind, AstNodeKind::CallExpression);
+    const AstNodeId targetId = childWithRole(statement, AstChildRole::Target);
+    if (targetName.isEmpty()) {
+        QVERIFY(targetId == InvalidAstNodeId);
+    } else {
+        QVERIFY(targetId != InvalidAstNodeId);
+        const AstNode& target = result.ast->node(targetId);
+        QCOMPARE(target.kind, targetName == QStringLiteral("ملف")
+                                  && source.contains(QStringLiteral(", حالة"))
+                                  ? AstNodeKind::TupleExpression : AstNodeKind::NameExpression);
+        if (target.kind == AstNodeKind::NameExpression) {
+            QCOMPARE(target.text, targetName);
+        } else {
+            QCOMPARE(result.ast->node(target.children.constFirst()).text, targetName);
+        }
+    }
+    const AstNodeId bodyId = childWithRole(statement, AstChildRole::Body);
+    QVERIFY(bodyId != InvalidAstNodeId);
+    QCOMPARE(result.ast->node(bodyId).kind, AstNodeKind::Suite);
+    QCOMPARE(result.syntaxTree->nodes().at(statement.syntaxNode).kind,
+             SyntaxKind::WithStatement);
 }
 
 void TaifParserTest::fromImportAcceptsWildcard_data() {

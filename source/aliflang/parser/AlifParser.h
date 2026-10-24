@@ -77,7 +77,8 @@ enum class SyntaxKind : quint16 {
     FormattedStringPart,
     ErrorNode,
     MissingToken,
-    ImportWildcard
+    ImportWildcard,
+    WithStatement
 };
 
 struct SyntaxNode final {
@@ -164,7 +165,8 @@ enum class AstNodeKind : quint16 {
     ErrorStatement,
     ImportWildcard, // '*' in a from-import; not an identifier or binding.
     RawStringLiteral,
-    BinaryStringLiteral
+    BinaryStringLiteral,
+    WithStatement
 };
 
 enum class AstChildRole : quint8 {
@@ -192,7 +194,8 @@ enum class AstChildRole : quint8 {
     DeletedValue,
     FormattedPart,
     FormatExpression,
-    FormatSpecifier
+    FormatSpecifier,
+    ContextExpression
 };
 
 /**
