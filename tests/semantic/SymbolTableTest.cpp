@@ -54,6 +54,7 @@ class SymbolTableTest final : public QObject {
 private slots:
     void emptyModuleCreatesPreludeAndModuleScopes();
     void nestedScopesResolveShadowingClosuresAndRecursion();
+    void identityComparisonsResolveOperands();
     void starredParametersBindIdentifierNames_data();
     void starredParametersBindIdentifierNames();
     void undeclaredUnpackedArgumentsStillWarn();
@@ -62,6 +63,7 @@ private slots:
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
+    void loopElseSuitesResolveLoopScopeNames();
     void contextManagerTargetBindsAndResolvesInBody();
     void tupleComprehensionVariablesResolveInTheirScope_data();
     void tupleComprehensionVariablesResolveInTheirScope();
@@ -120,6 +122,22 @@ void SymbolTableTest::nestedScopesResolveShadowingClosuresAndRecursion() {
         }
     }
     QCOMPARE(functionScopes, qsizetype(2));
+}
+
+void SymbolTableTest::identityComparisonsResolveOperands() {
+    const SemanticFixture fixture = analyze(QStringLiteral(
+        "مصفوفة1 = []\n"
+        "مصفوفة2 = []\n"
+        "اطبع(مصفوفة1 هي مصفوفة2)\n"
+        "اطبع(مصفوفة1 هو مصفوفة2)\n"));
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    for (const QString& name : {QStringLiteral("مصفوفة1"), QStringLiteral("مصفوفة2")}) {
+        const Symbol* symbol = findSymbol(*fixture.model, name, SymbolKind::Local);
+        QVERIFY(symbol != nullptr);
+        QVERIFY(hasResolvedReference(*fixture.model, name, symbol->id));
+    }
 }
 
 void SymbolTableTest::starredParametersBindIdentifierNames_data() {
@@ -294,6 +312,42 @@ void SymbolTableTest::forTargetBindsAndResolvesInTheLoopBody() {
                                             SymbolKind::LoopVariable);
     QVERIFY(loopVariable != nullptr);
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("ب"), loopVariable->id));
+}
+
+void SymbolTableTest::loopElseSuitesResolveLoopScopeNames() {
+    const QString source = QStringLiteral(
+        "متغير = [1]\n"
+        "لكل س في متغير:\n"
+        "\tمرر\n"
+        "اذن:\n"
+        "\tاطبع(س)\n"
+        "عداد = 0\n"
+        "بينما عداد < 1:\n"
+        "\tعداد += 1\n"
+        "اذن:\n"
+        "\tاطبع(عداد)\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* loopVariable = findSymbol(*fixture.model, QStringLiteral("س"),
+                                            SymbolKind::LoopVariable);
+    const Symbol* counter = findSymbol(*fixture.model, QStringLiteral("عداد"),
+                                       SymbolKind::Local);
+    QVERIFY(loopVariable != nullptr);
+    QVERIFY(counter != nullptr);
+    QVERIFY(hasResolvedReference(*fixture.model, loopVariable->name, loopVariable->id));
+    QVERIFY(hasResolvedReference(*fixture.model, counter->name, counter->id));
+    const qsizetype forElseRead = source.lastIndexOf(QStringLiteral("س"));
+    const qsizetype whileElseRead = source.lastIndexOf(QStringLiteral("عداد"));
+    QVERIFY(fixture.model->visibleSymbolsAt(forElseRead).contains(loopVariable->id));
+    QVERIFY(fixture.model->visibleSymbolsAt(whileElseRead).contains(counter->id));
+    const NameReference* resolvedForElseName = fixture.model->referenceAt(forElseRead);
+    const NameReference* resolvedWhileElseName = fixture.model->referenceAt(whileElseRead);
+    QVERIFY(resolvedForElseName != nullptr);
+    QVERIFY(resolvedWhileElseName != nullptr);
+    QCOMPARE(resolvedForElseName->resolvedSymbol, loopVariable->id);
+    QCOMPARE(resolvedWhileElseName->resolvedSymbol, counter->id);
 }
 
 void SymbolTableTest::contextManagerTargetBindsAndResolvesInBody() {

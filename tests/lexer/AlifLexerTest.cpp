@@ -67,13 +67,18 @@ void TaifLexerTest::statementSeparatorsAndKeywordAliases() {
         TokenKind::IntegerLiteral, TokenKind::Newline, TokenKind::EndOfFile
     });
 
-    const LexResult aliases = TaifLexer().lex(QStringLiteral("إذا صح و ليس عدم عند\n"));
+    const LexResult aliases = TaifLexer().lex(QStringLiteral("إذا صح و ليس عدم عند هي هو\n"));
     QCOMPARE(aliases.diagnostics.size(), 0);
     compareKinds(aliases, {
         TokenKind::KwIf, TokenKind::KwTrue, TokenKind::KwAnd,
-        TokenKind::KwNot, TokenKind::KwNull, TokenKind::KwWith, TokenKind::Newline,
+        TokenKind::KwNot, TokenKind::KwNull, TokenKind::KwWith,
+        TokenKind::KwIs, TokenKind::KwIs, TokenKind::Newline,
         TokenKind::EndOfFile
     });
+    const LexResult loopElse = TaifLexer().lex(QStringLiteral("اذن:\n"));
+    QCOMPARE(loopElse.diagnostics.size(), 0);
+    compareKinds(loopElse, {TokenKind::KwThen, TokenKind::Colon,
+                            TokenKind::Newline, TokenKind::EndOfFile});
 }
 
 void TaifLexerTest::decoratorsAreLexedWithoutDiagnostics() {

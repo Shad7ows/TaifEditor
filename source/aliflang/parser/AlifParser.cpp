@@ -100,6 +100,7 @@ int binaryBindingPower(const TokenKind kind) {
     case TokenKind::Greater:
     case TokenKind::GreaterEqual:
     case TokenKind::KwIn:
+    case TokenKind::KwIs:
         return 30;
     case TokenKind::LeftShift:
     case TokenKind::RightShift:
@@ -748,11 +749,27 @@ private:
         expect(TokenKind::KwIn, QStringLiteral("في حالة لكل"));
         const ParsedNode iterable = parseExpression();
         const ParsedNode suite = parseSuite();
+        QVector<AstNodeId> children {target.ast, iterable.ast, suite.ast};
+        QVector<SyntaxNodeId> syntaxChildren {target.syntax, iterable.syntax, suite.syntax};
+        QVector<AstChildRole> roles {
+            AstChildRole::Target, AstChildRole::Iterable, AstChildRole::Body};
+        if (at(TokenKind::KwThen)) {
+            const ParsedNode elseClause = parseLoopElseClause();
+            children.append(elseClause.ast);
+            syntaxChildren.append(elseClause.syntax);
+            roles.append(AstChildRole::ElseBody);
+        }
         return makeParsed(AstNodeKind::ForStatement, SyntaxKind::ForStatement,
-                          start, m_mainPosition, {},
-                          {target.ast, iterable.ast, suite.ast},
-                          {target.syntax, iterable.syntax, suite.syntax},
-                          {AstChildRole::Target, AstChildRole::Iterable, AstChildRole::Body});
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
+    }
+
+    [[nodiscard]] ParsedNode parseLoopElseClause() {
+        const qsizetype start = m_mainPosition;
+        consume(); // اذن
+        const ParsedNode suite = parseSuite();
+        return makeParsed(AstNodeKind::ElseClause, SyntaxKind::ElseClause,
+                          start, m_mainPosition, {}, {suite.ast}, {suite.syntax},
+                          {AstChildRole::Body});
     }
 
     [[nodiscard]] ParsedNode parseWithStatement() {
@@ -781,10 +798,17 @@ private:
         consume();
         const ParsedNode condition = parseExpression();
         const ParsedNode suite = parseSuite();
+        QVector<AstNodeId> children {condition.ast, suite.ast};
+        QVector<SyntaxNodeId> syntaxChildren {condition.syntax, suite.syntax};
+        QVector<AstChildRole> roles {AstChildRole::Condition, AstChildRole::Body};
+        if (at(TokenKind::KwThen)) {
+            const ParsedNode elseClause = parseLoopElseClause();
+            children.append(elseClause.ast);
+            syntaxChildren.append(elseClause.syntax);
+            roles.append(AstChildRole::ElseBody);
+        }
         return makeParsed(AstNodeKind::WhileStatement, SyntaxKind::WhileStatement,
-                          start, m_mainPosition, {}, {condition.ast, suite.ast},
-                          {condition.syntax, suite.syntax},
-                          {AstChildRole::Condition, AstChildRole::Body});
+                          start, m_mainPosition, {}, children, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseTryStatement() {

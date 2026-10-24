@@ -195,7 +195,8 @@ enum class AstChildRole : quint8 {
     FormattedPart,
     FormatExpression,
     FormatSpecifier,
-    ContextExpression
+    ContextExpression,
+    ElseBody
 };
 
 /**

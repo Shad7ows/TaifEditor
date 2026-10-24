@@ -490,11 +490,15 @@ private:
     void indexFor(const AstNode& ast, const ScopeId scope) {
         const AstNodeId target = firstChildWithRole(ast, AstChildRole::Target);
         const AstNodeId body = firstChildWithRole(ast, AstChildRole::Body);
+        const AstNodeId elseBody = firstChildWithRole(ast, AstChildRole::ElseBody);
         if (isValidNode(target)) {
             declareTarget(target, scope, SymbolKind::LoopVariable);
         }
         if (isValidNode(body)) {
             indexNode(body, scope);
+        }
+        if (isValidNode(elseBody)) {
+            indexNode(elseBody, scope);
         }
     }
 
@@ -809,6 +813,7 @@ private:
         const AstNodeId iterable = firstChildWithRole(ast, AstChildRole::Iterable);
         const AstNodeId target = firstChildWithRole(ast, AstChildRole::Target);
         const AstNodeId body = firstChildWithRole(ast, AstChildRole::Body);
+        const AstNodeId elseBody = firstChildWithRole(ast, AstChildRole::ElseBody);
         if (isValidNode(iterable)) {
             resolveNode(iterable, scope, ReferenceKind::Read);
         }
@@ -817,6 +822,9 @@ private:
         }
         if (isValidNode(body)) {
             resolveNode(body, scope, ReferenceKind::Read);
+        }
+        if (isValidNode(elseBody)) {
+            resolveNode(elseBody, scope, ReferenceKind::Read);
         }
     }
 

@@ -43,6 +43,8 @@ private slots:
     void declarationsAndSuitesCreateSemanticNodes();
     void decoratorsPrefixDeclarationsWithoutDiagnostics();
     void forHeaderTreatsInAsAStructuralDelimiter();
+    void loopElseClauseParses_data();
+    void loopElseClauseParses();
     void contextManagerStatementParses_data();
     void contextManagerStatementParses();
     void fromImportAcceptsWildcard_data();
@@ -56,6 +58,8 @@ private slots:
     void inlineConditionalsStillRequireElse();
     void chainedComprehensionsPreserveClauseOrder();
     void expressionsUsePrattPostfixAndPrecedenceParsing();
+    void identityComparisonsParseInsideCalls_data();
+    void identityComparisonsParseInsideCalls();
     void radixLiteralsAndBitwiseExpressions_data();
     void radixLiteralsAndBitwiseExpressions();
     void bitwiseOperatorsRespectPrecedence();
@@ -132,6 +136,43 @@ void TaifParserTest::forHeaderTreatsInAsAStructuralDelimiter() {
     QVERIFY(result.parserDiagnostics.isEmpty());
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::ForStatement));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::CallExpression));
+}
+
+void TaifParserTest::loopElseClauseParses_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<bool>("hasElse");
+    QTest::newRow("for-else") << QStringLiteral(
+        "لكل س في متغير:\n\tمرر\nاذن:\n\tمرر\n") << true;
+    QTest::newRow("while-else") << QStringLiteral(
+        "بينما صح:\n\tمرر\nاذن:\n\tمرر\n") << true;
+    QTest::newRow("for-without-else") << QStringLiteral(
+        "لكل س في متغير:\n\tمرر\n") << false;
+    QTest::newRow("while-without-else") << QStringLiteral(
+        "بينما صح:\n\tمرر\n") << false;
+}
+
+void TaifParserTest::loopElseClauseParses() {
+    QFETCH(QString, source);
+    QFETCH(bool, hasElse);
+    const ParseResult result = TaifParser().parse(source);
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QCOMPARE(result.ast->root().children.size(), qsizetype(1));
+    const AstNode& loop = result.ast->node(result.ast->root().children.constFirst());
+    QCOMPARE(loop.kind, source.contains(QStringLiteral("بينما"))
+                            ? AstNodeKind::WhileStatement : AstNodeKind::ForStatement);
+    const AstNodeId elseClauseId = childWithRole(loop, AstChildRole::ElseBody);
+    QCOMPARE(elseClauseId != InvalidAstNodeId, hasElse);
+    if (hasElse) {
+        const AstNode& elseClause = result.ast->node(elseClauseId);
+        QCOMPARE(elseClause.kind, AstNodeKind::ElseClause);
+        QCOMPARE(result.syntaxTree->nodes().at(elseClause.syntaxNode).kind,
+                 SyntaxKind::ElseClause);
+        const AstNodeId body = childWithRole(elseClause, AstChildRole::Body);
+        QVERIFY(body != InvalidAstNodeId);
+        QCOMPARE(result.ast->node(body).kind, AstNodeKind::Suite);
+        QVERIFY(hasAstKind(*result.ast, AstNodeKind::PassStatement));
+    }
 }
 
 void TaifParserTest::contextManagerStatementParses_data() {
@@ -392,6 +433,38 @@ void TaifParserTest::expressionsUsePrattPostfixAndPrecedenceParsing() {
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::KeywordArgument));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::StarArgument));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::DoubleStarArgument));
+}
+
+void TaifParserTest::identityComparisonsParseInsideCalls_data() {
+    QTest::addColumn<QString>("source");
+    QTest::addColumn<QString>("operatorText");
+    QTest::newRow("reported-he") << QStringLiteral("اطبع(مصفوفة1 هي مصفوفة2)\n")
+                                  << QStringLiteral("هي");
+    QTest::newRow("synonym-huwa") << QStringLiteral("اطبع(مصفوفة1 هو مصفوفة2)\n")
+                                   << QStringLiteral("هو");
+    QTest::newRow("comparison-precedence") << QStringLiteral(
+        "اطبع(مصفوفة1 + قيمة هي مصفوفة2)\n") << QStringLiteral("هي");
+}
+
+void TaifParserTest::identityComparisonsParseInsideCalls() {
+    QFETCH(QString, source);
+    QFETCH(QString, operatorText);
+    const ParseResult result = TaifParser().parse(source);
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    bool foundIdentityComparison = false;
+    for (const AstNode& node : result.ast->nodes()) {
+        if (node.kind != AstNodeKind::BinaryExpression || node.text != operatorText) {
+            continue;
+        }
+        QCOMPARE(node.children.size(), qsizetype(2));
+        QCOMPARE(result.ast->node(node.children.at(0)).kind,
+                 operatorText == QStringLiteral("هي") && source.contains(QStringLiteral(" + "))
+                     ? AstNodeKind::BinaryExpression : AstNodeKind::NameExpression);
+        QCOMPARE(result.ast->node(node.children.at(1)).text, QStringLiteral("مصفوفة2"));
+        foundIdentityComparison = true;
+    }
+    QVERIFY(foundIdentityComparison);
 }
 
 void TaifParserTest::radixLiteralsAndBitwiseExpressions_data() {
