@@ -230,6 +230,12 @@ std::optional<SymbolId> symbolAt(const SemanticModel& semantic, const qsizetype 
 
     const Symbol* best = nullptr;
     for (const Symbol& candidate : semantic.symbols()) {
+        // Prelude/built-in symbols use the module range as a synthetic
+        // declaration range. It is not a real source declaration and must not
+        // make an unrelated unresolved identifier show built-in hover info.
+        if (candidate.declarationNode == InvalidAstNodeId) {
+            continue;
+        }
         if (!containsOffset(candidate.declarationRange, offset)) {
             continue;
         }
