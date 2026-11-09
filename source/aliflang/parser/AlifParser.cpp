@@ -398,6 +398,7 @@ private:
                                                                   SyntaxKind::ContinueStatement);
         case TokenKind::KwPass: return parseControlStatement(AstNodeKind::PassStatement,
                                                               SyntaxKind::PassStatement);
+        case TokenKind::KwGlobal: return parseGlobalStatement();
         // case TokenKind::KwWith: return parseWithStatement();
         case TokenKind::Invalid:
             return parseInvalidStatement();
@@ -421,6 +422,22 @@ private:
         const qsizetype start = m_mainPosition;
         consume();
         return makeParsed(astKind, syntaxKind, start, m_mainPosition);
+    }
+
+    [[nodiscard]] ParsedNode parseGlobalStatement() {
+        const qsizetype start = m_mainPosition;
+        consume();
+        QVector<AstNodeId> names;
+        QVector<SyntaxNodeId> syntaxChildren;
+        QVector<AstChildRole> roles;
+        do {
+            const ParsedNode name = parseNameExpression();
+            names.append(name.ast);
+            syntaxChildren.append(name.syntax);
+            roles.append(AstChildRole::GlobalName);
+        } while (consumeIf(TokenKind::Comma));
+        return makeParsed(AstNodeKind::GlobalStatement, SyntaxKind::GlobalStatement,
+                          start, m_mainPosition, {}, names, syntaxChildren, roles);
     }
 
     [[nodiscard]] ParsedNode parseReturnStatement() {

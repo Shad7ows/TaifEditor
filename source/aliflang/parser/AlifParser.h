@@ -78,7 +78,8 @@ enum class SyntaxKind : quint16 {
     ErrorNode,
     MissingToken,
     ImportWildcard,
-    WithStatement
+    WithStatement,
+    GlobalStatement
 };
 
 struct SyntaxNode final {
@@ -132,6 +133,7 @@ enum class AstNodeKind : quint16 {
     BreakStatement,
     ContinueStatement,
     PassStatement,
+    GlobalStatement,
     AssignmentStatement,
     ExpressionStatement,
     Parameter,
@@ -195,6 +197,7 @@ enum class AstChildRole : quint8 {
     FormattedPart,
     FormatExpression,
     FormatSpecifier,
+    GlobalName,
     ContextExpression,
     ElseBody
 };

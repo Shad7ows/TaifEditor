@@ -72,6 +72,7 @@ enum class TokenKind : quint16 {
     KwNull,
     KwPass,
     KwWith,
+    KwGlobal,
 
     LParen,
     RParen,

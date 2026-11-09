@@ -256,6 +256,7 @@ private:
             {QStringLiteral("عدم"), TokenKind::KwNull},
             {QStringLiteral("مرر"), TokenKind::KwPass},
             {QStringLiteral("عند"), TokenKind::KwWith},
+            {QStringLiteral("عام"), TokenKind::KwGlobal},
         };
         return table;
     }

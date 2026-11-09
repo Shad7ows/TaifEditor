@@ -31,6 +31,7 @@ class TaifLexerTest final : public QObject {
 private slots:
     void emptyFileProducesEndOfFile();
     void statementSeparatorsAndKeywordAliases();
+    void globalKeywordIsLexed();
     void decoratorsAreLexedWithoutDiagnostics();
     void layoutTriviaAndSourceRanges();
     void literalsAndLongestMatchOperators();
@@ -79,6 +80,13 @@ void TaifLexerTest::statementSeparatorsAndKeywordAliases() {
     QCOMPARE(loopElse.diagnostics.size(), 0);
     compareKinds(loopElse, {TokenKind::KwThen, TokenKind::Colon,
                             TokenKind::Newline, TokenKind::EndOfFile});
+}
+
+void TaifLexerTest::globalKeywordIsLexed() {
+    const LexResult result = TaifLexer().lex(QStringLiteral("عام متغير\n"));
+    QVERIFY(result.diagnostics.isEmpty());
+    compareKinds(result, {TokenKind::KwGlobal, TokenKind::Identifier,
+                          TokenKind::Newline, TokenKind::EndOfFile});
 }
 
 void TaifLexerTest::decoratorsAreLexedWithoutDiagnostics() {

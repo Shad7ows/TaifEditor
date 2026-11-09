@@ -79,6 +79,7 @@ private:
     QSet<AstNodeId> m_resolvedScopes;
     QSet<AstNodeId> m_activeIndexNodes;
     QSet<AstNodeId> m_activeResolveNodes;
+    QHash<ScopeId, QSet<QString>> m_globalNames;
     bool m_suppressionReported = false;
 
     [[nodiscard]] const AstNode& node(const AstNodeId id) const {
@@ -255,6 +256,36 @@ private:
         return m_scopeByOwner.value(ownerNode, InvalidScopeId);
     }
 
+    void collectGlobalNames(const AstNodeId id, const ScopeId scope) {
+        if (!isValidNode(id)) {
+            return;
+        }
+        const AstNode& ast = node(id);
+        if (ast.kind == AstNodeKind::GlobalStatement) {
+            for (const AstNodeId child : ast.children) {
+                if (isValidNode(child) && node(child).kind == AstNodeKind::NameExpression) {
+                    m_globalNames[scope].insert(node(child).text);
+                }
+            }
+            return;
+        }
+        // A global declaration belongs to the innermost function, not to a
+        // nested function or class encountered while scanning this body.
+        if (ast.kind == AstNodeKind::FunctionDeclaration
+            || ast.kind == AstNodeKind::ClassDeclaration
+            || ast.kind == AstNodeKind::LambdaExpression
+            || ast.kind == AstNodeKind::ComprehensionExpression) {
+            return;
+        }
+        for (const AstNodeId child : ast.children) {
+            collectGlobalNames(child, scope);
+        }
+    }
+
+    [[nodiscard]] bool isGlobalName(const ScopeId scope, const QString& name) const {
+        return m_globalNames.value(scope).contains(name);
+    }
+
     [[nodiscard]] ScopeId nearestClassScope(ScopeId scope) const {
         while (scope != InvalidScopeId && scope >= 0 && scope < m_model->m_scopes.size()) {
             if (m_model->m_scopes.at(scope).kind == ScopeKind::Class) {
@@ -383,6 +414,7 @@ private:
                 }
             }
         }
+        collectGlobalNames(body, functionScope);
         indexNode(body, functionScope);
     }
 
@@ -467,9 +499,15 @@ private:
                               ast.range, SemanticDiagnosticSeverity::Warning);
                 continue;
             }
+            const AstNodeId targetId = ast.children.at(index);
+            const bool moduleAssignment = m_model->m_scopes.at(scope).kind == ScopeKind::Function
+                                          && node(targetId).kind == AstNodeKind::NameExpression
+                                          && isGlobalName(scope, node(targetId).text);
             const SymbolKind targetKind = m_model->m_scopes.at(scope).kind == ScopeKind::Class
                                               ? SymbolKind::Attribute : SymbolKind::Local;
-            declaredTargets += declareTarget(ast.children.at(index), scope, targetKind);
+            declaredTargets += declareTarget(targetId,
+                                             moduleAssignment ? m_model->m_moduleScope : scope,
+                                             targetKind);
         }
 
         const AstNodeId value = firstChildWithRole(ast, AstChildRole::Value);
@@ -713,6 +751,14 @@ private:
             break;
         case AstNodeKind::ImportStatement:
         case AstNodeKind::FromImportStatement:
+        case AstNodeKind::GlobalStatement:
+            if (ast.kind == AstNodeKind::GlobalStatement) {
+                for (const AstNodeId child : ast.children) {
+                    if (isValidNode(child)) {
+                        addReference(node(child), scope, ReferenceKind::Read);
+                    }
+                }
+            }
             break;
         case AstNodeKind::ErrorExpression:
         case AstNodeKind::ErrorStatement:

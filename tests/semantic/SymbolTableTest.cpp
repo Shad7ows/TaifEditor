@@ -61,6 +61,7 @@ private slots:
     void stringPrefixesDoNotBecomeNameReferences();
     void radixLiteralsAndBitwiseAssignmentsAreSemanticallyValid();
     void assignmentsImportsAndBuiltinsBecomeVisibleSymbols();
+    void globalAssignmentsUseModuleBindings();
     void wildcardImportsDoNotDeclareAnAsteriskSymbol();
     void forTargetBindsAndResolvesInTheLoopBody();
     void loopElseSuitesResolveLoopScopeNames();
@@ -284,6 +285,34 @@ void SymbolTableTest::assignmentsImportsAndBuiltinsBecomeVisibleSymbols() {
     QVERIFY(builtin != nullptr);
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("شيء"), imported->id));
     QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("اطبع"), builtin->id));
+}
+
+void SymbolTableTest::globalAssignmentsUseModuleBindings() {
+    const QString source = QStringLiteral(
+        "متغير = 0\n"
+        "دالة عدل():\n"
+        "\tعام متغير\n"
+        "\tمتغير = 1\n"
+        "\tارجع متغير\n");
+    const SemanticFixture fixture = analyze(source);
+    QVERIFY(fixture.parse.lexicalDiagnostics.isEmpty());
+    QVERIFY(fixture.parse.parserDiagnostics.isEmpty());
+    QVERIFY(fixture.model->diagnostics().isEmpty());
+    const Symbol* moduleVariable = findSymbol(*fixture.model, QStringLiteral("متغير"),
+                                              SymbolKind::Local);
+    QVERIFY(moduleVariable != nullptr);
+    qsizetype localVariableCount = 0;
+    for (const Symbol& symbol : fixture.model->symbols()) {
+        if (symbol.name == QStringLiteral("متغير") && symbol.kind == SymbolKind::Local) {
+            ++localVariableCount;
+        }
+    }
+    QCOMPARE(localVariableCount, qsizetype(1));
+    QVERIFY(hasResolvedReference(*fixture.model, QStringLiteral("متغير"), moduleVariable->id));
+    const qsizetype globalNameOffset = source.indexOf(QStringLiteral("عام متغير")) + 4;
+    const NameReference* globalNameReference = fixture.model->referenceAt(globalNameOffset);
+    QVERIFY(globalNameReference != nullptr);
+    QCOMPARE(globalNameReference->resolvedSymbol, moduleVariable->id);
 }
 
 void SymbolTableTest::wildcardImportsDoNotDeclareAnAsteriskSymbol() {

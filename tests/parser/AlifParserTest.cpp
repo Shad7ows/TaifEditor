@@ -41,6 +41,7 @@ private slots:
     void emptySourceCreatesCompleteSnapshots();
     void parserNormalizesMissingEndOfFile();
     void declarationsAndSuitesCreateSemanticNodes();
+    void globalStatementParsesNameList();
     void decoratorsPrefixDeclarationsWithoutDiagnostics();
     void forHeaderTreatsInAsAStructuralDelimiter();
     void loopElseClauseParses_data();
@@ -115,6 +116,27 @@ void TaifParserTest::declarationsAndSuitesCreateSemanticNodes() {
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::ClassDeclaration));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::Parameter));
     QVERIFY(hasAstKind(*result.ast, AstNodeKind::AssignmentStatement));
+}
+
+void TaifParserTest::globalStatementParsesNameList() {
+    const ParseResult result = TaifParser().parse(
+        QStringLiteral("دالة عدل():\n\tعام متغير, آخر\n\tمتغير = 1\n"));
+    QVERIFY(result.lexicalDiagnostics.isEmpty());
+    QVERIFY(result.parserDiagnostics.isEmpty());
+    QVERIFY(hasAstKind(*result.ast, AstNodeKind::GlobalStatement));
+    const AstNode* statement = nullptr;
+    for (const AstNode& node : result.ast->nodes()) {
+        if (node.kind == AstNodeKind::GlobalStatement) {
+            statement = &node;
+            break;
+        }
+    }
+    QVERIFY(statement != nullptr);
+    QCOMPARE(statement->children.size(), qsizetype(2));
+    QCOMPARE(result.ast->node(statement->children.at(0)).text, QStringLiteral("متغير"));
+    QCOMPARE(result.ast->node(statement->children.at(1)).text, QStringLiteral("آخر"));
+    QCOMPARE(result.syntaxTree->nodes().at(statement->syntaxNode).kind,
+             SyntaxKind::GlobalStatement);
 }
 
 void TaifParserTest::decoratorsPrefixDeclarationsWithoutDiagnostics() {
